@@ -24,18 +24,19 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdlib.h>
-#include "daemon.h"
-#include "log.h"
+#ifndef LOG_H
+#define LOG_H
 
-int main(int argc, char* argv[]) {
-	if (log_init(NULL, LOG_DEBUG)) {
-		exit(EXIT_FAILURE);
-	}
-	if (server_create()) {
-		exit(EXIT_FAILURE);
-	}
-	log_close();
-	return 0;
-}
+typedef enum log_level {
+	LOG_DEBUG,
+	LOG_INFO,
+	LOG_WARNING,
+	LOG_ERROR,
+} log_level_t;
 
+int log_init(const char* log_filename, log_level_t level);
+void log_printf(log_level_t level, const char* format, ...);
+void log_printf_addr(struct sockaddr *addr);
+void log_close(void);
+
+#endif

@@ -45,12 +45,12 @@
 
 #include "daemon.h"
 #include "tls_wrapper.h"
+#include "log.h"
 
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static int create_server_socket(ev_uint16_t port, int protocol);
-void printf_addr(struct sockaddr *addr);
 
 int server_create() {
 	evutil_socket_t server_sock;
@@ -61,7 +61,7 @@ int server_create() {
                 perror("event_base_new");
                 return 1;
         }
-       	printf("Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
+       	log_printf(LOG_INFO, "Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
 	
 	SSL_library_init();
 	ERR_load_crypto_strings();
@@ -103,6 +103,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	char port_buf[6];
 	int ret;
 	int optval = 1;
+
 	struct evutil_addrinfo hints;
 	struct evutil_addrinfo* addr_ptr;
 	struct evutil_addrinfo* addr_list;
@@ -131,7 +132,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	 */
 	ret = evutil_getaddrinfo(type == SOCK_DGRAM ? "::" : NULL, port_buf, &hints, &addr_list);
 	if (ret != 0) {
-		fprintf(stderr, "Failed in evutil_getaddrinfo: %s\n", evutil_gai_strerror(ret));
+		log_printf(LOG_ERROR, "Failed in evutil_getaddrinfo: %s\n", evutil_gai_strerror(ret));
 		exit(EXIT_FAILURE);
 	}
 	
@@ -144,7 +145,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 
 		ret = evutil_make_listen_socket_reuseable(sock);
 		if (ret == -1) {
-			fprintf(stderr, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
 				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 			EVUTIL_CLOSESOCKET(sock);
 			continue;
@@ -152,7 +153,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 
 		ret = evutil_make_socket_nonblocking(sock);
 		if (ret == -1) {
-			fprintf(stderr, "Failed in evutil_make_socket_nonblocking: %s\n",
+			log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 			EVUTIL_CLOSESOCKET(sock);
 			continue;
@@ -160,7 +161,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 
 		ret = bind(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen);
 		if (ret == -1) {
-			perror("bind");
+			log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
 			EVUTIL_CLOSESOCKET(sock);
 			continue;
 		}
@@ -168,7 +169,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	}
 	evutil_freeaddrinfo(addr_list);
 	if (addr_ptr == NULL) {
-		fprintf(stderr, "Failed to find a suitable address for binding\n");
+		log_printf(LOG_ERROR, "Failed to find a suitable address for binding\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -177,41 +178,22 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 
 void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx) {
-	printf("Received connection!\n");
+	log_printf(LOG_INFO, "Received connection!\n");
 	struct sockaddr orig_addr;
 	int orig_addrlen = sizeof(struct sockaddr);
 	if (getsockopt(fd, IPPROTO_IP, 86, &orig_addr, &orig_addrlen) == -1) {
-		perror("getsockopt");
+		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 	}
-	printf_addr(&orig_addr);
+	log_printf_addr(&orig_addr);
 	return;
 }
 
 void accept_error_cb(struct evconnlistener *listener, void *ctx) {
         struct event_base *base = evconnlistener_get_base(listener);
         int err = EVUTIL_SOCKET_ERROR();
-        fprintf(stderr, "Got an error %d (%s) on the listener\n", 
+        log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n", 
 				err, evutil_socket_error_to_string(err));
         event_base_loopexit(base, NULL);
-	return;
-}
-
-void printf_addr(struct sockaddr *addr) {
-	/* Make sure there's enough room for IPv6 addresses */
-	char str[INET6_ADDRSTRLEN];
-	unsigned long ip_addr;
-	struct in6_addr ip6_addr;
-	int port;
-	if (addr->sa_family == AF_INET) {
-		ip_addr = ((struct sockaddr_in*)addr)->sin_addr.s_addr;
-		inet_ntop(AF_INET, &ip_addr, str, INET_ADDRSTRLEN);
-		port = (int)ntohs(((struct sockaddr_in*)addr)->sin_port);
-	} else {
-		ip6_addr = ((struct sockaddr_in6*)addr)->sin6_addr;
-		inet_ntop(AF_INET6, &ip6_addr, str, INET6_ADDRSTRLEN);
-		port = (int)ntohs(((struct sockaddr_in6*)addr)->sin6_port);
-	}
-	printf("%s:%d", str, port);
 	return;
 }
 

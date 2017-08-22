@@ -32,6 +32,7 @@
 #include <openssl/err.h>
 
 #include "tls_wrapper.h"
+#include "log.h"
 
 static SSL* tls_create(char* hostname);
 
@@ -47,7 +48,7 @@ void tls_wrapper_setup(tls_wrapper_ctx_t* ctx, evutil_socket_t fd,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
 	if (bev_client_facing == NULL) {
-		fprintf(stderr, "Failed to set up client facing bufferevent\n");
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
 		return;
 	}
 
@@ -58,7 +59,7 @@ void tls_wrapper_setup(tls_wrapper_ctx_t* ctx, evutil_socket_t fd,
 		BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (bev_server_facing == NULL) {
 		EVUTIL_CLOSESOCKET(fd);
-		fprintf(stderr, "Failed to set up client facing bufferevent\n");
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
 		return;
 	}
 	/* Comment out this line if you need to do better debugging of OpenSSL behavior */
@@ -81,7 +82,7 @@ static SSL* tls_create(char* hostname) {
 	/* Parameterize all this later XXX */
 	tls_ctx = SSL_CTX_new(SSLv23_method);
 	if (tls_ctx == NULL) {
-		fprintf(stderr, "Failed in SSL_CTX_new()\n");
+		log_printf(LOG_ERROR, "Failed in SSL_CTX_new()\n");
 		return NULL;
 	}
 
