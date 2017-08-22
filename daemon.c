@@ -47,6 +47,8 @@
 #include "tls_wrapper.h"
 #include "log.h"
 
+#define MAX_HOSTNAME	255
+
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
@@ -68,17 +70,23 @@ int server_create() {
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 
+
+	tls_daemon_ctx_t daemon_ctx = {
+		.ev_base = ev_base
+	};
+
 	/* Start setting up server socket and event base */
 	server_sock = create_server_socket(8443, SOCK_STREAM);
-	listener = evconnlistener_new(ev_base, accept_cb, NULL, 
+	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
-		perror("Couldn't crate evconnlistener");
+		perror("Couldn't create evconnlistener");
 		return 1;
 	}
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 	event_base_dispatch(ev_base);
 
+	log_printf(LOG_INFO, "Main event loop terminated\n");
 
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
@@ -177,14 +185,25 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 }
 
 void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
-	struct sockaddr *address, int socklen, void *ctx) {
+	struct sockaddr *address, int socklen, void *arg) {
 	log_printf(LOG_INFO, "Received connection!\n");
+
+	tls_daemon_ctx_t* ctx = arg;
+
 	struct sockaddr orig_addr;
 	int orig_addrlen = sizeof(struct sockaddr);
+	char hostname[MAX_HOSTNAME];
+	int hostname_len = MAX_HOSTNAME;
+
 	if (getsockopt(fd, IPPROTO_IP, 86, &orig_addr, &orig_addrlen) == -1) {
 		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 	}
 	log_printf_addr(&orig_addr);
+	if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
+		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
+	}
+	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
+	tls_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
 	return;
 }
 

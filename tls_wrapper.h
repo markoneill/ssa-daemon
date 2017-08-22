@@ -30,11 +30,7 @@
 #include <event2/util.h>
 #include <netinet/in.h>
 
-typedef struct tls_wrapper_ctx {
-	struct event_base* ev_base;
-} tls_wrapper_ctx_t;
-
-void tls_wrapper_setup(tls_wrapper_ctx_t* ctx, evutil_socket_t fd, 
+void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
-	struct sockaddr* server_addr, int server_addrlen);
+	struct sockaddr* server_addr, int server_addrlen, char* hostname);
 #endif

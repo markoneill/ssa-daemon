@@ -75,12 +75,13 @@ void log_printf_addr(struct sockaddr *addr) {
 		ip_addr = ((struct sockaddr_in*)addr)->sin_addr.s_addr;
 		inet_ntop(AF_INET, &ip_addr, str, INET_ADDRSTRLEN);
 		port = (int)ntohs(((struct sockaddr_in*)addr)->sin_port);
-	} else {
+	}
+	else {
 		ip6_addr = ((struct sockaddr_in6*)addr)->sin6_addr;
 		inet_ntop(AF_INET6, &ip6_addr, str, INET6_ADDRSTRLEN);
 		port = (int)ntohs(((struct sockaddr_in6*)addr)->sin6_port);
 	}
-	log_printf(LOG_INFO, "%s:%d", str, port);
+	log_printf(LOG_INFO, "Address: %s:%d\n", str, port);
 	return;
 }
 

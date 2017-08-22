@@ -35,27 +35,34 @@
 #include "log.h"
 
 static SSL* tls_create(char* hostname);
+static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
+static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
+static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 
-void tls_wrapper_setup(tls_wrapper_ctx_t* ctx, evutil_socket_t fd, 
+void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
-	struct sockaddr* server_addr, int server_addrlen) {
+	struct sockaddr* server_addr, int server_addrlen, char* hostname) {
 	
 	struct bufferevent* bev_client_facing;
 	struct bufferevent* bev_server_facing;
 	SSL* tls;
 
-	bev_client_facing = bufferevent_socket_new(ctx->ev_base, fd,
+	bev_client_facing = bufferevent_socket_new(ev_base, fd,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-
 	if (bev_client_facing == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
 		return;
 	}
 
 	/* Set up SSL state */
-	tls = tls_create("www.google.com"); /* static host for now, change after it works XXX */
+	log_printf(LOG_DEBUG, "ev_base is %p and host is %s (%p)\n", ev_base, hostname, hostname);
+	tls = tls_create(hostname);
+	if (tls == NULL) {
+		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
+		return;
+	}
 
-	bev_server_facing = bufferevent_openssl_socket_new(ctx->ev_base, -1, tls,
+	bev_server_facing = bufferevent_openssl_socket_new(ev_base, -1, tls,
 		BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (bev_server_facing == NULL) {
 		EVUTIL_CLOSESOCKET(fd);
@@ -67,20 +74,28 @@ void tls_wrapper_setup(tls_wrapper_ctx_t* ctx, evutil_socket_t fd,
 	bufferevent_openssl_set_allow_dirty_shutdown(bev_server_facing, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	/* Register callbacks for reading and writing to both bevs */
-	//bufferevent_setcb(bev_server_facing
-
+	/*if (bev_server_facing == NULL || bev_client_facing == NULL) {
+		log_printf(LOG_ERROR, "
+		return;
+	}*/
 	/* Connect server facing socket */
-	//if (bufferevent_socket_connect(
+	bufferevent_socket_connect(bev_server_facing, (struct sockaddr*)server_addr, server_addrlen);
+
+	/* Register callbacks for reading and writing to both bevs */
+	bufferevent_setcb(bev_server_facing, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, bev_client_facing);
+	bufferevent_enable(bev_server_facing, EV_READ | EV_WRITE);
+	bufferevent_setcb(bev_client_facing, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, bev_server_facing);
+	bufferevent_enable(bev_client_facing, EV_READ | EV_WRITE);
+
 	return;
 }
 
-static SSL* tls_create(char* hostname) {
+SSL* tls_create(char* hostname) {
 	SSL_CTX* tls_ctx;
 	SSL* tls;
 
 	/* Parameterize all this later XXX */
-	tls_ctx = SSL_CTX_new(SSLv23_method);
+	tls_ctx = SSL_CTX_new(SSLv23_method());
 	if (tls_ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed in SSL_CTX_new()\n");
 		return NULL;
@@ -107,3 +122,13 @@ static SSL* tls_create(char* hostname) {
 
 	return tls;
 }
+
+void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
+}
+
+void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
+}
+
+void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
+}
+

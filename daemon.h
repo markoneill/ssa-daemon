@@ -27,6 +27,10 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
+typedef struct tls_daemon_ctx {
+	struct event_base* ev_base;
+} tls_daemon_ctx_t;
+
 int server_create(void);
 
 #endif

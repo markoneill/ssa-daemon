@@ -1,5 +1,5 @@
 CC = gcc
-CC_FLAGS = -w
+CC_FLAGS = -w -g -Wall
  
 EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
