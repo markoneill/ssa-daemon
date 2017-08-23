@@ -58,6 +58,7 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 
 	ctx->cf.bev = bufferevent_socket_new(ev_base, fd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
@@ -87,12 +88,6 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	bufferevent_openssl_set_allow_dirty_shutdown(ctx->sf.bev, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	/* Connect server facing socket */
-	if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
-		log_printf(LOG_ERROR, "bufferevent_socket_connect: %s\n", strerror(errno));
-		free_tls_conn_ctx(ctx);
-		return;
-	}
 
 	/* Register callbacks for reading and writing to both bevs */
 	bufferevent_setcb(ctx->sf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
@@ -100,6 +95,12 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	bufferevent_setcb(ctx->cf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
 	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
 
+	/* Connect server facing socket */
+	if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
+		log_printf(LOG_ERROR, "bufferevent_socket_connect: %s\n", strerror(errno));
+		free_tls_conn_ctx(ctx);
+		return;
+	}
 	return;
 }
 
@@ -145,7 +146,9 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 		out_buf = bufferevent_get_output(bev);
 		if (evbuffer_get_length(out_buf) == 0) {
 			bufferevent_free(bev);
+			/* Should we free anything else here? */
 		}
+		return;
 	}
 
 	if (endpoint->bev && !(bufferevent_get_enabled(endpoint->bev) & EV_READ)) {
@@ -164,19 +167,18 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 
 	in_buf = bufferevent_get_input(bev);
 	in_len = evbuffer_get_length(in_buf);
-	if (in_len == 0) {
-		return;
-	}
-
-	if (endpoint->bev == NULL) {
+	
+	if (endpoint->closed) {
 		evbuffer_drain(in_buf, in_len);
 		return;
 	}
 
-	out_buf = bufferevent_get_output(endpoint->bev);
-	if (endpoint->closed == 0) {
-		evbuffer_add_buffer(out_buf, in_buf);
+	if (in_len == 0) {
+		return;
 	}
+
+	out_buf = bufferevent_get_output(endpoint->bev);
+	evbuffer_add_buffer(out_buf, in_buf);
 
 	if (evbuffer_get_length(out_buf) >= MAX_BUFFER) {
 		log_printf(LOG_DEBUG, "Overflowing buffer, slowing down\n");
@@ -188,6 +190,7 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	tls_conn_ctx_t* ctx = arg;
+	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	channel_t* startpoint = (bev == ctx->cf.bev) ? &ctx->cf : &ctx->sf;
 	if (events & BEV_EVENT_CONNECTED) {
@@ -195,21 +198,51 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		startpoint->connected = 1;
 	}
 	if (events & BEV_EVENT_ERROR) {
-		unsigned long ssl_err;
-		if (errno == ECONNRESET || errno == EPIPE) {
-			log_printf(LOG_INFO, "Connection closed: %s\n", strerror(errno));
-			startpoint->closed = 1;
+		ssl_err = bufferevent_get_openssl_error(bev);
+		if (errno) {
+			if (errno == ECONNRESET || errno == EPIPE) {
+				log_printf(LOG_INFO, "Connection closed: %s\n", strerror(errno));
+				bufferevent_free(startpoint->bev);
+				startpoint->bev = NULL;
+				startpoint->closed = 1;
+			}
+			else {
+				log_printf(LOG_INFO, "An unhandled error has occurred: %s\n", strerror(errno));
+			}
 		}
-		else {
-			log_printf(LOG_INFO, "An unhandled error has occurred: %s\n", strerror(errno));
+		while (ssl_err) {
+			log_printf(LOG_ERROR, "SSL error from bufferevent: %s\n", ERR_func_error_string(ssl_err));
 		}
-		/*ssl_err = bufferevent_get_openssl_error(bev);
-		if (!ssl_err) {
-			log_printf(LOG_ERROR, "Error from bufferevent: %s\n", strerror(errno));
-		}*/
+		if (endpoint->closed == 0) {
+			struct evbuffer* out_buf;
+			out_buf = bufferevent_get_output(endpoint->bev);
+			/* close other buffer if we're closing and it has no data left */
+			if (evbuffer_get_length(out_buf) == 0) {
+				bufferevent_free(endpoint->bev);
+				endpoint->bev = NULL;
+				endpoint->closed = 1;
+			}
+		}
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "An EOF has occurred\n");
+		if (endpoint->closed == 0) {
+			struct evbuffer* in_buf;
+			struct evbuffer* out_buf;
+			in_buf = bufferevent_get_input(bev);
+			out_buf = bufferevent_get_output(endpoint->bev);
+			if (evbuffer_get_length(in_buf) > 0) {
+				evbuffer_add_buffer(out_buf, in_buf);
+			}
+			else {
+				/* close other buffer if we're closing and it has no data left */
+				if (evbuffer_get_length(out_buf) == 0) {
+					bufferevent_free(endpoint->bev);
+					endpoint->bev = NULL;
+					endpoint->closed = 1;
+				}
+			}
+		}
 		bufferevent_free(startpoint->bev);
 		startpoint->bev = NULL;
 		startpoint->closed = 1;
