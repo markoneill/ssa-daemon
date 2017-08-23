@@ -131,10 +131,10 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 	struct evbuffer* out_buf;
 
 	/* XXX Need a way to do this only when remote is closed */
-	out_buf = bufferevent_get_output(bev);
+	/*out_buf = bufferevent_get_output(bev);
 	if (evbuffer_get_length(out_buf) == 0) {
 		bufferevent_free(bev);
-	}
+	}*/
 
 	if (endpoint && !(bufferevent_get_enabled(endpoint) & EV_READ)) {
 		bufferevent_setwatermark(bev, EV_WRITE, 0, 0);
@@ -164,6 +164,7 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 	evbuffer_add_buffer(out_buf, in_buf);
 
 	if (evbuffer_get_length(out_buf) >= MAX_BUFFER) {
+		log_printf(LOG_DEBUG, "Overflowing buffer, slowing down\n");
 		bufferevent_setwatermark(endpoint, EV_WRITE, MAX_BUFFER / 2, MAX_BUFFER);
 		bufferevent_disable(bev, EV_READ);
 	}
@@ -176,6 +177,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	if (events & BEV_EVENT_ERROR) {
 		log_printf(LOG_INFO, "An error has occurred\n");
+		unsigned long ssl_err;
+		ssl_err = bufferevent_get_openssl_error(bev);
+		if (!ssl_err) {
+			log_printf(LOG_ERROR, "Error from bufferevent: %s\n", strerror(errno));
+		}
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "An EOF has occurred\n");
