@@ -31,16 +31,19 @@
 #include <event2/util.h>
 #include <netinet/in.h>
 
+#include <openssl/ssl.h>
+
 typedef struct channel {
 	struct bufferevent* bev;
 	int closed;
 	int connected;
 } channel_t;
 
-typedef struct tls_wrap_ctx {
+typedef struct tls_conn_ctx {
 	channel_t cf;
 	channel_t sf;
-} tls_wrap_ctx_t;
+	SSL* tls;
+} tls_conn_ctx_t;
 
 void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
