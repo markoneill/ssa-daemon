@@ -34,6 +34,8 @@
 #include "tls_wrapper.h"
 #include "log.h"
 
+#define MAX_BUFFER	1024*1024
+
 static SSL* tls_create(char* hostname);
 static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
@@ -74,12 +76,13 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	bufferevent_openssl_set_allow_dirty_shutdown(bev_server_facing, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	/*if (bev_server_facing == NULL || bev_client_facing == NULL) {
-		log_printf(LOG_ERROR, "
-		return;
-	}*/
 	/* Connect server facing socket */
-	bufferevent_socket_connect(bev_server_facing, (struct sockaddr*)server_addr, server_addrlen);
+	if (bufferevent_socket_connect(bev_server_facing, (struct sockaddr*)server_addr, server_addrlen) < 0) {
+		log_printf(LOG_ERROR, "bufferevent_socket_connect: %s\n", strerror(errno));
+		bufferevent_free(bev_server_facing);
+		bufferevent_free(bev_client_facing);
+		return;
+	}
 
 	/* Register callbacks for reading and writing to both bevs */
 	bufferevent_setcb(bev_server_facing, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, bev_client_facing);
@@ -124,11 +127,61 @@ SSL* tls_create(char* hostname) {
 }
 
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
+	struct bufferevent* endpoint = arg;
+	struct evbuffer* out_buf;
+
+	/* XXX Need a way to do this only when remote is closed */
+	out_buf = bufferevent_get_output(bev);
+	if (evbuffer_get_length(out_buf) == 0) {
+		bufferevent_free(bev);
+	}
+
+	if (endpoint && !(bufferevent_get_enabled(endpoint) & EV_READ)) {
+		bufferevent_setwatermark(bev, EV_WRITE, 0, 0);
+		bufferevent_enable(endpoint, EV_READ);
+	}
+	return;
 }
 
 void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
+	struct bufferevent* endpoint = arg;
+	struct evbuffer* in_buf;
+	struct evbuffer* out_buf;
+	size_t in_len;
+
+	in_buf = bufferevent_get_input(bev);
+	in_len = evbuffer_get_length(in_buf);
+	if (in_len == 0) {
+		return;
+	}
+
+	if (endpoint == NULL) {
+		evbuffer_drain(in_buf, in_len);
+		return;
+	}
+
+	out_buf = bufferevent_get_output(endpoint);
+	evbuffer_add_buffer(out_buf, in_buf);
+
+	if (evbuffer_get_length(out_buf) >= MAX_BUFFER) {
+		bufferevent_setwatermark(endpoint, EV_WRITE, MAX_BUFFER / 2, MAX_BUFFER);
+		bufferevent_disable(bev, EV_READ);
+	}
+	return;
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
+	if (events & BEV_EVENT_CONNECTED) {
+		log_printf(LOG_INFO, "Connected\n");
+	}
+	if (events & BEV_EVENT_ERROR) {
+		log_printf(LOG_INFO, "An error has occurred\n");
+	}
+	if (events & BEV_EVENT_EOF) {
+		log_printf(LOG_INFO, "An EOF has occurred\n");
+		/* XXX */
+	}
+	return;
 }
+
 
