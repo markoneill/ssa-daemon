@@ -27,8 +27,11 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
+#include <event2/event.h>
+
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
+	struct event* sev_pipe;
 } tls_daemon_ctx_t;
 
 int server_create(void);

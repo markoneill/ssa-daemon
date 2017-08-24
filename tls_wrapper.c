@@ -243,9 +243,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				}
 			}
 		}
-		bufferevent_free(startpoint->bev);
-		startpoint->bev = NULL;
-		startpoint->closed = 1;
+		if (startpoint->closed == 0) {
+			bufferevent_free(startpoint->bev);
+			startpoint->bev = NULL;
+			startpoint->closed = 1;
+		}
 	}
 	return;
 }

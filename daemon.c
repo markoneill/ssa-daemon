@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -52,6 +53,7 @@
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
+static void signal_cb(evutil_socket_t fd, short event, void* arg);
 static int create_server_socket(ev_uint16_t port, int protocol);
 
 int server_create() {
@@ -59,6 +61,7 @@ int server_create() {
 	struct evconnlistener* listener;
         const char* ev_version = event_get_version();
 	struct event_base* ev_base = event_base_new();
+	struct event* sev_pipe;
 	if (ev_base == NULL) {
                 perror("event_base_new");
                 return 1;
@@ -70,9 +73,16 @@ int server_create() {
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 
+	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
+	if (sev_pipe == NULL) {
+		log_printf(LOG_ERROR, "Couldn't create signal handler event");
+		return 1;
+	}
+	evsignal_add(sev_pipe, NULL);
 
 	tls_daemon_ctx_t daemon_ctx = {
-		.ev_base = ev_base
+		.ev_base = ev_base,
+		.sev_pipe = sev_pipe		
 	};
 
 	/* Start setting up server socket and event base */
@@ -80,9 +90,13 @@ int server_create() {
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
-		perror("Couldn't create evconnlistener");
+		log_printf(LOG_ERROR, "Couldn't create evconnlistener");
 		return 1;
 	}
+
+	/* Signal handler registration */
+	
+
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 	event_base_dispatch(ev_base);
 
@@ -216,3 +230,14 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
+void signal_cb(evutil_socket_t fd, short event, void* arg) {
+	int signum = fd; /* why is this fd? */
+	switch (signum) {
+		case SIGPIPE:
+			log_printf(LOG_DEBUG, "Caught SIGPIPE and ignored it\n");
+			break;
+		default:
+			break;
+	}
+	return;
+}
