@@ -201,13 +201,13 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		ssl_err = bufferevent_get_openssl_error(bev);
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
-				log_printf(LOG_INFO, "Connection closed: %s\n", strerror(errno));
+				log_printf(LOG_INFO, "Connection closed\n");
 				bufferevent_free(startpoint->bev);
 				startpoint->bev = NULL;
 				startpoint->closed = 1;
 			}
 			else {
-				log_printf(LOG_INFO, "An unhandled error has occurred: %s\n", strerror(errno));
+				log_printf(LOG_INFO, "An unhandled error has occurred\n");
 			}
 		}
 		while (ssl_err) {
