@@ -29,10 +29,22 @@
 
 #include <event2/event.h>
 
+#define AF_HOSTNAME	43
+
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct event* sev_pipe;
 } tls_daemon_ctx_t;
+
+struct host_addr { 
+        unsigned char name[255]; 
+}; 
+ 
+struct sockaddr_host { 
+        sa_family_t sin_family; 
+        unsigned short sin_port; 
+        struct host_addr sin_addr; 
+}; 
 
 int server_create(void);
 

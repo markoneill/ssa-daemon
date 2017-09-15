@@ -204,8 +204,8 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 	tls_daemon_ctx_t* ctx = arg;
 
-	struct sockaddr orig_addr;
-	int orig_addrlen = sizeof(struct sockaddr);
+	struct sockaddr_host orig_addr; /* sockaddr_host is bigger than the other */
+	int orig_addrlen = sizeof(struct sockaddr_host);
 	char hostname[MAX_HOSTNAME];
 	int hostname_len = MAX_HOSTNAME;
 
@@ -213,8 +213,14 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 	}
 	log_printf_addr(&orig_addr);
-	if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
-		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
+	if (orig_addr.sin_family == AF_HOSTNAME) {
+		log_printf(LOG_DEBUG, "Detected sockaddr_host usage\n");
+		strcpy(hostname, orig_addr.sin_addr.name);
+	}
+	else {
+		if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
+			log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
+		}
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
 	tls_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
