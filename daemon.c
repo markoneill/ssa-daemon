@@ -44,8 +44,12 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
+#include <netlink/genl/genl.h>
+#include <netlink/genl/ctrl.h>
+
 #include "daemon.h"
 #include "tls_wrapper.h"
+#include "netlink.h"
 #include "log.h"
 
 #define MAX_HOSTNAME	255
@@ -62,6 +66,8 @@ int server_create() {
         const char* ev_version = event_get_version();
 	struct event_base* ev_base = event_base_new();
 	struct event* sev_pipe;
+	struct event* nl_ev;
+	struct nl_sock* netlink_sock;
 	if (ev_base == NULL) {
                 perror("event_base_new");
                 return 1;
@@ -95,12 +101,23 @@ int server_create() {
 	}
 
 	/* Signal handler registration */
+	netlink_sock = netlink_connect();
+	if (netlink_sock == NULL) {
+		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
+		return 1;
+	}
+	nl_ev = event_new(ev_base, nl_socket_get_fd(netlink_sock), EV_READ | EV_PERSIST, netlink_recv, netlink_sock);
+	if (event_add(nl_ev, NULL) == -1) {
+		log_printf(LOG_ERROR, "Couldn't add Netlink event");
+		return 1;
+	}
 	
 
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 	event_base_dispatch(ev_base);
 
 	log_printf(LOG_INFO, "Main event loop terminated\n");
+	netlink_disconnect(netlink_sock);
 
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
