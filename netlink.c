@@ -31,6 +31,42 @@
 #include <netlink/genl/ctrl.h>
 #include "netlink.h"
 
+
+// Attributes
+enum {
+        SSA_NL_A_UNSPEC,
+	SSA_NL_A_SOCKADDR_INTERNAL,
+	SSA_NL_A_SOCKADDR_EXTERNAL,
+        SSA_NL_A_PAD,
+        __SSA_NL_A_MAX,
+};
+
+#define SSA_NL_A_MAX (__SSA_NL_A_MAX - 1)
+
+// Operations
+enum {
+        SSA_NL_C_UNSPEC,
+        SSA_NL_C_NOTIFY,
+        __SSA_NL_C_MAX,
+};
+
+#define SSA_NL_C_MAX (__SSA_NL_C_MAX - 1)
+
+// Multicast group
+enum ssa_nl_groups {
+        SSA_NL_NOTIFY,
+};
+
+static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
+        [SSA_NL_A_UNSPEC] = { .type = NLA_UNSPEC },
+        [SSA_NL_A_SOCKADDR_INTERNAL] = { .type = NLA_UNSPEC },
+        [SSA_NL_A_SOCKADDR_EXTERNAL] = { .type = NLA_UNSPEC },
+};
+
+
+
+int handle_netlink_msg(struct nl_msg* msg, void* arg);
+
 struct nl_sock* netlink_connect(void) {
 	int group;
 	int family;
@@ -62,12 +98,34 @@ struct nl_sock* netlink_connect(void) {
 		fprintf(stderr, "Failed to add membership to group\n");
 		return NULL;
 	}
-	return 0;
+	return netlink_sock;
 }
 
 void netlink_recv(evutil_socket_t fd, short events, void *arg) {
-	printf("Got a message from the kernel!");
+	printf("Got a message from the kernel!\n");
+	struct nl_sock* netlink_sock = (struct nl_sock*)arg;
+	nl_recvmsgs(netlink_sock, handle_netlink_msg);
 	return;
+}
+
+int handle_netlink_msg(struct nl_msg* msg, void* arg) {
+        struct nlmsghdr* nlh;
+        struct genlmsghdr* gnlh;
+        struct nlattr* attrs[SSA_NL_A_MAX + 1];
+
+        // Get Message
+        nlh = nlmsg_hdr(msg);
+        gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
+        genlmsg_parse(nlh, 0, attrs, SSA_NL_A_MAX, ssa_nl_policy);
+        switch (gnlh->cmd) {
+		case SSA_NL_C_NOTIFY:
+			
+			break;
+		default:
+			printf("unrecognized command\n");
+			break;
+	}
+	return 0;
 }
 
 int netlink_disconnect(struct nl_sock* sock) {
