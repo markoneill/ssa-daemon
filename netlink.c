@@ -73,7 +73,7 @@ struct nl_sock* netlink_connect(void) {
 	struct nl_sock* netlink_sock = nl_socket_alloc();
 	nl_socket_set_local_port(netlink_sock, 0);
 	nl_socket_disable_seq_check(netlink_sock);
-	//nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, recv_response_cb, (void*)netlink_sock);
+	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, handle_netlink_msg, (void*)netlink_sock);
 	if (netlink_sock == NULL) {
 		fprintf(stderr, "Failed to allocate socket\n");
 		return NULL;
@@ -98,13 +98,15 @@ struct nl_sock* netlink_connect(void) {
 		fprintf(stderr, "Failed to add membership to group\n");
 		return NULL;
 	}
+	printf("p is %p\n", netlink_sock);
 	return netlink_sock;
 }
 
 void netlink_recv(evutil_socket_t fd, short events, void *arg) {
 	printf("Got a message from the kernel!\n");
 	struct nl_sock* netlink_sock = (struct nl_sock*)arg;
-	nl_recvmsgs(netlink_sock, handle_netlink_msg);
+	printf("p is %p\n", netlink_sock);
+	nl_recvmsgs_default(netlink_sock);
 	return;
 }
 
