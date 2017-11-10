@@ -34,6 +34,7 @@
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct event* sev_pipe;
+	struct nl_sock* netlink_sock;
 } tls_daemon_ctx_t;
 
 struct host_addr { 
@@ -47,5 +48,6 @@ struct sockaddr_host {
 }; 
 
 int server_create(void);
+void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, struct sockaddr* external_addr);
 
 #endif

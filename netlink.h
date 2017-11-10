@@ -32,8 +32,10 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 
+#include "daemon.h"
+
 int netlink_disconnect(struct nl_sock* sock);
 void netlink_recv(evutil_socket_t fd, short events, void *arg);
-struct nl_sock* netlink_connect(void);
+struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx);
 
 #endif

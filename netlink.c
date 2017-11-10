@@ -30,6 +30,7 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include "netlink.h"
+#include "daemon.h"
 #include "log.h"
 
 
@@ -68,13 +69,14 @@ static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
 
 int handle_netlink_msg(struct nl_msg* msg, void* arg);
 
-struct nl_sock* netlink_connect(void) {
+struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx) {
 	int group;
 	int family;
 	struct nl_sock* netlink_sock = nl_socket_alloc();
 	nl_socket_set_local_port(netlink_sock, 0);
 	nl_socket_disable_seq_check(netlink_sock);
-	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, handle_netlink_msg, (void*)netlink_sock);
+	ctx->netlink_sock = netlink_sock;
+	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, handle_netlink_msg, (void*)ctx);
 	if (netlink_sock == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate socket\n");
 		return NULL;
@@ -110,6 +112,7 @@ void netlink_recv(evutil_socket_t fd, short events, void *arg) {
 }
 
 int handle_netlink_msg(struct nl_msg* msg, void* arg) {
+	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
         struct nlmsghdr* nlh;
         struct genlmsghdr* gnlh;
         struct nlattr* attrs[SSA_NL_A_MAX + 1];
@@ -129,11 +132,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			addr_external_len = nla_len(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
 			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
 			addr_external = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
-
-			log_printf(LOG_INFO, "internal addres is\n");
-			log_printf_addr((struct sockaddr*)&addr_internal);
-			log_printf(LOG_INFO, "external addres is\n");
-			log_printf_addr((struct sockaddr*)&addr_external);
+			listen_cb(ctx, (struct sockaddr*)&addr_internal, (struct sockaddr*)&addr_external);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");

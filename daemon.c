@@ -73,6 +73,7 @@ int server_create() {
                 return 1;
         }
        	log_printf(LOG_INFO, "Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
+	log_printf(LOG_DEBUG, "ev_base address is %p\n", ev_base);
 	
 	SSL_library_init();
 	ERR_load_crypto_strings();
@@ -88,7 +89,7 @@ int server_create() {
 
 	tls_daemon_ctx_t daemon_ctx = {
 		.ev_base = ev_base,
-		.sev_pipe = sev_pipe		
+		.sev_pipe = sev_pipe,
 	};
 
 	/* Start setting up server socket and event base */
@@ -101,7 +102,7 @@ int server_create() {
 	}
 
 	/* Signal handler registration */
-	netlink_sock = netlink_connect();
+	netlink_sock = netlink_connect(&daemon_ctx);
 	if (netlink_sock == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
 		return 1;
@@ -250,6 +251,15 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
         log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n", 
 				err, evutil_socket_error_to_string(err));
         event_base_loopexit(base, NULL);
+	return;
+}
+
+void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, struct sockaddr* external_addr) {
+	log_printf(LOG_INFO, "internal address is\n");
+	log_printf_addr(internal_addr);
+	log_printf(LOG_INFO, "external address is\n");
+	log_printf_addr(external_addr);
+	log_printf(LOG_DEBUG, "ev_base address in listen_cb is %p\n", ctx->ev_base);
 	return;
 }
 
