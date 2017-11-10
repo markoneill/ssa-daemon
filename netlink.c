@@ -30,6 +30,7 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include "netlink.h"
+#include "log.h"
 
 
 // Attributes
@@ -75,37 +76,35 @@ struct nl_sock* netlink_connect(void) {
 	nl_socket_disable_seq_check(netlink_sock);
 	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, handle_netlink_msg, (void*)netlink_sock);
 	if (netlink_sock == NULL) {
-		fprintf(stderr, "Failed to allocate socket\n");
+		log_printf(LOG_ERROR, "Failed to allocate socket\n");
 		return NULL;
 	}
 
 	if (genl_connect(netlink_sock) != 0) {
-		fprintf(stderr, "Failed to connect to Generic Netlink control\n");
+		log_printf(LOG_ERROR, "Failed to connect to Generic Netlink control\n");
 		return NULL;
 	}
 
 	if ((family = genl_ctrl_resolve(netlink_sock, "SSA")) < 0) {
-		fprintf(stderr, "Failed to resolve SSA family identifier\n");
+		log_printf(LOG_ERROR, "Failed to resolve SSA family identifier\n");
 		return NULL;
 	}
 
 	if ((group = genl_ctrl_resolve_grp(netlink_sock, "SSA", "notify")) < 0) {
-		fprintf(stderr, "Failed to resolve group identifier\n");
+		log_printf(LOG_ERROR, "Failed to resolve group identifier\n");
 		return NULL;
 	}
 
 	if (nl_socket_add_membership(netlink_sock, group) < 0) {
-		fprintf(stderr, "Failed to add membership to group\n");
+		log_printf(LOG_ERROR, "Failed to add membership to group\n");
 		return NULL;
 	}
-	printf("p is %p\n", netlink_sock);
 	return netlink_sock;
 }
 
 void netlink_recv(evutil_socket_t fd, short events, void *arg) {
-	printf("Got a message from the kernel!\n");
+	log_printf(LOG_INFO, "Got a message from the kernel!\n");
 	struct nl_sock* netlink_sock = (struct nl_sock*)arg;
-	printf("p is %p\n", netlink_sock);
 	nl_recvmsgs_default(netlink_sock);
 	return;
 }
@@ -115,16 +114,29 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
         struct genlmsghdr* gnlh;
         struct nlattr* attrs[SSA_NL_A_MAX + 1];
 
+	int addr_internal_len;
+	int addr_external_len;
+	struct sockaddr_in addr_internal;
+	struct sockaddr_in addr_external;
+
         // Get Message
         nlh = nlmsg_hdr(msg);
         gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
         genlmsg_parse(nlh, 0, attrs, SSA_NL_A_MAX, ssa_nl_policy);
         switch (gnlh->cmd) {
 		case SSA_NL_C_NOTIFY:
-			
+			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_external_len = nla_len(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
+			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_external = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
+
+			log_printf(LOG_INFO, "internal addres is\n");
+			log_printf_addr((struct sockaddr*)&addr_internal);
+			log_printf(LOG_INFO, "external addres is\n");
+			log_printf_addr((struct sockaddr*)&addr_external);
 			break;
 		default:
-			printf("unrecognized command\n");
+			log_printf(LOG_ERROR, "unrecognized command\n");
 			break;
 	}
 	return 0;
