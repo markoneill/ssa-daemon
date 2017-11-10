@@ -132,7 +132,8 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			addr_external_len = nla_len(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
 			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
 			addr_external = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
-			listen_cb(ctx, (struct sockaddr*)&addr_internal, (struct sockaddr*)&addr_external);
+			listen_cb(ctx, (struct sockaddr*)&addr_internal, addr_internal_len,
+					 (struct sockaddr*)&addr_external, addr_external_len);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");

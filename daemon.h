@@ -27,14 +27,28 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
+#include <netinet/in.h>
+
 #include <event2/event.h>
+#include <event2/util.h>
 
 #define AF_HOSTNAME	43
+
+typedef struct listener_ctx {
+	struct listener_ctx* next;
+	struct sockaddr int_addr;
+	int int_addrlen;
+	struct sockaddr ext_addr;
+	int ext_addrlen;
+	evutil_socket_t socket;
+	struct evconnlistener* listener;
+} listener_ctx_t;
 
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct event* sev_pipe;
 	struct nl_sock* netlink_sock;
+	listener_ctx_t* listeners;
 } tls_daemon_ctx_t;
 
 struct host_addr { 
@@ -48,6 +62,7 @@ struct sockaddr_host {
 }; 
 
 int server_create(void);
-void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, struct sockaddr* external_addr);
+void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int internal_addr_len,
+			 struct sockaddr* external_addr, int external_addr_len);
 
 #endif

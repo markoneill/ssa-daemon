@@ -54,11 +54,19 @@
 
 #define MAX_HOSTNAME	255
 
+/* SSA client functions */
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static void signal_cb(evutil_socket_t fd, short event, void* arg);
-static int create_server_socket(ev_uint16_t port, int protocol);
+static evutil_socket_t create_server_socket(ev_uint16_t port, int protocol);
+
+/* SSA server functions */
+static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+	struct sockaddr *address, int socklen, void *arg);
+static evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, int type, int protocol);
+static int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx);
+static void free_listeners(tls_daemon_ctx_t* ctx);
 
 int server_create() {
 	evutil_socket_t server_sock;
@@ -90,6 +98,8 @@ int server_create() {
 	tls_daemon_ctx_t daemon_ctx = {
 		.ev_base = ev_base,
 		.sev_pipe = sev_pipe,
+		.netlink_sock = NULL,
+		.listeners = NULL
 	};
 
 	/* Start setting up server socket and event base */
@@ -122,6 +132,7 @@ int server_create() {
 
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
+	free_listeners(&daemon_ctx);
         event_base_free(ev_base);
         /* This function hushes the wails of memory leak
          * testing utilities, but was not introduced until
@@ -179,7 +190,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
 		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, addr_ptr->ai_protocol);
 		if (sock == -1) {
-			perror("socket");
+			log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
 			continue;
 		}
 
@@ -213,6 +224,40 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 		exit(EXIT_FAILURE);
 	}
 
+	return sock;
+}
+
+evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, int type, int protocol) {
+	int sock;
+	int ret;
+	sock = socket(addr->sa_family, type, protocol);
+	if (sock == -1) {
+		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
+		return 0;
+	}
+
+	ret = evutil_make_listen_socket_reuseable(sock);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(sock);
+		return 0;
+	}
+
+	ret = evutil_make_socket_nonblocking(sock);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(sock);
+		return 0;
+	}
+
+	ret = bind(sock, addr, addrlen);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
+		EVUTIL_CLOSESOCKET(sock);
+		return 0;
+	}
 	return sock;
 }
 
@@ -254,15 +299,39 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, struct sockaddr* external_addr) {
+void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int internal_addr_len,
+			 struct sockaddr* external_addr, int external_addr_len) {
 	log_printf(LOG_INFO, "internal address is\n");
 	log_printf_addr(internal_addr);
 	log_printf(LOG_INFO, "external address is\n");
 	log_printf_addr(external_addr);
 	log_printf(LOG_DEBUG, "ev_base address in listen_cb is %p\n", ctx->ev_base);
+
+	evutil_socket_t socket = create_listen_socket(external_addr, external_addr_len, 
+							SOCK_STREAM, IPPROTO_TCP);
+	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
+	if (lctx == NULL) {
+		log_printf(LOG_ERROR, "Failed to malloc listener context\n");
+		return;
+	}
+	lctx->socket = socket;
+	lctx->int_addr = *internal_addr;
+	lctx->int_addrlen = internal_addr_len;
+	lctx->ext_addr = *external_addr;
+	lctx->ext_addrlen = external_addr_len;
+	lctx->next = NULL;
+	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, socket);
+
+	add_listener_to_ctx(ctx, lctx);
 	return;
 }
 
+void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+	struct sockaddr *address, int socklen, void *arg) {
+	log_printf(LOG_INFO, "Got a connection on a vicarious listener\n");
+	return;
+}
 void signal_cb(evutil_socket_t fd, short event, void* arg) {
 	int signum = fd; /* why is this fd? */
 	switch (signum) {
@@ -274,3 +343,30 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 	}
 	return;
 }
+
+int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx) {
+	listener_ctx_t* cur = ctx->listeners;
+	if (cur == NULL) {
+		ctx->listeners = lctx;
+		return 0;
+	}
+	while (cur->next != NULL) {
+		cur = cur->next;
+	}
+	cur->next = lctx;
+	return 0;
+}
+
+void free_listeners(tls_daemon_ctx_t* ctx) {
+	listener_ctx_t* cur = ctx->listeners;
+	listener_ctx_t* tmp = NULL;
+	while (cur != NULL) {
+		tmp = cur->next;
+		/* This also closes the socket due to our listener creation flags */
+		evconnlistener_free(cur->listener);
+		free(cur);
+		cur = tmp;
+	}
+	return;
+}
+
