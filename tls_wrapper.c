@@ -38,10 +38,12 @@
 
 #define MAX_BUFFER	1024*1024
 
-static SSL* tls_create(char* hostname);
+static SSL* tls_client_create(char* hostname);
+static SSL* tls_server_create(tls_conn_ctx_t* ctx);
 static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
+static int server_name_cb(SSL* tls, int* ad, void* arg);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
@@ -68,7 +70,7 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	}
 
 	/* Set up TLS/SSL state with openssl */
-	ctx->tls = tls_create(hostname);
+	ctx->tls = tls_client_create(hostname);
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
 		free_tls_conn_ctx(ctx);
@@ -104,14 +106,57 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	return;
 }
 
-SSL* tls_create(char* hostname) {
+/* XXX Parameterize later
+ * Suggestion: Perhaps look up privkey and cert in a
+ * protected ssa store with a hostname as an index?
+ *
+ * The lame option is to have the programmer decide what cert
+ * and key to use. We can support this, but the other option seems cool too.
+ *
+ * If the certificate doesn't exist, do we try to use Let's Encrypt to
+ * dynamically get one?
+ */
+SSL* tls_server_create(tls_conn_ctx_t* ctx) {
+	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
+	if (tls_ctx == NULL) {
+		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
+		return NULL;
+	}
+	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
+	/* There's a billion options we can/should set here by admin config XXX
+ 	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
+
+
+	/* XXX We can do all sorts of caching modes and define our own callbacks
+	 * if desired */	
+	SSL_CTX_set_session_cache_mode(tls_ctx, SSL_SESS_CACHE_SERVER);
+
+	/* SNI configuration */
+	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
+	SSL_CTX_set_tlsext_servername_arg(tls_ctx, ctx);
+
+	SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
+	//SSL_CTX_use_certificate_chain_file(tls_ctx, XXX, SSL_FILETYPE_PEM);
+	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
+
+	return tls_ctx;
+}
+
+int server_name_cb(SSL* tls, int* ad, void* arg) {
+	/* Here is where we'd do anything needed for handling
+	 * connections differently based on SNI  */
+	tls_conn_ctx_t* ctx = (tls_conn_ctx_t*)arg;
+	return SSL_TLSEXT_ERR_OK;
+}
+
+SSL* tls_client_create(char* hostname) {
 	SSL_CTX* tls_ctx;
 	SSL* tls;
 
 	/* Parameterize all this later XXX */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
 	if (tls_ctx == NULL) {
-		log_printf(LOG_ERROR, "Failed in SSL_CTX_new()\n");
+		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [client]\n");
 		return NULL;
 	}
 
@@ -133,6 +178,10 @@ SSL* tls_create(char* hostname) {
 
 	/* Should also allow some sort of session resumption here XXX
   	 * See SSL_set_session for details  */
+
+
+	/* For client auth portion of the SSA utilize 
+	 * SSL_CTX_set_default_passwd_cb */
 
 	return tls;
 }
