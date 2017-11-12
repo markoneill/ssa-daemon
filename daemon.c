@@ -62,6 +62,7 @@ static void signal_cb(evutil_socket_t fd, short event, void* arg);
 static evutil_socket_t create_server_socket(ev_uint16_t port, int protocol);
 
 /* SSA server functions */
+static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 static evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, int type, int protocol);
@@ -286,7 +287,7 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		}
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
-	tls_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
+	tls_client_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
 	return;
 }
 
@@ -319,19 +320,40 @@ void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int intern
 	lctx->int_addrlen = internal_addr_len;
 	lctx->ext_addr = *external_addr;
 	lctx->ext_addrlen = external_addr_len;
+	lctx->tls_ctx = tls_server_ctx_create();
 	lctx->next = NULL;
 	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, socket);
 
+	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
 	add_listener_to_ctx(ctx, lctx);
 	return;
 }
 
 void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
+	listener_ctx_t* lctx = (listener_ctx_t*)arg;
+        struct event_base *base = evconnlistener_get_base(listener);
 	log_printf(LOG_INFO, "Got a connection on a vicarious listener\n");
+	log_printf(LOG_INFO, "The remote client is\n");
+	log_printf_addr(address);
+	log_printf(LOG_INFO, "We are\n");
+	log_printf_addr(&lctx->ext_addr);
+	log_printf(LOG_INFO, "Application is\n");
+	log_printf_addr(&lctx->int_addr);
+	tls_server_wrapper_setup(fd, base, lctx->tls_ctx, address, socklen, &lctx->int_addr, &lctx->int_addrlen);
 	return;
 }
+
+void server_accept_error_cb(struct evconnlistener *listener, void *ctx) {
+        struct event_base *base = evconnlistener_get_base(listener);
+        int err = EVUTIL_SOCKET_ERROR();
+        log_printf(LOG_ERROR, "Got an error %d (%s) on a server listener\n", 
+				err, evutil_socket_error_to_string(err));
+        event_base_loopexit(base, NULL);
+	return;
+}
+
 void signal_cb(evutil_socket_t fd, short event, void* arg) {
 	int signum = fd; /* why is this fd? */
 	switch (signum) {

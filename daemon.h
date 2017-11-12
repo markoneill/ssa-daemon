@@ -32,6 +32,8 @@
 #include <event2/event.h>
 #include <event2/util.h>
 
+#include <openssl/ssl.h>
+
 #define AF_HOSTNAME	43
 
 typedef struct listener_ctx {
@@ -41,6 +43,7 @@ typedef struct listener_ctx {
 	struct sockaddr ext_addr;
 	int ext_addrlen;
 	evutil_socket_t socket;
+	SSL_CTX* tls_ctx;
 	struct evconnlistener* listener;
 } listener_ctx_t;
 

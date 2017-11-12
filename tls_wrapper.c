@@ -38,8 +38,8 @@
 
 #define MAX_BUFFER	1024*1024
 
+static SSL* tls_server_create(SSL_CTX* tls_ctx);
 static SSL* tls_client_create(char* hostname);
-static SSL* tls_server_create(tls_conn_ctx_t* ctx);
 static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
@@ -48,10 +48,17 @@ static int server_name_cb(SSL* tls, int* ad, void* arg);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
-void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
+void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
 	struct sockaddr* server_addr, int server_addrlen, char* hostname) {
 	
+	/* ctx will hold all data for interacting with the connection to
+	 *  the application server socket and the remote socket (client)
+	 *
+	 * ctx->cf = local client (application)
+	 * ctx->sf = remote server
+	 *
+	 **/
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
@@ -62,7 +69,7 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [client mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
 		EVUTIL_CLOSESOCKET(fd);
 		free_tls_conn_ctx(ctx);
@@ -80,7 +87,7 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, -1, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (ctx->sf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent\n");
+		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [client mode]\n");
 		free_tls_conn_ctx(ctx);
 		return;
 	}
@@ -99,7 +106,63 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 
 	/* Connect server facing socket */
 	if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
-		log_printf(LOG_ERROR, "bufferevent_socket_connect: %s\n", strerror(errno));
+		log_printf(LOG_ERROR, "bufferevent_socket_connect [client mode]: %s\n", strerror(errno));
+		free_tls_conn_ctx(ctx);
+		return;
+	}
+	return;
+}
+
+void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SSL_CTX* tls_ctx,
+	struct sockaddr* external_addr, int external_addrlen,
+	struct sockaddr* internal_addr, int internal_addrlen) {
+
+	/*  ctx will hold all data for interacting with the connection to
+	 *  the application server socket and the remote socket (client)
+	 *
+	 * ctx->cf = remote client
+	 * ctx->sf = local server (application)
+	 *
+	 *  */
+	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
+	if (ctx == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate server tls_conn_ctx_t: %s\n", strerror(errno));
+		return;
+	}
+	
+	ctx->tls = tls_server_create(tls_ctx);
+	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, fd, ctx->tls,
+			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	ctx->cf.connected = 1;
+	if (ctx->cf.bev == NULL) {
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [server mode]\n");
+		EVUTIL_CLOSESOCKET(fd);
+		free_tls_conn_ctx(ctx);
+		return;
+	}
+	
+	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
+	/* Comment out this line if you need to do better debugging of OpenSSL behavior */
+	bufferevent_openssl_set_allow_dirty_shutdown(ctx->cf.bev, 1);
+	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
+
+	ctx->sf.bev = bufferevent_socket_new(ev_base, -1,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	if (ctx->sf.bev == NULL) {
+		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [server mode]\n");
+		free_tls_conn_ctx(ctx);
+		return;
+	}
+	
+	/* Register callbacks for reading and writing to both bevs */
+	bufferevent_setcb(ctx->sf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	bufferevent_enable(ctx->sf.bev, EV_READ | EV_WRITE);
+	bufferevent_setcb(ctx->cf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
+	
+	/* Connect to local application server */
+	if (bufferevent_socket_connect(ctx->sf.bev, internal_addr, internal_addrlen) < 0) {
+		log_printf(LOG_ERROR, "bufferevent_socket_connect [server mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
 	}
@@ -116,7 +179,7 @@ void tls_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
  * If the certificate doesn't exist, do we try to use Let's Encrypt to
  * dynamically get one?
  */
-SSL* tls_server_create(tls_conn_ctx_t* ctx) {
+SSL_CTX* tls_server_ctx_create(void) {
 	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
 	if (tls_ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
@@ -133,7 +196,7 @@ SSL* tls_server_create(tls_conn_ctx_t* ctx) {
 
 	/* SNI configuration */
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
-	SSL_CTX_set_tlsext_servername_arg(tls_ctx, ctx);
+	//SSL_CTX_set_tlsext_servername_arg(tls_ctx, ctx);
 
 	SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	//SSL_CTX_use_certificate_chain_file(tls_ctx, XXX, SSL_FILETYPE_PEM);
@@ -145,7 +208,6 @@ SSL* tls_server_create(tls_conn_ctx_t* ctx) {
 int server_name_cb(SSL* tls, int* ad, void* arg) {
 	/* Here is where we'd do anything needed for handling
 	 * connections differently based on SNI  */
-	tls_conn_ctx_t* ctx = (tls_conn_ctx_t*)arg;
 	return SSL_TLSEXT_ERR_OK;
 }
 
@@ -183,6 +245,15 @@ SSL* tls_client_create(char* hostname) {
 	/* For client auth portion of the SSA utilize 
 	 * SSL_CTX_set_default_passwd_cb */
 
+	return tls;
+}
+
+SSL* tls_server_create(SSL_CTX* tls_ctx) {
+	SSL* tls = SSL_new(tls_ctx);
+	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
+	if (tls == NULL) {
+		return NULL;
+	}
 	return tls;
 }
 
