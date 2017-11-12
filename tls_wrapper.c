@@ -161,6 +161,8 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
 	
 	/* Connect to local application server */
+	log_printf_addr(internal_addr);
+	log_printf(LOG_DEBUG, "internal_addrlen is %d\n", internal_addrlen);
 	if (bufferevent_socket_connect(ctx->sf.bev, internal_addr, internal_addrlen) < 0) {
 		log_printf(LOG_ERROR, "bufferevent_socket_connect [server mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);

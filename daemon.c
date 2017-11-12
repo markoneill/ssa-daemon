@@ -341,7 +341,7 @@ void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf_addr(&lctx->ext_addr);
 	log_printf(LOG_INFO, "Application is\n");
 	log_printf_addr(&lctx->int_addr);
-	tls_server_wrapper_setup(fd, base, lctx->tls_ctx, address, socklen, &lctx->int_addr, &lctx->int_addrlen);
+	tls_server_wrapper_setup(fd, base, lctx->tls_ctx, address, socklen, &lctx->int_addr, lctx->int_addrlen);
 	return;
 }
 
