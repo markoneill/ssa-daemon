@@ -110,6 +110,9 @@ void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 		free_tls_conn_ctx(ctx);
 		return;
 	}
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	log_printf(LOG_BENCHMARK, "After connect: %ld.%06ld\n", tv.tv_sec, tv.tv_usec);
 	return;
 }
 

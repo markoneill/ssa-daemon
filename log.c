@@ -112,3 +112,28 @@ void level_printf(log_level_t level) {
 	fprintf(g_log_file, "%s", level_str);
 	return;
 }
+
+
+int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* y) {
+	struct timeval y_cpy = *y;
+	/* Perform the carry for the later subtraction by updating y_cpy. */
+	if (x->tv_usec < y_cpy.tv_usec) {
+	int nsec = (y_cpy.tv_usec - x->tv_usec) / 1000000 + 1;
+		y_cpy.tv_usec -= 1000000 * nsec;
+		y_cpy.tv_sec += nsec;
+	}
+	if (x->tv_usec - y_cpy.tv_usec > 1000000) {
+		int nsec = (x->tv_usec - y_cpy.tv_usec) / 1000000;
+		y_cpy.tv_usec += 1000000 * nsec;
+		y_cpy.tv_sec -= nsec;
+	}
+
+	/* Compute the time remaining to wait.
+	 * tv_usec is certainly positive. */
+	result->tv_sec = x->tv_sec - y_cpy.tv_sec;
+	result->tv_usec = x->tv_usec - y_cpy.tv_usec;
+
+	/* Return 1 if result is negative. */
+	return x->tv_sec < y_cpy.tv_sec;
+}
+
