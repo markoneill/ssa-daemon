@@ -54,6 +54,8 @@
 
 #define MAX_HOSTNAME	255
 
+void signal_handler(int signum);
+
 /* SSA client functions */
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -69,6 +71,8 @@ static evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, 
 static int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx);
 static void free_listeners(tls_daemon_ctx_t* ctx);
 
+struct event_base* g_ev_base;
+
 int server_create() {
 	evutil_socket_t server_sock;
 	struct evconnlistener* listener;
@@ -81,6 +85,9 @@ int server_create() {
                 perror("event_base_new");
                 return 1;
         }
+
+	g_ev_base = ev_base;
+
        	log_printf(LOG_INFO, "Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
 	log_printf(LOG_DEBUG, "ev_base address is %p\n", ev_base);
 	
@@ -124,6 +131,11 @@ int server_create() {
 		return 1;
 	}
 	
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = signal_handler;
+	sigaction(SIGINT, &sa, NULL);
+
 
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 	event_base_dispatch(ev_base);
@@ -400,6 +412,13 @@ void free_listeners(tls_daemon_ctx_t* ctx) {
 		evconnlistener_free(cur->listener);
 		free(cur);
 		cur = tmp;
+	}
+	return;
+}
+
+void signal_handler(int signum) {
+	if (signum == SIGINT) {
+		event_base_loopbreak(g_ev_base);
 	}
 	return;
 }
