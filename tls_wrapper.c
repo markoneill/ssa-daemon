@@ -255,7 +255,7 @@ SSL* tls_client_create(char* hostname) {
 
 SSL* tls_server_create(SSL_CTX* tls_ctx) {
 	SSL* tls = SSL_new(tls_ctx);
-	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
+	//SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
 	if (tls == NULL) {
 		return NULL;
 	}
@@ -360,7 +360,9 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			struct evbuffer* in_buf;
 			struct evbuffer* out_buf;
 			in_buf = bufferevent_get_input(bev);
-			out_buf = bufferevent_get_output(endpoint->bev);
+			if (endpoint->closed == 0) {
+				out_buf = bufferevent_get_output(endpoint->bev);
+			}
 			if (evbuffer_get_length(in_buf) > 0) {
 				evbuffer_add_buffer(out_buf, in_buf);
 			}
@@ -380,6 +382,9 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		}
 		//free_tls_conn_ctx(ctx);
 	}
+	if (endpoint->closed == 1 && startpoint->closed == 1) {
+		free_tls_conn_ctx(ctx);
+	}
 	return;
 }
 
@@ -393,7 +398,8 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	if (ctx == NULL) return;
 	if (ctx->cf.bev != NULL) bufferevent_free(ctx->cf.bev);
 	if (ctx->sf.bev != NULL) bufferevent_free(ctx->sf.bev);
-	if (ctx->tls != NULL) SSL_free(ctx->tls);
+	/* Line below seems to be handled by bufferevent_free */
+	//if (ctx->tls != NULL) SSL_free(ctx->tls);
 	free(ctx);
 	return;
 }
