@@ -286,6 +286,12 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 			log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 		}
 	}
+	if (evutil_make_socket_nonblocking(fd) == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(fd);
+		return;
+	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
 	tls_client_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
 	return;
@@ -341,6 +347,12 @@ void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf_addr(&lctx->ext_addr);
 	log_printf(LOG_INFO, "Application is\n");
 	log_printf_addr(&lctx->int_addr);
+	if (evutil_make_socket_nonblocking(fd) == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(fd);
+		return;
+	}
 	tls_server_wrapper_setup(fd, base, lctx->tls_ctx, address, socklen, &lctx->int_addr, lctx->int_addrlen);
 	return;
 }

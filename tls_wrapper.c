@@ -263,6 +263,7 @@ SSL* tls_server_create(SSL_CTX* tls_ctx) {
 }
 
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
+	log_printf(LOG_DEBUG, "write event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	struct evbuffer* out_buf;
@@ -284,6 +285,7 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
+	log_printf(LOG_DEBUG, "read event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	struct evbuffer* in_buf;
@@ -314,6 +316,7 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
+	log_printf(LOG_DEBUG, "event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
@@ -336,7 +339,8 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			}
 		}
 		while (ssl_err) {
-			log_printf(LOG_ERROR, "SSL error from bufferevent: %s\n", ERR_func_error_string(ssl_err));
+			log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n", 
+					ERR_func_error_string(ssl_err), ERR_reason_error_string(ssl_err));
 		}
 		if (endpoint->closed == 0) {
 			struct evbuffer* out_buf;
@@ -348,6 +352,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				endpoint->closed = 1;
 			}
 		}
+		//free_tls_conn_ctx(ctx);
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "An EOF has occurred\n");
@@ -373,6 +378,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			startpoint->bev = NULL;
 			startpoint->closed = 1;
 		}
+		//free_tls_conn_ctx(ctx);
 	}
 	return;
 }
