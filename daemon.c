@@ -89,7 +89,6 @@ int server_create() {
 	g_ev_base = ev_base;
 
        	log_printf(LOG_INFO, "Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
-	log_printf(LOG_DEBUG, "ev_base address is %p\n", ev_base);
 	
 	SSL_library_init();
 	ERR_load_crypto_strings();
@@ -310,6 +309,9 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
 			log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 		}
+		else {
+			memset(hostname, 0, MAX_HOSTNAME);
+		}
 	}
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
@@ -333,12 +335,6 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 
 void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int internal_addr_len,
 			 struct sockaddr* external_addr, int external_addr_len) {
-	log_printf(LOG_INFO, "internal address is\n");
-	log_printf_addr(internal_addr);
-	log_printf(LOG_INFO, "external address is\n");
-	log_printf_addr(external_addr);
-	log_printf(LOG_DEBUG, "ev_base address in listen_cb is %p\n", ctx->ev_base);
-
 	evutil_socket_t socket = create_listen_socket(external_addr, external_addr_len, 
 							SOCK_STREAM, IPPROTO_TCP);
 	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
@@ -366,12 +362,6 @@ void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	listener_ctx_t* lctx = (listener_ctx_t*)arg;
         struct event_base *base = evconnlistener_get_base(listener);
 	log_printf(LOG_INFO, "Got a connection on a vicarious listener\n");
-	log_printf(LOG_INFO, "The remote client is\n");
-	log_printf_addr(address);
-	log_printf(LOG_INFO, "We are\n");
-	log_printf_addr(&lctx->ext_addr);
-	log_printf(LOG_INFO, "Application is\n");
-	log_printf_addr(&lctx->int_addr);
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));

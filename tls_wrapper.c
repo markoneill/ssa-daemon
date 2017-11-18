@@ -128,7 +128,6 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	 *
 	 *  */
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
-	printf("size of tls_conn_ctx_t is %u\n", sizeof(tls_conn_ctx_t));
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate server tls_conn_ctx_t: %s\n", strerror(errno));
 		return;
@@ -384,7 +383,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
-		printf("asdfdfffffffffffffffffffffffffffffff\n");
 		free_tls_conn_ctx(ctx);
 	}
 	return;
