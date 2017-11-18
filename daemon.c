@@ -146,6 +146,8 @@ int server_create() {
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
 	free_listeners(&daemon_ctx);
+	event_free(nl_ev);
+	event_free(sev_pipe);
         event_base_free(ev_base);
         /* This function hushes the wails of memory leak
          * testing utilities, but was not introduced until
@@ -154,6 +156,17 @@ int server_create() {
         #if LIBEVENT_VERSION_NUMBER >= 0x02010000
         libevent_global_shutdown();
         #endif
+
+	/* Standard OpenSSL cleanup functions */
+	FIPS_mode_set(0);
+	ENGINE_cleanup();
+	CONF_modules_unload(1);
+	EVP_cleanup();
+	CRYPTO_cleanup_all_ex_data();
+	ERR_remove_state(0);
+	ERR_free_strings();
+	SSL_COMP_free_compression_methods();
+
         return 0;
 }
 
@@ -410,6 +423,7 @@ void free_listeners(tls_daemon_ctx_t* ctx) {
 		tmp = cur->next;
 		/* This also closes the socket due to our listener creation flags */
 		evconnlistener_free(cur->listener);
+		SSL_CTX_free(cur->tls_ctx);
 		free(cur);
 		cur = tmp;
 	}

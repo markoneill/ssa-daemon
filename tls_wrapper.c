@@ -128,6 +128,7 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	 *
 	 *  */
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
+	printf("size of tls_conn_ctx_t is %u\n", sizeof(tls_conn_ctx_t));
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate server tls_conn_ctx_t: %s\n", strerror(errno));
 		return;
@@ -330,8 +331,8 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
-				bufferevent_free(startpoint->bev);
-				startpoint->bev = NULL;
+				//bufferevent_free(startpoint->bev);
+				//startpoint->bev = NULL;
 				startpoint->closed = 1;
 			}
 			else {
@@ -347,12 +348,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			out_buf = bufferevent_get_output(endpoint->bev);
 			/* close other buffer if we're closing and it has no data left */
 			if (evbuffer_get_length(out_buf) == 0) {
-				bufferevent_free(endpoint->bev);
-				endpoint->bev = NULL;
+				//bufferevent_free(endpoint->bev);
+				//endpoint->bev = NULL;
 				endpoint->closed = 1;
 			}
 		}
-		//free_tls_conn_ctx(ctx);
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "An EOF has occurred\n");
@@ -369,20 +369,22 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			else {
 				/* close other buffer if we're closing and it has no data left */
 				if (evbuffer_get_length(out_buf) == 0) {
-					bufferevent_free(endpoint->bev);
-					endpoint->bev = NULL;
+					//bufferevent_free(endpoint->bev);
+					//endpoint->bev = NULL;
 					endpoint->closed = 1;
 				}
 			}
 		}
 		if (startpoint->closed == 0) {
-			bufferevent_free(startpoint->bev);
-			startpoint->bev = NULL;
+			//bufferevent_free(startpoint->bev);
+			//startpoint->bev = NULL;
 			startpoint->closed = 1;
 		}
-		//free_tls_conn_ctx(ctx);
+
 	}
+	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
+		printf("asdfdfffffffffffffffffffffffffffffff\n");
 		free_tls_conn_ctx(ctx);
 	}
 	return;
@@ -396,10 +398,12 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	if (ctx == NULL) return;
+	/* Line below seems to be handled by bufferevent_free */
+	if (ctx->tls != NULL) {
+		SSL_shutdown(ctx->tls);
+	}
 	if (ctx->cf.bev != NULL) bufferevent_free(ctx->cf.bev);
 	if (ctx->sf.bev != NULL) bufferevent_free(ctx->sf.bev);
-	/* Line below seems to be handled by bufferevent_free */
-	//if (ctx->tls != NULL) SSL_free(ctx->tls);
 	free(ctx);
 	return;
 }
