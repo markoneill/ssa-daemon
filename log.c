@@ -61,6 +61,7 @@ void log_printf(log_level_t level, const char* format, ...) {
 	level_printf(level);
 	va_start(args, format);
 	vfprintf(g_log_file, format, args);
+	fflush(g_log_file);
 	va_end(args);
 	return;
 }

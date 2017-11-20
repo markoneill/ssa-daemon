@@ -24,6 +24,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef QUEUE_H
+#define QUEUE_H
 
 typedef struct queue {
 	struct node* head;
@@ -37,3 +39,4 @@ int queue_enc(queue_t* q, void* value);
 void* queue_deq(queue_t* q);
 void queue_print(queue_t* q);
 
+#endif

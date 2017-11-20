@@ -121,7 +121,8 @@ int server_create() {
 		.sev_pipe = sev_pipe,
 		.netlink_sock = NULL,
 		.listeners = NULL,
-		.sockmap = hashmap_create(HASHMAP_NUM_BUCKETS),
+		.sock_map = hashmap_create(HASHMAP_NUM_BUCKETS),
+		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
 	/* Start setting up server socket and event base */
@@ -160,7 +161,8 @@ int server_create() {
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
 	free_listeners(&daemon_ctx);
-	hashmap_free(daemon_ctx.sockmap);
+	hashmap_free(daemon_ctx.sock_map);
+	hashmap_free(daemon_ctx.sock_map_port);
 	event_free(nl_ev);
 	event_free(sev_pipe);
         event_base_free(ev_base);
@@ -173,6 +175,9 @@ int server_create() {
         #endif
 
 	/* Standard OpenSSL cleanup functions */
+	#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+	OPENSSL_cleanup();
+	#else
 	FIPS_mode_set(0);
 	ENGINE_cleanup();
 	CONF_modules_unload(1);
@@ -181,7 +186,7 @@ int server_create() {
 	ERR_remove_state(0);
 	ERR_free_strings();
 	SSL_COMP_free_compression_methods();
-
+	#endif
         return 0;
 }
 
@@ -349,30 +354,6 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int internal_addr_len,
-			 struct sockaddr* external_addr, int external_addr_len) {
-	evutil_socket_t socket = create_listen_socket(external_addr, external_addr_len, 
-							SOCK_STREAM, IPPROTO_TCP);
-	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
-	if (lctx == NULL) {
-		log_printf(LOG_ERROR, "Failed to malloc listener context\n");
-		return;
-	}
-	lctx->socket = socket;
-	lctx->int_addr = *internal_addr;
-	lctx->int_addrlen = internal_addr_len;
-	lctx->ext_addr = *external_addr;
-	lctx->ext_addrlen = external_addr_len;
-	lctx->tls_ctx = tls_server_ctx_create();
-	lctx->next = NULL;
-	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
-		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, socket);
-
-	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
-	add_listener_to_ctx(ctx, lctx);
-	return;
-}
-
 void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
 	listener_ctx_t* lctx = (listener_ctx_t*)arg;
@@ -444,9 +425,10 @@ void signal_handler(int signum) {
 }
 
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
-	evutil_socket_t fd;
 	sock_ctx_t* sock_ctx;
+	evutil_socket_t fd;
 	int response = 0;
+
 	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (fd == -1) {
 		response = errno;
@@ -459,10 +441,90 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		else {
 			sock_ctx->id = id;
 			sock_ctx->fd = fd;
-			hashmap_add(ctx->sockmap, id, (void*)sock_ctx);
+			hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 		}
 	}
 	netlink_notify_kernel(ctx, id, response);
+	return;
+}
+
+void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
+	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
+
+	int ret;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		response = -EBADF;
+	}
+	else {
+		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
+		if (ret == -1) {
+			response = errno;
+		}
+		else {
+			sock_ctx->has_bound = 1;
+			sock_ctx->int_addr = *int_addr;
+			sock_ctx->int_addrlen = int_addrlen;
+			sock_ctx->ext_addr = *ext_addr;
+			sock_ctx->ext_addrlen = ext_addrlen;
+		}
+	}
+	netlink_notify_kernel(ctx, id, response);
+	return;
+}
+
+void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen) {
+	
+	int ret;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		response = -EBADF;
+	}
+	else {
+		ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		if (ret == -1) {
+			response = errno;
+		}
+		else {
+			if (sock_ctx->has_bound == 0) {
+				sock_ctx->int_addr = *int_addr;
+				sock_ctx->int_addrlen = int_addrlen;
+			}
+			sock_ctx->rem_addr = *rem_addr;
+			sock_ctx->rem_addrlen = rem_addrlen;
+		}
+	}
+	netlink_notify_kernel(ctx, id, response);
+	return;
+}
+
+void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
+	evutil_socket_t socket = create_listen_socket(ext_addr, ext_addrlen, 
+							SOCK_STREAM, IPPROTO_TCP);
+	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
+	if (lctx == NULL) {
+		log_printf(LOG_ERROR, "Failed to malloc listener context\n");
+		return;
+	}
+	lctx->socket = socket;
+	lctx->int_addr = *int_addr;
+	lctx->int_addrlen = int_addrlen;
+	lctx->ext_addr = *ext_addr;
+	lctx->ext_addrlen = ext_addrlen;
+	lctx->tls_ctx = tls_server_ctx_create();
+	lctx->next = NULL;
+	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, socket);
+
+	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
+	add_listener_to_ctx(ctx, lctx);
 	return;
 }
 
