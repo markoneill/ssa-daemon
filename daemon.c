@@ -373,30 +373,6 @@ void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int intern
 	return;
 }
 
-
-void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
-	evutil_socket_t fd;
-	sock_ctx_t* sock_ctx;
-	int response = 0;
-	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (fd == -1) {
-		response = errno;
-	}
-	else {
-		sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
-		if (sock_ctx == NULL) {
-			response = -ENOMEM;
-		}
-		else {
-			sock_ctx->id = id;
-			sock_ctx->fd = fd;
-			hashmap_add(ctx->sockmap, id, (void*)sock_ctx);
-		}
-	}
-	netlink_notify_kernel(ctx, id, response);
-	return;
-}
-
 void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
 	listener_ctx_t* lctx = (listener_ctx_t*)arg;
@@ -464,6 +440,29 @@ void signal_handler(int signum) {
 	if (signum == SIGINT) {
 		event_base_loopbreak(g_ev_base);
 	}
+	return;
+}
+
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
+	evutil_socket_t fd;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (fd == -1) {
+		response = errno;
+	}
+	else {
+		sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
+		if (sock_ctx == NULL) {
+			response = -ENOMEM;
+		}
+		else {
+			sock_ctx->id = id;
+			sock_ctx->fd = fd;
+			hashmap_add(ctx->sockmap, id, (void*)sock_ctx);
+		}
+	}
+	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 

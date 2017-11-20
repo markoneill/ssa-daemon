@@ -218,6 +218,7 @@ void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response
 		log_printf(LOG_ERROR, "Failed to send netlink msg\n");
 		return;
 	}
+	log_printf(LOG_INFO, "Sent msg to kernel\n");
 	return;
 }
 
