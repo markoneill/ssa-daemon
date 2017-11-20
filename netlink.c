@@ -37,8 +37,11 @@
 // Attributes
 enum {
         SSA_NL_A_UNSPEC,
+	SSA_NL_A_ID,
 	SSA_NL_A_SOCKADDR_INTERNAL,
 	SSA_NL_A_SOCKADDR_EXTERNAL,
+	SSA_NL_A_SOCKADDR_REMOTE,
+	SSA_NL_A_RETURN,
         SSA_NL_A_PAD,
         __SSA_NL_A_MAX,
 };
@@ -48,7 +51,11 @@ enum {
 // Operations
 enum {
         SSA_NL_C_UNSPEC,
-        SSA_NL_C_NOTIFY,
+        SSA_NL_C_SOCKET_NOTIFY,
+        SSA_NL_C_BIND_NOTIFY,
+        SSA_NL_C_CONNECT_NOTIFY,
+        SSA_NL_C_LISTEN_NOTIFY,
+	SSA_NL_C_RETURN,
         __SSA_NL_C_MAX,
 };
 
@@ -61,11 +68,12 @@ enum ssa_nl_groups {
 
 static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
         [SSA_NL_A_UNSPEC] = { .type = NLA_UNSPEC },
+	[SSA_NL_A_ID] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_INTERNAL] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_EXTERNAL] = { .type = NLA_UNSPEC },
+	[SSA_NL_A_SOCKADDR_REMOTE] = { .type = NLA_UNSPEC },
+	[SSA_NL_A_RETURN] = { .type = NLA_UNSPEC },
 };
-
-
 
 int handle_netlink_msg(struct nl_msg* msg, void* arg);
 
@@ -91,6 +99,7 @@ struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx) {
 		log_printf(LOG_ERROR, "Failed to resolve SSA family identifier\n");
 		return NULL;
 	}
+	ctx->netlink_family = family;
 
 	if ((group = genl_ctrl_resolve_grp(netlink_sock, "SSA", "notify")) < 0) {
 		log_printf(LOG_ERROR, "Failed to resolve group identifier\n");
@@ -101,11 +110,12 @@ struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx) {
 		log_printf(LOG_ERROR, "Failed to add membership to group\n");
 		return NULL;
 	}
+	nl_socket_set_peer_port(netlink_sock, 0);
 	return netlink_sock;
 }
 
 void netlink_recv(evutil_socket_t fd, short events, void *arg) {
-	log_printf(LOG_INFO, "Got a message from the kernel!\n");
+	//log_printf(LOG_INFO, "Got a message from the kernel!\n");
 	struct nl_sock* netlink_sock = (struct nl_sock*)arg;
 	nl_recvmsgs_default(netlink_sock);
 	return;
@@ -117,23 +127,55 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
         struct genlmsghdr* gnlh;
         struct nlattr* attrs[SSA_NL_A_MAX + 1];
 
+	unsigned long id;
 	int addr_internal_len;
 	int addr_external_len;
+	int addr_remote_len;
 	struct sockaddr_in addr_internal;
 	struct sockaddr_in addr_external;
+	struct sockaddr_in addr_remote;
 
         // Get Message
         nlh = nlmsg_hdr(msg);
         gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
         genlmsg_parse(nlh, 0, attrs, SSA_NL_A_MAX, ssa_nl_policy);
         switch (gnlh->cmd) {
-		case SSA_NL_C_NOTIFY:
+		case SSA_NL_C_SOCKET_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			log_printf(LOG_INFO, "Received socket notification %lu\n", id);
+			socket_cb(ctx, id);
+			break;
+		case SSA_NL_C_BIND_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
 			addr_external_len = nla_len(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
 			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
 			addr_external = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
-			listen_cb(ctx, (struct sockaddr*)&addr_internal, addr_internal_len,
-					 (struct sockaddr*)&addr_external, addr_external_len);
+			log_printf(LOG_INFO, "Received bind notification on socket ID %lu:\n", id);
+			log_printf_addr((struct sockaddr*)&addr_internal);
+			log_printf_addr((struct sockaddr*)&addr_external);
+			//listen_cb(ctx, (struct sockaddr*)&addr_internal, addr_internal_len,
+			//		 (struct sockaddr*)&addr_external, addr_external_len);
+			break;
+		case SSA_NL_C_CONNECT_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_remote_len = nla_len(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
+			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_remote = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
+			log_printf(LOG_INFO, "Received connect notification on socket ID %lu:\n", id);
+			log_printf_addr((struct sockaddr*)&addr_internal);
+			log_printf_addr((struct sockaddr*)&addr_remote);
+			break;
+		case SSA_NL_C_LISTEN_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_external_len = nla_len(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
+			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_external = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_EXTERNAL]);
+			log_printf(LOG_INFO, "Received listen notification on socket ID %lu:\n", id);
+			log_printf_addr((struct sockaddr*)&addr_internal);
+			log_printf_addr((struct sockaddr*)&addr_external);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");
@@ -146,3 +188,36 @@ int netlink_disconnect(struct nl_sock* sock) {
         nl_socket_free(sock);
         return 0;
 }
+
+void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response) {
+	int ret;
+	struct nl_msg* msg;
+	void* msg_head;
+	msg = nlmsg_alloc();
+	if (msg == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
+		return;
+	}
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, ctx->netlink_family, 0, 0, SSA_NL_C_RETURN, 1);
+	if (msg_head == NULL) {
+		log_printf(LOG_ERROR, "Failed in genlmsg_put\n");
+		return;
+	}
+	ret = nla_put_u64(msg, SSA_NL_A_ID, id);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert ID in netlink msg\n");
+		return;
+	}
+	ret = nla_put_u32(msg, SSA_NL_A_RETURN, response);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert response in netlink msg\n");
+		return;
+	}
+	ret = nl_send_auto(ctx->netlink_sock, msg);
+	if (ret < 0) {
+		log_printf(LOG_ERROR, "Failed to send netlink msg\n");
+		return;
+	}
+	return;
+}
+

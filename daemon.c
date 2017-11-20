@@ -48,11 +48,25 @@
 #include <netlink/genl/ctrl.h>
 
 #include "daemon.h"
+#include "hashmap.h"
 #include "tls_wrapper.h"
 #include "netlink.h"
 #include "log.h"
 
-#define MAX_HOSTNAME	255
+#define MAX_HOSTNAME		255
+#define HASHMAP_NUM_BUCKETS	10
+
+typedef struct sock_ctx {
+	unsigned long id;
+	evutil_socket_t fd;
+	int has_bound; /* Nonzero if we've called bind locally */
+	struct sockaddr int_addr;
+	int int_addrlen;
+	struct sockaddr ext_addr;
+	int ext_addrlen;
+	struct sockaddr rem_addr;
+	int rem_addrlen;
+} sock_ctx_t;
 
 void signal_handler(int signum);
 
@@ -106,7 +120,8 @@ int server_create() {
 		.ev_base = ev_base,
 		.sev_pipe = sev_pipe,
 		.netlink_sock = NULL,
-		.listeners = NULL
+		.listeners = NULL,
+		.sockmap = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
 	/* Start setting up server socket and event base */
@@ -145,6 +160,7 @@ int server_create() {
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
 	free_listeners(&daemon_ctx);
+	hashmap_free(daemon_ctx.sockmap);
 	event_free(nl_ev);
 	event_free(sev_pipe);
         event_base_free(ev_base);
@@ -354,6 +370,30 @@ void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int intern
 
 	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
 	add_listener_to_ctx(ctx, lctx);
+	return;
+}
+
+
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
+	evutil_socket_t fd;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (fd == -1) {
+		response = errno;
+	}
+	else {
+		sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
+		if (sock_ctx == NULL) {
+			response = -ENOMEM;
+		}
+		else {
+			sock_ctx->id = id;
+			sock_ctx->fd = fd;
+			hashmap_add(ctx->sockmap, id, (void*)sock_ctx);
+		}
+	}
+	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 

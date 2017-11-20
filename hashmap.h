@@ -24,19 +24,20 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef NETLINK_H
-#define NETLINK_H
+#ifndef HASHMAP_H
+#define HASHMAP_H
 
-#include <event2/util.h>
+typedef struct hmap {
+	struct hnode** buckets;
+	int num_buckets;
+	int item_count;
+} hmap_t;
 
-#include <netlink/genl/genl.h>
-#include <netlink/genl/ctrl.h>
-
-#include "daemon.h"
-
-int netlink_disconnect(struct nl_sock* sock);
-void netlink_recv(evutil_socket_t fd, short events, void *arg);
-void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response); 
-struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx);
+hmap_t* hashmap_create(int num_buckets);
+void hashmap_free(hmap_t* map);
+int hashmap_add(hmap_t* map, unsigned long key, void* value);
+int hashmap_del(hmap_t* map, unsigned long key);
+void* hashmap_get(hmap_t* map, unsigned long key);
+void hashmap_print(hmap_t* map);
 
 #endif

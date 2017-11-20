@@ -34,6 +34,8 @@
 
 #include <openssl/ssl.h>
 
+#include "hashmap.h"
+
 #define AF_HOSTNAME	43
 
 typedef struct listener_ctx {
@@ -51,7 +53,9 @@ typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct event* sev_pipe;
 	struct nl_sock* netlink_sock;
+	int netlink_family;
 	listener_ctx_t* listeners;
+	hmap_t* sockmap;
 } tls_daemon_ctx_t;
 
 struct host_addr { 
@@ -65,6 +69,7 @@ struct sockaddr_host {
 }; 
 
 int server_create(void);
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
 void listen_cb(tls_daemon_ctx_t* ctx, struct sockaddr* internal_addr, int internal_addr_len,
 			 struct sockaddr* external_addr, int external_addr_len);
 
