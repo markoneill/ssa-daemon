@@ -178,6 +178,8 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			log_printf(LOG_INFO, "Received listen notification on socket ID %lu:\n", id);
 			log_printf_addr((struct sockaddr*)&addr_internal);
 			log_printf_addr((struct sockaddr*)&addr_external);
+			listen_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len,
+					 (struct sockaddr*)&addr_external, addr_external_len);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");

@@ -81,7 +81,6 @@ static evutil_socket_t create_server_socket(ev_uint16_t port, int protocol);
 static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
-static evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, int type, int protocol);
 static int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx);
 static void free_listeners(tls_daemon_ctx_t* ctx);
 
@@ -273,67 +272,37 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	return sock;
 }
 
-evutil_socket_t create_listen_socket(struct sockaddr* addr, int addrlen, int type, int protocol) {
-	int sock;
-	int ret;
-	sock = socket(addr->sa_family, type, protocol);
-	if (sock == -1) {
-		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
-		return 0;
-	}
-
-	ret = evutil_make_listen_socket_reuseable(sock);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(sock);
-		return 0;
-	}
-
-	ret = evutil_make_socket_nonblocking(sock);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(sock);
-		return 0;
-	}
-
-	ret = bind(sock, addr, addrlen);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
-		EVUTIL_CLOSESOCKET(sock);
-		return 0;
-	}
-	return sock;
-}
-
 void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
 	log_printf(LOG_INFO, "Received connection!\n");
 
+	int port;
+	sock_ctx_t* sock_ctx;
 	tls_daemon_ctx_t* ctx = arg;
 
-	struct sockaddr_host orig_addr; /* sockaddr_host is bigger than the other */
-	int orig_addrlen = sizeof(struct sockaddr_host);
 	char hostname[MAX_HOSTNAME];
 	int hostname_len = MAX_HOSTNAME;
 
-	if (getsockopt(fd, IPPROTO_IP, 86, &orig_addr, &orig_addrlen) == -1) {
+	/*if (getsockopt(fd, IPPROTO_IP, 86, &rem_addr, &rem_addrlen) == -1) {
+		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
+	}*/
+	port = (int)ntohs(((struct sockaddr_in*)address)->sin_port);
+	sock_ctx = hashmap_get(ctx->sock_map_port, port);
+	if (sock_ctx == NULL) {
+		log_printf(LOG_ERROR, "Got an unauthorized connection on port %d\n", port);
+		EVUTIL_CLOSESOCKET(fd);
+		return;
+	}
+	log_printf_addr(&sock_ctx->rem_addr);
+
+	/* XXX update hostname retrieval to use netlink instead */
+	if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
 		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 	}
-	log_printf_addr(&orig_addr);
-	if (orig_addr.sin_family == AF_HOSTNAME) {
-		log_printf(LOG_DEBUG, "Detected sockaddr_host usage\n");
-		strcpy(hostname, orig_addr.sin_addr.name);
-	}
 	else {
-		if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
-			log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
-		}
-		else {
-			memset(hostname, 0, MAX_HOSTNAME);
-		}
+		memset(hostname, 0, MAX_HOSTNAME);
 	}
+
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
@@ -341,7 +310,8 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
-	tls_client_wrapper_setup(fd, ctx->ev_base, address, socklen, &orig_addr, orig_addrlen, hostname);
+	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
+			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, hostname);
 	return;
 }
 
@@ -482,6 +452,8 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	int ret;
 	sock_ctx_t* sock_ctx;
 	int response = 0;
+	int port;
+	port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
@@ -497,6 +469,8 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 				sock_ctx->int_addr = *int_addr;
 				sock_ctx->int_addrlen = int_addrlen;
 			}
+			log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
+			hashmap_add(ctx->sock_map_port, port, sock_ctx);
 			sock_ctx->rem_addr = *rem_addr;
 			sock_ctx->rem_addrlen = rem_addrlen;
 		}
@@ -505,15 +479,55 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	return;
 }
 
-void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
-	evutil_socket_t socket = create_listen_socket(ext_addr, ext_addrlen, 
-							SOCK_STREAM, IPPROTO_TCP);
+void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
+	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
+
+	int ret;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+	
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		response = -EBADF;
+	}
+	else {
+		ret = listen(sock_ctx->fd, SOMAXCONN);
+		if (ret = -1) {
+			response = errno;
+		}
+	}
+	netlink_notify_kernel(ctx, id, response);
+	if (response != 0) {
+		return;
+	}
+	
+	/* We're done gathering info, let's set up a server */
+	ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(sock_ctx->fd);
+		return;
+	}
+
+	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(sock_ctx->fd);
+		return;
+	}
+
 	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
 	if (lctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc listener context\n");
 		return;
 	}
-	lctx->socket = socket;
+
+	/* XXX If the application never called bind, ext_addr will be empty. 
+	 * This may not matter (I'm not sure we actually use it)  */
+
+	lctx->socket = sock_ctx->fd;
 	lctx->int_addr = *int_addr;
 	lctx->int_addrlen = int_addrlen;
 	lctx->ext_addr = *ext_addr;
@@ -521,7 +535,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	lctx->tls_ctx = tls_server_ctx_create();
 	lctx->next = NULL;
 	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
-		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, socket);
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
 	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
 	add_listener_to_ctx(ctx, lctx);

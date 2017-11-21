@@ -46,7 +46,7 @@ typedef struct tls_conn_ctx {
 } tls_conn_ctx_t;
 
 SSL_CTX* tls_server_ctx_create(void);
-void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
+void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
 	struct sockaddr* server_addr, int server_addrlen, char* hostname);
 void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SSL_CTX* tls_ctx,

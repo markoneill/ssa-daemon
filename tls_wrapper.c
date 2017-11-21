@@ -48,7 +48,7 @@ static int server_name_cb(SSL* tls, int* ad, void* arg);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
-void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,  
+void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
 	struct sockaddr* server_addr, int server_addrlen, char* hostname) {
 	
@@ -65,13 +65,13 @@ void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 		return;
 	}
 
-	ctx->cf.bev = bufferevent_socket_new(ev_base, fd,
+	ctx->cf.bev = bufferevent_socket_new(ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [client mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
-		EVUTIL_CLOSESOCKET(fd);
+		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
 		return;
 	}
@@ -84,7 +84,7 @@ void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 		return;
 	}
 
-	ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, -1, ctx->tls,
+	ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (ctx->sf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [client mode]\n");
@@ -105,14 +105,11 @@ void tls_client_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base,
 	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
 
 	/* Connect server facing socket */
-	if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
+	/*if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
 		log_printf(LOG_ERROR, "bufferevent_socket_connect [client mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
-	}
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	log_printf(LOG_BENCHMARK, "After connect: %ld.%06ld\n", tv.tv_sec, tv.tv_usec);
+	}*/
 	return;
 }
 
