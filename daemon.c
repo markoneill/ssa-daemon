@@ -333,6 +333,7 @@ void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	listener_ctx_t* lctx = (listener_ctx_t*)arg;
         struct event_base *base = evconnlistener_get_base(listener);
 	log_printf(LOG_INFO, "Got a connection on a vicarious listener\n");
+	log_printf_addr(&lctx->int_addr);
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));

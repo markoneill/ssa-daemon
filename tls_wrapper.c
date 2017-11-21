@@ -161,8 +161,6 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
 	
 	/* Connect to local application server */
-	log_printf_addr(internal_addr);
-	log_printf(LOG_DEBUG, "internal_addrlen is %d\n", internal_addrlen);
 	if (bufferevent_socket_connect(ctx->sf.bev, internal_addr, internal_addrlen) < 0) {
 		log_printf(LOG_ERROR, "bufferevent_socket_connect [server mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
@@ -260,7 +258,7 @@ SSL* tls_server_create(SSL_CTX* tls_ctx) {
 }
 
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
-	log_printf(LOG_DEBUG, "write event on bev %p\n", bev);
+	//log_printf(LOG_DEBUG, "write event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	struct evbuffer* out_buf;
@@ -282,7 +280,7 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
-	log_printf(LOG_DEBUG, "read event on bev %p\n", bev);
+	//log_printf(LOG_DEBUG, "read event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	struct evbuffer* in_buf;
@@ -313,13 +311,12 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
-	log_printf(LOG_DEBUG, "event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	channel_t* startpoint = (bev == ctx->cf.bev) ? &ctx->cf : &ctx->sf;
 	if (events & BEV_EVENT_CONNECTED) {
-		log_printf(LOG_INFO, "Connected\n");
+		log_printf(LOG_INFO, "Remote endpoint connected\n");
 		startpoint->connected = 1;
 	}
 	if (events & BEV_EVENT_ERROR) {
@@ -351,7 +348,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		}
 	}
 	if (events & BEV_EVENT_EOF) {
-		log_printf(LOG_INFO, "An EOF has occurred\n");
+		log_printf(LOG_INFO, "Remote endpoint closed\n");
 		if (endpoint->closed == 0) {
 			struct evbuffer* in_buf;
 			struct evbuffer* out_buf;
