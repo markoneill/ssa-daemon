@@ -310,6 +310,10 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		return;
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
+	hashmap_del(ctx->sock_map_port, port);
+	hashmap_del(ctx->sock_map, sock_ctx->id);
+	free(sock_ctx); /* Can probably do this later when closing, or
+				merge with another struct */
 	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
 			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, hostname);
 	return;
@@ -538,6 +542,8 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
 	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
+	hashmap_del(ctx->sock_map, id);
+	free(sock_ctx); /* We can do this later somehow, or merge this struct with lctx */
 	add_listener_to_ctx(ctx, lctx);
 	return;
 }

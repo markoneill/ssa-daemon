@@ -73,6 +73,7 @@ void hashmap_free(hmap_t* map) {
 	}
 	free(map->buckets);
 	free(map);
+	return;
 }
 
 int hashmap_add(hmap_t* map, unsigned long key, void* value) {

@@ -223,6 +223,7 @@ void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response
 		return;
 	}
 	log_printf(LOG_INFO, "Sent msg to kernel\n");
+	nlmsg_free(msg);
 	return;
 }
 
