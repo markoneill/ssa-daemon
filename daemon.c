@@ -492,7 +492,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	}
 	else {
 		ret = listen(sock_ctx->fd, SOMAXCONN);
-		if (ret = -1) {
+		if (ret == -1) {
 			response = errno;
 		}
 	}
