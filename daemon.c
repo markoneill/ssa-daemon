@@ -53,6 +53,7 @@
 #include "netlink.h"
 #include "log.h"
 
+#define SO_HOSTNAME		85
 #define MAX_HOSTNAME		255
 #define HASHMAP_NUM_BUCKETS	10
 
@@ -281,9 +282,6 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	sock_ctx_t* sock_ctx;
 	tls_daemon_ctx_t* ctx = arg;
 
-	char hostname[MAX_HOSTNAME];
-	int hostname_len = MAX_HOSTNAME;
-
 	port = (int)ntohs(((struct sockaddr_in*)address)->sin_port);
 	sock_ctx = hashmap_get(ctx->sock_map_port, port);
 	if (sock_ctx == NULL) {
@@ -293,27 +291,19 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	log_printf_addr(&sock_ctx->rem_addr);
 
-	/* XXX update hostname retrieval to use netlink instead */
-	/*if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
-		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
-	}
-	else {
-		memset(hostname, 0, MAX_HOSTNAME);
-	}*/
-
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	log_printf(LOG_INFO, "Hostname: %s (%p)\n", hostname, hostname);
+	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	hashmap_del(ctx->sock_map, sock_ctx->id);
+	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
+			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, sock_ctx->hostname);
 	free(sock_ctx); /* Can probably do this later when closing, or
 				merge with another struct */
-	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
-			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, hostname);
 	return;
 }
 
@@ -424,7 +414,26 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
 		void* value, socklen_t len) {
+	int ret;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
 
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		response = -EBADF;
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+	switch (option) {
+		case SO_HOSTNAME:
+			/* The kernel validated this data for us */
+			memcpy(sock_ctx->hostname, value, len);
+			break;
+		default:
+			break;
+	}
+	netlink_notify_kernel(ctx, id, response);
+	return;
 }
 
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
