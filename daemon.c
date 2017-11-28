@@ -428,6 +428,8 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
 		case SO_HOSTNAME:
 			/* The kernel validated this data for us */
 			memcpy(sock_ctx->hostname, value, len);
+			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
+					sock_ctx->hostname, id);
 			break;
 		default:
 			break;
