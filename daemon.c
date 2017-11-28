@@ -567,16 +567,12 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	int ret;
 	sock_ctx_t* sock_ctx;
-	int response = 0;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
-		response = -EBADF;
+		return;
 	}
-	else {
-		/* close things here */
-	}
-	netlink_notify_kernel(ctx, id, response);
+	/* close things here */
 	return;
 }
 
