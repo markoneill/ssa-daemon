@@ -320,19 +320,16 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		startpoint->connected = 1;
 	}
 	if (events & BEV_EVENT_ERROR) {
-		ssl_err = bufferevent_get_openssl_error(bev);
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
-				//bufferevent_free(startpoint->bev);
-				//startpoint->bev = NULL;
 				startpoint->closed = 1;
 			}
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
 			}
 		}
-		while (ssl_err) {
+		while ((ssl_err = bufferevent_get_openssl_error(bev))) {
 			log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n", 
 					ERR_func_error_string(ssl_err), ERR_reason_error_string(ssl_err));
 		}
@@ -341,8 +338,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			out_buf = bufferevent_get_output(endpoint->bev);
 			/* close other buffer if we're closing and it has no data left */
 			if (evbuffer_get_length(out_buf) == 0) {
-				//bufferevent_free(endpoint->bev);
-				//endpoint->bev = NULL;
 				endpoint->closed = 1;
 			}
 		}
@@ -362,15 +357,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			else {
 				/* close other buffer if we're closing and it has no data left */
 				if (evbuffer_get_length(out_buf) == 0) {
-					//bufferevent_free(endpoint->bev);
-					//endpoint->bev = NULL;
 					endpoint->closed = 1;
 				}
 			}
 		}
 		if (startpoint->closed == 0) {
-			//bufferevent_free(startpoint->bev);
-			//startpoint->bev = NULL;
 			startpoint->closed = 1;
 		}
 
@@ -381,7 +372,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	return;
 }
-
 
 tls_conn_ctx_t* new_tls_conn_ctx() {
 	tls_conn_ctx_t* ctx = (tls_conn_ctx_t*)calloc(1, sizeof(tls_conn_ctx_t));
