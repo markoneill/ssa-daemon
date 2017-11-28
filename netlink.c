@@ -204,6 +204,11 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			listen_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len,
 					 (struct sockaddr*)&addr_external, addr_external_len);
 			break;
+		case SSA_NL_C_CLOSE_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			log_printf(LOG_INFO, "Received close notification %lu\n", id);	
+			close_cb(ctx, id);
+			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");
 			break;
