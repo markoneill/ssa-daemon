@@ -37,8 +37,6 @@
 #include "hashmap.h"
 #include "queue.h"
 
-#define AF_HOSTNAME	43
-
 typedef struct listener_ctx {
 	struct listener_ctx* next;
 	struct sockaddr int_addr;
@@ -72,6 +70,8 @@ struct sockaddr_host {
 
 int server_create(void);
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
+void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
+		void* value, socklen_t len);
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 

@@ -66,6 +66,7 @@ typedef struct sock_ctx {
 	int ext_addrlen;
 	struct sockaddr rem_addr;
 	int rem_addrlen;
+	char hostname[MAX_HOSTNAME];
 } sock_ctx_t;
 
 void signal_handler(int signum);
@@ -283,9 +284,6 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	char hostname[MAX_HOSTNAME];
 	int hostname_len = MAX_HOSTNAME;
 
-	/*if (getsockopt(fd, IPPROTO_IP, 86, &rem_addr, &rem_addrlen) == -1) {
-		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
-	}*/
 	port = (int)ntohs(((struct sockaddr_in*)address)->sin_port);
 	sock_ctx = hashmap_get(ctx->sock_map_port, port);
 	if (sock_ctx == NULL) {
@@ -296,12 +294,12 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf_addr(&sock_ctx->rem_addr);
 
 	/* XXX update hostname retrieval to use netlink instead */
-	if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
+	/*if (getsockopt(fd, IPPROTO_IP, 85, hostname, &hostname_len) == -1) {
 		log_printf(LOG_ERROR, "getsockopt: %s\n", strerror(errno));
 	}
 	else {
 		memset(hostname, 0, MAX_HOSTNAME);
-	}
+	}*/
 
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
@@ -399,6 +397,7 @@ void signal_handler(int signum) {
 	return;
 }
 
+
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
@@ -421,6 +420,11 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;
+}
+
+void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
+		void* value, socklen_t len) {
+
 }
 
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
