@@ -412,8 +412,8 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	return;
 }
 
-void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
-		void* value, socklen_t len) {
+void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
+		int option, void* value, socklen_t len) {
 	int ret;
 	sock_ctx_t* sock_ctx;
 	int response = 0;
@@ -432,6 +432,8 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int option,
 					sock_ctx->hostname, id);
 			break;
 		default:
+			/*XXX refactor netlink msgs to send correct level*/
+			response = setsockopt(sock_ctx->fd, level, option, value, len);
 			break;
 	}
 	netlink_notify_kernel(ctx, id, response);

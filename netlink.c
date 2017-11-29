@@ -41,6 +41,7 @@ enum {
 	SSA_NL_A_SOCKADDR_INTERNAL,
 	SSA_NL_A_SOCKADDR_EXTERNAL,
 	SSA_NL_A_SOCKADDR_REMOTE,
+	SSA_NL_A_OPTLEVEL,
 	SSA_NL_A_OPTNAME,
 	SSA_NL_A_OPTVAL,
 	SSA_NL_A_RETURN,
@@ -76,6 +77,7 @@ static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
         [SSA_NL_A_SOCKADDR_INTERNAL] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_EXTERNAL] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_SOCKADDR_REMOTE] = { .type = NLA_UNSPEC },
+        [SSA_NL_A_OPTLEVEL] = { .type = NLA_UNSPEC },
         [SSA_NL_A_OPTNAME] = { .type = NLA_UNSPEC },
         [SSA_NL_A_OPTVAL] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_RETURN] = { .type = NLA_UNSPEC },
@@ -141,6 +143,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 	struct sockaddr_in addr_external;
 	struct sockaddr_in addr_remote;
 
+	int level;
 	int optname;
 	char* optval;
 	socklen_t optlen;
@@ -158,6 +161,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 		case SSA_NL_C_SETSOCKOPT_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			log_printf(LOG_INFO, "Received setsockopt notification %lu\n", id);
+			level = nla_get_u32(attrs[SSA_NL_A_OPTLEVEL]);
 			optname = nla_get_u32(attrs[SSA_NL_A_OPTNAME]);
 			optlen = nla_len(attrs[SSA_NL_A_OPTVAL]);
 			optval = malloc(optlen);
@@ -166,7 +170,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 				return;
 			}
 			memcpy(optval, nla_data(attrs[SSA_NL_A_OPTVAL]), optlen);
-			setsockopt_cb(ctx, id, optname, optval, optlen);
+			setsockopt_cb(ctx, id, level, optname, optval, optlen);
 			free(optval);
 			break;
 		case SSA_NL_C_BIND_NOTIFY:
