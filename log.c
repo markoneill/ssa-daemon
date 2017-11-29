@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include "log.h"
 
+#ifndef NO_LOG
 FILE* g_log_file = NULL;
 log_level_t g_log_level = LOG_DEBUG;
 
@@ -44,7 +45,7 @@ int log_init(const char* log_filename, log_level_t level) {
 
 	new_log_file = fopen(log_filename, "a");
 	if (new_log_file == NULL) {
-		return 1;
+		return -1;
 	}
 	g_log_file = new_log_file;
 	return 0;
@@ -137,4 +138,5 @@ int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* 
 	/* Return 1 if result is negative. */
 	return x->tv_sec < y_cpy.tv_sec;
 }
+#endif
 

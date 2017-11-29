@@ -167,6 +167,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			}
 			memcpy(optval, nla_data(attrs[SSA_NL_A_OPTVAL]), optlen);
 			setsockopt_cb(ctx, id, optname, optval, optlen);
+			free(optval);
 			break;
 		case SSA_NL_C_BIND_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);

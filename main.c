@@ -30,6 +30,7 @@
 
 int main(int argc, char* argv[]) {
 	if (log_init(NULL, LOG_DEBUG)) {
+		fprintf(stderr, "Failed to initialize log\n");
 		exit(EXIT_FAILURE);
 	}
 	if (server_create()) {
