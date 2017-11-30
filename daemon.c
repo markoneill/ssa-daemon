@@ -68,6 +68,8 @@ typedef struct sock_ctx {
 	struct sockaddr rem_addr;
 	int rem_addrlen;
 	char hostname[MAX_HOSTNAME];
+	int is_connected;
+	int is_listening;
 } sock_ctx_t;
 
 void signal_handler(int signum);
@@ -393,6 +395,13 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	evutil_socket_t fd;
 	int response = 0;
 
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx != NULL) {
+		log_printf(LOG_ERROR, "We have created a socket with this ID already: %lu\n", id);
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+
 	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (fd == -1) {
 		response = -errno;
@@ -430,6 +439,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 			memcpy(sock_ctx->hostname, value, len);
 			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
 					sock_ctx->hostname, id);
+			ret = 0; /* Success */
 			break;
 		default:
 			ret = setsockopt(sock_ctx->fd, level, option, value, len);
@@ -497,6 +507,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			hashmap_add(ctx->sock_map_port, port, sock_ctx);
 			sock_ctx->rem_addr = *rem_addr;
 			sock_ctx->rem_addrlen = rem_addrlen;
+			sock_ctx->is_connected = 1;
 		}
 	}
 	netlink_notify_kernel(ctx, id, response);
@@ -560,10 +571,11 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	lctx->next = NULL;
 	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
+	sock_ctx->is_listening = 1;
 
 	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
-	hashmap_del(ctx->sock_map, id);
-	free(sock_ctx); /* We can do this later somehow, or merge this struct with lctx */
+	//hashmap_del(ctx->sock_map, id);
+	//free(sock_ctx); /* We can do this later somehow, or merge this struct with lctx */
 	add_listener_to_ctx(ctx, lctx);
 	return;
 }
@@ -577,6 +589,20 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		return;
 	}
 	/* close things here */
+
+	if (sock_ctx->is_connected == 1) {
+		/* XXX need a way to free a socket in this state.
+		 * perhaps provide a sock_ctx pointer to tls_conn_ctx */
+		return;
+	}
+	if (sock_ctx->is_listening == 1) {
+		/* XXX need a way to free a socket in this state.
+		 * perhaps provide listener ctx to sock ctx? */
+		return;
+	}
+	hashmap_del(ctx->sock_map, id);
+	EVUTIL_CLOSESOCKET(sock_ctx->fd);
+	free(sock_ctx);
 	return;
 }
 
