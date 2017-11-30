@@ -395,7 +395,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (fd == -1) {
-		response = errno;
+		response = -errno;
 	}
 	else {
 		sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
@@ -432,9 +432,11 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 					sock_ctx->hostname, id);
 			break;
 		default:
-			/*XXX refactor netlink msgs to send correct level*/
-			response = setsockopt(sock_ctx->fd, level, option, value, len);
+			ret = setsockopt(sock_ctx->fd, level, option, value, len);
 			break;
+	}
+	if (ret == -1) {
+		response = -errno;
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;
@@ -454,7 +456,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	else {
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
-			response = errno;
+			response = -errno;
 		}
 		else {
 			sock_ctx->has_bound = 1;
@@ -484,7 +486,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	else {
 		ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
 		if (ret == -1) {
-			response = errno;
+			response = -errno;
 		}
 		else {
 			if (sock_ctx->has_bound == 0) {
@@ -515,7 +517,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	else {
 		ret = listen(sock_ctx->fd, SOMAXCONN);
 		if (ret == -1) {
-			response = errno;
+			response = -errno;
 		}
 	}
 	netlink_notify_kernel(ctx, id, response);
