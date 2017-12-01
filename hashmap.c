@@ -149,6 +149,7 @@ void* hashmap_get(hmap_t* map, unsigned long key) {
 		if (cur->next->key == key) {
 			return cur->next->value;
 		}
+		cur = cur->next;
 	}
 	return NULL;
 }
