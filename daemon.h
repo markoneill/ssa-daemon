@@ -37,23 +37,10 @@
 #include "hashmap.h"
 #include "queue.h"
 
-typedef struct listener_ctx {
-	struct listener_ctx* next;
-	struct sockaddr int_addr;
-	int int_addrlen;
-	struct sockaddr ext_addr;
-	int ext_addrlen;
-	evutil_socket_t socket;
-	SSL_CTX* tls_ctx;
-	struct evconnlistener* listener;
-} listener_ctx_t;
-
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
-	struct event* sev_pipe;
 	struct nl_sock* netlink_sock;
 	int netlink_family;
-	listener_ctx_t* listeners;
 	hmap_t* sock_map;
 	hmap_t* sock_map_port;
 } tls_daemon_ctx_t;
