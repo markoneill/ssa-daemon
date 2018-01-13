@@ -593,19 +593,19 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	if (sock_ctx->is_connected == 1) {
 		/* XXX need a way to free a socket in this state.
 		 * perhaps provide a sock_ctx pointer to tls_conn_ctx */
-		netlink_notify_kernel(ctx, id, 0);
+		//netlink_notify_kernel(ctx, id, 0);
 		return;
 	}
 	if (sock_ctx->is_listening == 1) {
 		/* XXX need a way to free a socket in this state.
 		 * perhaps provide listener ctx to sock ctx? */
-		netlink_notify_kernel(ctx, id, 0);
+		//netlink_notify_kernel(ctx, id, 0);
 		return;
 	}
 	hashmap_del(ctx->sock_map, id);
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	free(sock_ctx);
-	netlink_notify_kernel(ctx, id, 0);
+	//netlink_notify_kernel(ctx, id, 0);
 	return;
 }
 
