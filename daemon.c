@@ -63,16 +63,21 @@ typedef struct sock_ctx {
 	int has_bound; /* Nonzero if we've called bind locally */
 	struct sockaddr int_addr;
 	int int_addrlen;
-	struct sockaddr ext_addr;
-	int ext_addrlen;
-	struct sockaddr rem_addr;
-	int rem_addrlen;
-	char hostname[MAX_HOSTNAME];
+	union {
+		struct sockaddr ext_addr;
+		struct sockaddr rem_addr;
+	};
+	union {
+		int ext_addrlen;
+		int rem_addrlen;
+	};
 	int is_connected;
-	int is_listening;
+	struct evconnlistener* listener;
+	SSL_CTX* tls_ctx;
+	char hostname[MAX_HOSTNAME];
 } sock_ctx_t;
 
-void signal_handler(int signum);
+void free_sock_ctx(sock_ctx_t* sock_ctx);
 
 /* SSA client functions */
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
@@ -85,10 +90,6 @@ static evutil_socket_t create_server_socket(ev_uint16_t port, int protocol);
 static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
-static int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx);
-static void free_listeners(tls_daemon_ctx_t* ctx);
-
-struct event_base* g_ev_base;
 
 int server_create() {
 	evutil_socket_t server_sock;
@@ -96,14 +97,13 @@ int server_create() {
         const char* ev_version = event_get_version();
 	struct event_base* ev_base = event_base_new();
 	struct event* sev_pipe;
+	struct event* sev_int;
 	struct event* nl_ev;
 	struct nl_sock* netlink_sock;
 	if (ev_base == NULL) {
                 perror("event_base_new");
                 return 1;
         }
-
-	g_ev_base = ev_base;
 
        	log_printf(LOG_INFO, "Using libevent version %s with %s behind the scenes\n", ev_version, event_base_get_method(ev_base));
 	
@@ -114,16 +114,20 @@ int server_create() {
 
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
 	if (sev_pipe == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create signal handler event");
+		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event");
+		return 1;
+	}
+	sev_int = evsignal_new(ev_base, SIGINT, signal_cb, ev_base);
+	if (sev_int == NULL) {
+		log_printf(LOG_ERROR, "Couldn't create SIGINT handler event");
 		return 1;
 	}
 	evsignal_add(sev_pipe, NULL);
+	evsignal_add(sev_int, NULL);
 
 	tls_daemon_ctx_t daemon_ctx = {
 		.ev_base = ev_base,
-		.sev_pipe = sev_pipe,
 		.netlink_sock = NULL,
-		.listeners = NULL,
 		.sock_map = hashmap_create(HASHMAP_NUM_BUCKETS),
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
@@ -149,12 +153,6 @@ int server_create() {
 		return 1;
 	}
 	
-	struct sigaction sa;
-	memset(&sa, 0, sizeof(sa));
-	sa.sa_handler = signal_handler;
-	sigaction(SIGINT, &sa, NULL);
-
-
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 	event_base_dispatch(ev_base);
 
@@ -163,11 +161,11 @@ int server_create() {
 
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
-	free_listeners(&daemon_ctx);
-	hashmap_free(daemon_ctx.sock_map);
 	hashmap_free(daemon_ctx.sock_map_port);
+	hashmap_deep_free(daemon_ctx.sock_map, (void (*)(void*))free_sock_ctx);
 	event_free(nl_ev);
 	event_free(sev_pipe);
+	event_free(sev_int);
         event_base_free(ev_base);
         /* This function hushes the wails of memory leak
          * testing utilities, but was not introduced until
@@ -320,17 +318,17 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 
 void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
-	listener_ctx_t* lctx = (listener_ctx_t*)arg;
+	sock_ctx_t* ctx = (sock_ctx_t*)arg;
         struct event_base *base = evconnlistener_get_base(listener);
 	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
-	log_printf_addr(&lctx->int_addr);
+	log_printf_addr(&ctx->int_addr);
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	tls_server_wrapper_setup(fd, base, lctx->tls_ctx, address, socklen, &lctx->int_addr, lctx->int_addrlen);
+	tls_server_wrapper_setup(fd, base, ctx->tls_ctx, address, socklen, &ctx->int_addr, ctx->int_addrlen);
 	return;
 }
 
@@ -349,46 +347,15 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 		case SIGPIPE:
 			log_printf(LOG_DEBUG, "Caught SIGPIPE and ignored it\n");
 			break;
+		case SIGINT:
+			log_printf(LOG_DEBUG, "Caught SIGINT\n");
+			event_base_loopbreak(arg);
+			break;
 		default:
 			break;
 	}
 	return;
 }
-
-int add_listener_to_ctx(tls_daemon_ctx_t* ctx, listener_ctx_t* lctx) {
-	listener_ctx_t* cur = ctx->listeners;
-	if (cur == NULL) {
-		ctx->listeners = lctx;
-		return 0;
-	}
-	while (cur->next != NULL) {
-		cur = cur->next;
-	}
-	cur->next = lctx;
-	return 0;
-}
-
-void free_listeners(tls_daemon_ctx_t* ctx) {
-	listener_ctx_t* cur = ctx->listeners;
-	listener_ctx_t* tmp = NULL;
-	while (cur != NULL) {
-		tmp = cur->next;
-		/* This also closes the socket due to our listener creation flags */
-		evconnlistener_free(cur->listener);
-		SSL_CTX_free(cur->tls_ctx);
-		free(cur);
-		cur = tmp;
-	}
-	return;
-}
-
-void signal_handler(int signum) {
-	if (signum == SIGINT) {
-		event_base_loopbreak(g_ev_base);
-	}
-	return;
-}
-
 
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	sock_ctx_t* sock_ctx;
@@ -466,6 +433,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	else {
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
+			perror("bind");
 			response = -errno;
 		}
 		else {
@@ -553,30 +521,11 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 		return;
 	}
 
-	listener_ctx_t* lctx = malloc(sizeof(listener_ctx_t));
-	if (lctx == NULL) {
-		log_printf(LOG_ERROR, "Failed to malloc listener context\n");
-		return;
-	}
-
-	/* XXX If the application never called bind, ext_addr will be empty. 
-	 * This may not matter (I'm not sure we actually use it)  */
-
-	lctx->socket = sock_ctx->fd;
-	lctx->int_addr = *int_addr;
-	lctx->int_addrlen = int_addrlen;
-	lctx->ext_addr = *ext_addr;
-	lctx->ext_addrlen = ext_addrlen;
-	lctx->tls_ctx = tls_server_ctx_create();
-	lctx->next = NULL;
-	lctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, lctx, 
+	sock_ctx->tls_ctx = tls_server_ctx_create();
+	sock_ctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
-	sock_ctx->is_listening = 1;
 
-	evconnlistener_set_error_cb(lctx->listener, server_accept_error_cb);
-	//hashmap_del(ctx->sock_map, id);
-	//free(sock_ctx); /* We can do this later somehow, or merge this struct with lctx */
-	add_listener_to_ctx(ctx, lctx);
+	evconnlistener_set_error_cb(sock_ctx->listener, server_accept_error_cb);
 	return;
 }
 
@@ -596,9 +545,11 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		//netlink_notify_kernel(ctx, id, 0);
 		return;
 	}
-	if (sock_ctx->is_listening == 1) {
-		/* XXX need a way to free a socket in this state.
-		 * perhaps provide listener ctx to sock ctx? */
+	if (sock_ctx->listener != NULL) {
+		hashmap_del(ctx->sock_map, id);
+		evconnlistener_free(sock_ctx->listener);
+		SSL_CTX_free(sock_ctx->tls_ctx);
+		free(sock_ctx);
 		//netlink_notify_kernel(ctx, id, 0);
 		return;
 	}
@@ -606,6 +557,22 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	free(sock_ctx);
 	//netlink_notify_kernel(ctx, id, 0);
+	return;
+}
+
+/* This function is provided to the hashmap implementation
+ * so that it can correctly free all held data */
+void free_sock_ctx(sock_ctx_t* sock_ctx) {
+	if (sock_ctx->listener != NULL) {
+		evconnlistener_free(sock_ctx->listener);
+		SSL_CTX_free(sock_ctx->tls_ctx);
+	}
+	else if (sock_ctx->is_connected == 1) {
+	}
+	else {
+		EVUTIL_CLOSESOCKET(sock_ctx->fd);
+	}
+	free(sock_ctx);
 	return;
 }
 

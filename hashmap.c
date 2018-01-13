@@ -56,7 +56,7 @@ hmap_t* hashmap_create(int num_buckets) {
 	return map;
 }
 
-void hashmap_free(hmap_t* map) {
+void hashmap_deep_free(hmap_t* map, void (*free_func)(void*)) {
 	hnode_t* cur = NULL;
 	hnode_t* tmp = NULL;
 	int i;
@@ -67,12 +67,20 @@ void hashmap_free(hmap_t* map) {
 		cur = map->buckets[i];
 		while (cur != NULL) {
 			tmp = cur->next;
+			if (free_func != NULL) {
+				free_func(cur->value);
+			}
 			free(cur);
 			cur = tmp;
 		}
 	}
 	free(map->buckets);
 	free(map);
+	return;
+}
+
+void hashmap_free(hmap_t* map) {
+	hashmap_deep_free(map, NULL);
 	return;
 }
 
