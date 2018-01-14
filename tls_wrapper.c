@@ -50,7 +50,7 @@ static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
 void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct event_base* ev_base,  
 	struct sockaddr* client_addr, int client_addrlen,
-	struct sockaddr* server_addr, int server_addrlen, char* hostname) {
+	struct sockaddr* server_addr, int server_addrlen, char* hostname, tls_conn_ctx_t** link) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -110,6 +110,9 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 		free_tls_conn_ctx(ctx);
 		return;
 	}*/
+	SSL_connect(ctx->tls);
+	/* If everything succeeds, set pointer to tls_conn ctx from sock_ctx */
+	*link = ctx;
 	return;
 }
 

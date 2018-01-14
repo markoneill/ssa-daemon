@@ -56,11 +56,13 @@ enum {
         SSA_NL_C_UNSPEC,
         SSA_NL_C_SOCKET_NOTIFY,
 	SSA_NL_C_SETSOCKOPT_NOTIFY,
+	SSA_NL_C_GETSOCKOPT_NOTIFY,
         SSA_NL_C_BIND_NOTIFY,
         SSA_NL_C_CONNECT_NOTIFY,
         SSA_NL_C_LISTEN_NOTIFY,
 	SSA_NL_C_CLOSE_NOTIFY,
 	SSA_NL_C_RETURN,
+	SSA_NL_C_DATA_RETURN,
         __SSA_NL_C_MAX,
 };
 
@@ -173,6 +175,13 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			setsockopt_cb(ctx, id, level, optname, optval, optlen);
 			free(optval);
 			break;
+		case SSA_NL_C_GETSOCKOPT_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			log_printf(LOG_INFO, "Received setsockopt notification %lu\n", id);
+			level = nla_get_u32(attrs[SSA_NL_A_OPTLEVEL]);
+			optname = nla_get_u32(attrs[SSA_NL_A_OPTNAME]);
+			getsockopt_cb(ctx, id, level, optname);
+			break;
 		case SSA_NL_C_BIND_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
@@ -260,3 +269,36 @@ void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response
 	return;
 }
 
+void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, char* data, unsigned int len) {
+	int ret;
+	struct nl_msg* msg;
+	void* msg_head;
+	msg = nlmsg_alloc();
+	if (msg == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
+		return;
+	}
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, ctx->netlink_family, 0, 0, SSA_NL_C_DATA_RETURN, 1);
+	if (msg_head == NULL) {
+		log_printf(LOG_ERROR, "Failed in genlmsg_put\n");
+		return;
+	}
+	ret = nla_put_u64(msg, SSA_NL_A_ID, id);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert ID in netlink msg\n");
+		return;
+	}
+	ret = nla_put(msg, SSA_NL_A_OPTVAL, len, data);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert data response in netlink msg\n");
+		return;
+	}
+	ret = nl_send_auto(ctx->netlink_sock, msg);
+	if (ret < 0) {
+		log_printf(LOG_ERROR, "Failed to send netlink msg\n");
+		return;
+	}
+	log_printf(LOG_INFO, "Sent data msg to kernel\n");
+	nlmsg_free(msg);
+	return;
+}

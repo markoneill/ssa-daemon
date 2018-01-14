@@ -59,6 +59,7 @@ int server_create(void);
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len);
+void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option);
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 

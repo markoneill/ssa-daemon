@@ -54,6 +54,7 @@
 #include "log.h"
 
 #define SO_HOSTNAME		85
+#define SO_PEER_CERTIFICATE	86
 #define MAX_HOSTNAME		255
 #define HASHMAP_NUM_BUCKETS	100
 
@@ -75,6 +76,7 @@ typedef struct sock_ctx {
 	struct evconnlistener* listener;
 	SSL_CTX* tls_ctx;
 	char hostname[MAX_HOSTNAME];
+	tls_conn_ctx_t* tls_conn;
 } sock_ctx_t;
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
@@ -112,6 +114,7 @@ int server_create() {
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
 
+	/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
 	if (sev_pipe == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event");
@@ -141,7 +144,6 @@ int server_create() {
 		return 1;
 	}
 
-	/* Signal handler registration */
 	netlink_sock = netlink_connect(&daemon_ctx);
 	if (netlink_sock == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
@@ -299,11 +301,10 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
-	hashmap_del(ctx->sock_map, sock_ctx->id);
+	//hashmap_del(ctx->sock_map, sock_ctx->id);
 	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
-			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, sock_ctx->hostname);
-	free(sock_ctx); /* Can probably do this later when closing, or
-				merge with another struct */
+			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, sock_ctx->hostname, &sock_ctx->tls_conn);
+	//free(sock_ctx);
 	return;
 }
 
@@ -416,6 +417,43 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		response = -errno;
 	}
 	netlink_notify_kernel(ctx, id, response);
+	return;
+}
+
+void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
+	sock_ctx_t* sock_ctx;
+	unsigned int len = 0;
+	X509 * cert;
+	BIO * bio;
+	char* cert_data;
+
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		netlink_notify_kernel(ctx, id, -EBADF);
+		return;
+	}
+	switch (option) {
+		case SO_PEER_CERTIFICATE:
+			if (sock_ctx->tls_conn == NULL) {
+				netlink_notify_kernel(ctx, id, -ENOTCONN);
+				return;
+			}
+			cert = SSL_get_peer_certificate(sock_ctx->tls_conn->tls);
+			if (cert == NULL) {
+				netlink_notify_kernel(ctx, id, -ENOTCONN);
+				return;
+			}
+			bio = BIO_new(BIO_s_mem());
+			PEM_write_bio_X509(bio, cert);
+			len = BIO_get_mem_data(bio, &cert_data);
+			netlink_send_and_notify_kernel(ctx, id, cert_data, len);
+			BIO_free(bio);
+			return;
+		default:
+			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
+			netlink_notify_kernel(ctx, id, -EBADF);
+			return;
+	}
 	return;
 }
 
