@@ -302,8 +302,7 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, address, socklen, 
-			&sock_ctx->rem_addr, &sock_ctx->rem_addrlen, sock_ctx->hostname, &sock_ctx->tls_conn);
+	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname);
 	//free(sock_ctx);
 	return;
 }
@@ -319,17 +318,18 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 
 void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
-	sock_ctx_t* ctx = (sock_ctx_t*)arg;
+	sock_ctx_t* sock_ctx = (sock_ctx_t*)arg;
         struct event_base *base = evconnlistener_get_base(listener);
 	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
-	log_printf_addr(&ctx->int_addr);
+	log_printf_addr(&sock_ctx->int_addr);
 	if (evutil_make_socket_nonblocking(fd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	tls_server_wrapper_setup(fd, base, ctx->tls_ctx, address, socklen, &ctx->int_addr, ctx->int_addrlen);
+	sock_ctx->tls_conn = tls_server_wrapper_setup(fd, base, sock_ctx->tls_ctx, 
+			&sock_ctx->int_addr, sock_ctx->int_addrlen);
 	return;
 }
 
@@ -579,8 +579,10 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	/* close things here */
 
 	if (sock_ctx->is_connected == 1) {
-		/* XXX need a way to free a socket in this state.
-		 * perhaps provide a sock_ctx pointer to tls_conn_ctx */
+		/* connections under the control of the tls_wrapper code
+		 * clean up themselves as a result of the close event
+		 * received from one of the endpoints. In this case we
+		 * only need to clean up the sock_ctx */
 		//netlink_notify_kernel(ctx, id, 0);
 		return;
 	}
@@ -607,6 +609,10 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 		SSL_CTX_free(sock_ctx->tls_ctx);
 	}
 	else if (sock_ctx->is_connected == 1) {
+		/* connections under the control of the tls_wrapper code
+		 * clean up themselves as a result of the close event
+		 * received from one of the endpoints. In this case we
+		 * only need to clean up the sock_ctx */
 	}
 	else {
 		EVUTIL_CLOSESOCKET(sock_ctx->fd);

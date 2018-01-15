@@ -48,9 +48,8 @@ static int server_name_cb(SSL* tls, int* ad, void* arg);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
-void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct event_base* ev_base,  
-	struct sockaddr* client_addr, int client_addrlen,
-	struct sockaddr* server_addr, int server_addrlen, char* hostname, tls_conn_ctx_t** link) {
+tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd,
+		struct event_base* ev_base, char* hostname) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -62,7 +61,7 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
-		return;
+		return NULL;
 	}
 
 	ctx->cf.bev = bufferevent_socket_new(ev_base, ifd,
@@ -73,7 +72,7 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 		/* Need to close socket because it won't be closed on free since bev creation failed */
 		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
-		return;
+		return NULL;
 	}
 
 	/* Set up TLS/SSL state with openssl */
@@ -81,7 +80,7 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
 		free_tls_conn_ctx(ctx);
-		return;
+		return NULL;
 	}
 
 	ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
@@ -89,7 +88,7 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 	if (ctx->sf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [client mode]\n");
 		free_tls_conn_ctx(ctx);
-		return;
+		return NULL;
 	}
 
 	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
@@ -111,13 +110,10 @@ void tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, struct e
 		return;
 	}*/
 	SSL_connect(ctx->tls);
-	/* If everything succeeds, set pointer to tls_conn ctx from sock_ctx */
-	*link = ctx;
-	return;
+	return ctx;
 }
 
-void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SSL_CTX* tls_ctx,
-	struct sockaddr* external_addr, int external_addrlen,
+tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SSL_CTX* tls_ctx,
 	struct sockaddr* internal_addr, int internal_addrlen) {
 
 	/*  ctx will hold all data for interacting with the connection to
@@ -130,7 +126,7 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate server tls_conn_ctx_t: %s\n", strerror(errno));
-		return;
+		return NULL;
 	}
 	
 	ctx->tls = tls_server_create(tls_ctx);
@@ -141,7 +137,7 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [server mode]\n");
 		EVUTIL_CLOSESOCKET(fd);
 		free_tls_conn_ctx(ctx);
-		return;
+		return NULL;
 	}
 	
 	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
@@ -154,7 +150,7 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 	if (ctx->sf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [server mode]\n");
 		free_tls_conn_ctx(ctx);
-		return;
+		return NULL;
 	}
 	
 	/* Register callbacks for reading and writing to both bevs */
@@ -169,7 +165,7 @@ void tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SS
 		free_tls_conn_ctx(ctx);
 		return;
 	}
-	return;
+	return ctx;
 }
 
 /* XXX Parameterize later
