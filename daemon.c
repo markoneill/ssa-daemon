@@ -447,6 +447,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 			PEM_write_bio_X509(bio, cert);
 			len = BIO_get_mem_data(bio, &cert_data);
 			netlink_send_and_notify_kernel(ctx, id, cert_data, len);
+			X509_free(cert);
 			BIO_free(bio);
 			return;
 		default:
