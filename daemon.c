@@ -598,6 +598,8 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * received from one of the endpoints. In this case we
 		 * only need to clean up the sock_ctx */
 		//netlink_notify_kernel(ctx, id, 0);
+		hashmap_del(ctx->sock_map, id);
+		free(sock_ctx);
 		return;
 	}
 	if (sock_ctx->listener != NULL) {
