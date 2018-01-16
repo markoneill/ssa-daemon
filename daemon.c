@@ -53,8 +53,14 @@
 #include "netlink.h"
 #include "log.h"
 
+/* XXX These should really be linked with
+ * the socktls.h file from the other repo */
 #define SO_HOSTNAME		85
 #define SO_PEER_CERTIFICATE	86
+#define SO_CERTIFICATE_CHAIN	87
+#define SO_PRIVATE_KEY		88
+
+
 #define MAX_HOSTNAME		255
 #define HASHMAP_NUM_BUCKETS	100
 
@@ -409,6 +415,20 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 					sock_ctx->hostname, id);
 			ret = 0; /* Success */
 			break;
+		case SO_CERTIFICATE_CHAIN:
+			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {
+				response = -EBADF;
+				netlink_notify_kernel(ctx, id, response);
+			}
+			ret = 0;
+			break;
+		case SO_PRIVATE_KEY:
+			if (set_private_key(sock_ctx->tls_ctx, value) == 0) {
+				response = -EBADF;
+				netlink_notify_kernel(ctx, id, response);
+			}
+			ret = 0;
+			break;
 		default:
 			ret = setsockopt(sock_ctx->fd, level, option, value, len);
 			break;
@@ -422,10 +442,8 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
+	char* data = NULL;
 	unsigned int len = 0;
-	X509 * cert;
-	BIO * bio;
-	char* cert_data;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
@@ -438,17 +456,13 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 				netlink_notify_kernel(ctx, id, -ENOTCONN);
 				return;
 			}
-			cert = SSL_get_peer_certificate(sock_ctx->tls_conn->tls);
-			if (cert == NULL) {
+			data = get_peer_certificate(sock_ctx->tls_conn, &len);
+			if (data == NULL) {
 				netlink_notify_kernel(ctx, id, -ENOTCONN);
 				return;
 			}
-			bio = BIO_new(BIO_s_mem());
-			PEM_write_bio_X509(bio, cert);
-			len = BIO_get_mem_data(bio, &cert_data);
-			netlink_send_and_notify_kernel(ctx, id, cert_data, len);
-			X509_free(cert);
-			BIO_free(bio);
+			netlink_send_and_notify_kernel(ctx, id, data, len);
+			free(data);
 			return;
 		default:
 			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");

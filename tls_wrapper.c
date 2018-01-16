@@ -197,11 +197,63 @@ SSL_CTX* tls_server_ctx_create(void) {
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
 	//SSL_CTX_set_tlsext_servername_arg(tls_ctx, ctx);
 
-	SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
-	//SSL_CTX_use_certificate_chain_file(tls_ctx, XXX, SSL_FILETYPE_PEM);
+	//SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
+	//SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
+	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem");
 	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
 
 	return tls_ctx;
+}
+
+int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath) {
+	if (SSL_CTX_use_certificate_chain_file(tls_ctx, filepath) != 1) {
+		return 0;
+	}
+	return 1;
+}
+
+int set_private_key(SSL_CTX* tls_ctx, char* filepath) {
+	if (SSL_CTX_use_PrivateKey_file(tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
+		return 0;
+	}
+	return 1;
+}
+
+
+char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len) {
+	X509 * cert;
+	BIO * bio;
+	char* bio_data;
+	char* pem_data;
+
+	cert = SSL_get_peer_certificate(tls_conn->tls);
+	if (cert == NULL) {
+		return NULL;
+	}
+	bio = BIO_new(BIO_s_mem());
+	if (bio == NULL) {
+		X509_free(cert);
+		return NULL;
+	}
+	if (PEM_write_bio_X509(bio, cert) == 0) {
+		X509_free(cert);
+		BIO_free(bio);
+		return NULL;
+	}
+
+	*len = BIO_get_mem_data(bio, &bio_data);
+	pem_data = malloc((*len) + 1); /* +1 for null terminator */
+	if (pem_data == NULL) {
+		X509_free(cert);
+		BIO_free(bio);
+		return NULL;
+	}
+
+	memcpy(pem_data, bio_data, *len);
+	pem_data[*len] = '\0';
+	X509_free(cert);
+	BIO_free(bio);
+	return pem_data;
 }
 
 int server_name_cb(SSL* tls, int* ad, void* arg) {

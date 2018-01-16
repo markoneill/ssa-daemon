@@ -45,9 +45,15 @@ typedef struct tls_conn_ctx {
 	SSL* tls;
 } tls_conn_ctx_t;
 
-SSL_CTX* tls_server_ctx_create(void);
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, 
 	struct event_base* ev_base, char* hostname);
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, 
 	SSL_CTX* tls_ctx, struct sockaddr* internal_addr, int internal_addrlen);
+
+
+/* Helper functions to separate daemon from security library */
+char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len);
+int set_private_key(SSL_CTX* tls_ctx, char* filepath);
+int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath);
+SSL_CTX* tls_server_ctx_create(void);
 #endif
