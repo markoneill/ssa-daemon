@@ -367,10 +367,12 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
 	channel_t* startpoint = (bev == ctx->cf.bev) ? &ctx->cf : &ctx->sf;
 	if (events & BEV_EVENT_CONNECTED) {
-		log_printf(LOG_INFO, "Remote endpoint connected\n");
+		log_printf(LOG_INFO, "%s endpoint connected\n", bev == ctx->cf.bev ? "client facing" : "server facing");
+		if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
 		startpoint->connected = 1;
 	}
 	if (events & BEV_EVENT_ERROR) {
+		log_printf(LOG_INFO, "%s endpoint encountered an error\n", bev == ctx->cf.bev ? "client facing" : "server facing");
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
@@ -392,30 +394,26 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				endpoint->closed = 1;
 			}
 		}
+		/* always close startpoint on unhandled error */
+		startpoint->closed = 1;
+
 	}
 	if (events & BEV_EVENT_EOF) {
-		log_printf(LOG_INFO, "Remote endpoint closed\n");
+		log_printf(LOG_INFO, "%s endpoint got EOF\n", bev == ctx->cf.bev ? "client facing" : "server facing");
 		if (endpoint->closed == 0) {
 			struct evbuffer* in_buf;
 			struct evbuffer* out_buf;
+			out_buf = bufferevent_get_output(endpoint->bev);
 			in_buf = bufferevent_get_input(bev);
-			if (endpoint->closed == 0) {
-				out_buf = bufferevent_get_output(endpoint->bev);
-			}
 			if (evbuffer_get_length(in_buf) > 0) {
 				evbuffer_add_buffer(out_buf, in_buf);
 			}
-			else {
-				/* close other buffer if we're closing and it has no data left */
-				if (evbuffer_get_length(out_buf) == 0) {
-					endpoint->closed = 1;
-				}
+			if (evbuffer_get_length(out_buf) == 0) {
+				endpoint->closed = 1;
 			}
 		}
-		if (startpoint->closed == 0) {
-			startpoint->closed = 1;
-		}
-
+		/* always close the startpoint on EOF */
+		startpoint->closed = 1;
 	}
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
