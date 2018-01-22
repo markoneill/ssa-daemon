@@ -134,6 +134,8 @@ int server_create() {
 	evsignal_add(sev_pipe, NULL);
 	evsignal_add(sev_int, NULL);
 
+	//signal(SIGPIPE, SIG_IGN);
+
 	tls_daemon_ctx_t daemon_ctx = {
 		.ev_base = ev_base,
 		.netlink_sock = NULL,
