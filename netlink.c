@@ -63,6 +63,7 @@ enum {
 	SSA_NL_C_CLOSE_NOTIFY,
 	SSA_NL_C_RETURN,
 	SSA_NL_C_DATA_RETURN,
+	SSA_NL_C_UPGRADE_NOTIFY,
         __SSA_NL_C_MAX,
 };
 
@@ -222,6 +223,14 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			log_printf(LOG_INFO, "Received close notification %lu\n", id);	
 			close_cb(ctx, id);
+			break;
+		case SSA_NL_C_UPGRADE_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			log_printf(LOG_INFO, "Received upgrade notification for new sock fd %lu:\n", id);
+			log_printf_addr((struct sockaddr*)&addr_internal);
+			upgrade_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");

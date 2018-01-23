@@ -619,6 +619,22 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	return;
 }
 
+void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, 
+		struct sockaddr* int_addr, int int_addrlen) {
+	int port;
+	int fd = (int)id; /* the ID is actually the new socket descriptor */
+	port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+
+	/* XXX To make this function work we need:
+	 * 	1) daemon's fd for old existing socket connection
+	 * 	2) kernel socket pointer (ID) for new socket created for app
+	 * 	3) port to which new socket created for app is bound (and we need to bind it too)
+	 * 	4) information on whether or not this socket is passive or active (has listen() been called?)
+	 * 	5) if socket is active but NOT a server socket (SSL_accept case)...we need to know this
+	 */
+	return;
+}
+
 /* This function is provided to the hashmap implementation
  * so that it can correctly free all held data */
 void free_sock_ctx(sock_ctx_t* sock_ctx) {
