@@ -109,7 +109,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		free_tls_conn_ctx(ctx);
 		return;
 	}*/
-	SSL_connect(ctx->tls);
+	//SSL_connect(ctx->tls);
 	return ctx;
 }
 
@@ -219,6 +219,13 @@ int set_private_key(SSL_CTX* tls_ctx, char* filepath) {
 	return 1;
 }
 
+int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname) {
+	if (tls_conn_ctx == NULL) {
+		return 1;
+	}
+	SSL_set_tlsext_host_name(tls_conn_ctx->tls, hostname);
+	return 1;
+}
 
 char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len) {
 	X509 * cert;

@@ -33,6 +33,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/un.h>
 #include <netdb.h>
 
 #include <event2/event.h>
@@ -59,6 +60,7 @@
 #define SO_PEER_CERTIFICATE	86
 #define SO_CERTIFICATE_CHAIN	87
 #define SO_PRIVATE_KEY		88
+#define SO_ID			89
 
 
 #define MAX_HOSTNAME		255
@@ -99,14 +101,22 @@ static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 
+/* special */
+static evutil_socket_t create_upgrade_socket(void);
+static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
+//ssize_t recv_fd(int fd, void *ptr, size_t nbytes, int *recvfd);
+ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
+
 int server_create() {
 	evutil_socket_t server_sock;
+	evutil_socket_t upgrade_sock;
 	struct evconnlistener* listener;
         const char* ev_version = event_get_version();
 	struct event_base* ev_base = event_base_new();
 	struct event* sev_pipe;
 	struct event* sev_int;
 	struct event* nl_ev;
+	struct event* upgrade_ev;
 	struct nl_sock* netlink_sock;
 	if (ev_base == NULL) {
                 perror("event_base_new");
@@ -143,7 +153,7 @@ int server_create() {
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
-	/* Start setting up server socket and event base */
+	/* Set up server socket with event base */
 	server_sock = create_server_socket(8443, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
@@ -151,7 +161,9 @@ int server_create() {
 		log_printf(LOG_ERROR, "Couldn't create evconnlistener");
 		return 1;
 	}
+	evconnlistener_set_error_cb(listener, accept_error_cb);
 
+	/* Set up netlink socket with event base */
 	netlink_sock = netlink_connect(&daemon_ctx);
 	if (netlink_sock == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
@@ -162,8 +174,16 @@ int server_create() {
 		log_printf(LOG_ERROR, "Couldn't add Netlink event");
 		return 1;
 	}
-	
-	evconnlistener_set_error_cb(listener, accept_error_cb);
+
+	/* Set up upgrade notification socket with event base */
+	upgrade_sock = create_upgrade_socket();
+	upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
+	if (event_add(upgrade_ev, NULL) == -1) {
+		log_printf(LOG_ERROR, "Couldn't add upgrade event");
+		return 1;
+	}
+
+	/* Main event loop */	
 	event_base_dispatch(ev_base);
 
 	log_printf(LOG_INFO, "Main event loop terminated\n");
@@ -199,6 +219,38 @@ int server_create() {
 	SSL_COMP_free_compression_methods();
 	#endif
         return 0;
+}
+
+evutil_socket_t create_upgrade_socket(void) {
+	evutil_socket_t sock;
+	int ret;
+	struct sockaddr_un addr;
+	int addrlen;
+	char name[] = "\0tls_upgrade";
+	addr.sun_family = AF_UNIX;
+	memcpy(addr.sun_path, "\0tls_upgrade", sizeof(name));
+	addrlen = sizeof(name) + sizeof(sa_family_t);
+
+	sock = socket(PF_UNIX, SOCK_DGRAM, 0);
+	if (sock == -1) {
+		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	ret = evutil_make_socket_nonblocking(sock);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(sock);
+		exit(EXIT_FAILURE);
+	}
+
+	ret = bind(sock, (struct sockaddr*)&addr, addrlen);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
+		EVUTIL_CLOSESOCKET(sock);
+		exit(EXIT_FAILURE);
+	}
+	return sock;
 }
 
 /* Creates a listening socket that binds to local IPv4 and IPv6 interfaces.
@@ -415,6 +467,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 			memcpy(sock_ctx->hostname, value, len);
 			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
 					sock_ctx->hostname, id);
+			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
 			ret = 0; /* Success */
 			break;
 		case SO_CERTIFICATE_CHAIN:
@@ -517,7 +570,15 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 		response = -EBADF;
 	}
 	else {
-		ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		/* only connect if we're not already.
+		 * we might already be connected due to a
+		 * socket upgrade */
+		if (sock_ctx->is_connected == 0) {
+			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		}
+		else {
+			ret = 0;
+		}
 		if (ret == -1) {
 			response = -errno;
 		}
@@ -653,5 +714,86 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 	}
 	free(sock_ctx);
 	return;
+}
+
+void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
+	sock_ctx_t* sock_ctx;
+	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
+	//char msg_buffer[1024];
+	int new_fd;
+	int bytes_read;
+	unsigned long id;
+	struct sockaddr_un addr = {};
+	/* Why the 5? Because that's what linux uses for autobinds*/
+	/* Why the 1? Because of the null byte in front of abstract names */
+	int addr_len = sizeof(sa_family_t) + 5 + 1;
+
+	log_printf(LOG_INFO, "Someone wants an upgrade!\n");
+	bytes_read = recv_fd_from(fd, &id, sizeof(id), &new_fd, &addr, addr_len);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "recv_fd: %s\n", strerror(errno));
+		return;
+	}
+	log_printf(LOG_INFO, "Got a new descriptor %d, to be associated with %lu from addr %s\n",
+		       	new_fd, id, addr.sun_path+1, addr_len);
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		return;
+	}
+	EVUTIL_CLOSESOCKET(sock_ctx->fd);
+	sock_ctx->fd = new_fd;
+	sock_ctx->is_connected = 1;
+	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {
+		perror("sendto");
+	}
+	//send(new_fd, "boom baby\n", sizeof("boom baby\n"), 0);
+
+	return;
+}
+
+/* Modified read_fd taken from various online sources. Found without copyright or
+ * attribution. Examples also in manpages so we could use that if needed */
+ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len) {
+	struct msghdr msg;
+	struct iovec iov[1];
+	ssize_t	n;
+	int newfd;
+
+	union {
+		struct cmsghdr cm;
+		char control[CMSG_SPACE(sizeof(int))];
+	} control_un;
+	struct cmsghdr* cmptr;
+
+	msg.msg_control = control_un.control;
+	msg.msg_controllen = sizeof(control_un.control);
+	msg.msg_name = addr;
+	msg.msg_namelen = addr_len;
+
+	iov[0].iov_base = ptr;
+	iov[0].iov_len = nbytes;
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
+
+	if ((n = recvmsg(fd, &msg, 0)) <= 0) {
+		return n;
+	}
+
+	if ((cmptr = CMSG_FIRSTHDR(&msg)) != NULL &&
+	    cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
+		if (cmptr->cmsg_level != SOL_SOCKET) {
+			log_printf(LOG_ERROR, "control level != SOL_SOCKET\n");
+			return -1;
+		}
+		if (cmptr->cmsg_type != SCM_RIGHTS) {
+			log_printf(LOG_ERROR, "control type != SCM_RIGHTS\n");
+			return -1;
+		}
+		*recvfd = *((int *) CMSG_DATA(cmptr));
+	}
+	else {
+		*recvfd = -1; /* descriptor was not passed */
+	}
+	return n;
 }
 

@@ -55,5 +55,6 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* 
 char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len);
 int set_private_key(SSL_CTX* tls_ctx, char* filepath);
 int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath);
+int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname);
 SSL_CTX* tls_server_ctx_create(void);
 #endif

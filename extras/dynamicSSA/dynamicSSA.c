@@ -6,7 +6,7 @@
 #define SSA_ADDR                "127.0.0.1"
 
 #define LOG_FILE "/tmp/sslLog.txt"
-#define SEND_MSG "SEND FD"
+#define SEND_MSG "\1\0www.google.com\0"
 #define SOCKET_PATH "\0tls_upgrade"
 
 #include <dlfcn.h>
@@ -199,8 +199,9 @@ int SSA_create_socket()
 int SSA_send_fd(int fd)
 {
     struct sockaddr_un addr;
+    int addrlen;
     int ret;
-    int con = socket(AF_UNIX, SOCK_STREAM, 0);
+    int con = socket(PF_UNIX, SOCK_DGRAM, 0);
     if (con == -1) {
         perror("Socket error\n");
         return -1;
@@ -209,8 +210,9 @@ int SSA_send_fd(int fd)
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     memcpy(addr.sun_path, SOCKET_PATH, sizeof(SOCKET_PATH));
+    addrlen = sizeof(SOCKET_PATH) + sizeof(sa_family_t);
 
-    if (connect(con, (struct sockaddr*)&addr, sizeof(addr))) {
+    if (connect(con, (struct sockaddr*)&addr, addrlen)) {
         perror("Connect error\n");
         return -1;
     }
