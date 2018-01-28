@@ -11,7 +11,7 @@
 #define SOCKET_PATH "\0tls_upgrade"
 
 int upgrade_sock(int fd); 
-int SSA_send_fd(int fd, unsigned long id);
+int SSA_send_fd(int fd, unsigned long id, int is_accepting);
 ssize_t send_fd_to(int fd, void* iobuf, size_t nbytes, int sendfd, struct sockaddr_un* addr, int addr_len);
 
 int main() {
@@ -48,19 +48,20 @@ int upgrade_sock(int fd) {
 		exit(EXIT_FAILURE);
 	}
 	printf("socket ID is %lu\n", id);
-	SSA_send_fd(fd, id);
+	SSA_send_fd(fd, id, 0);
 	connect(new_fd, (struct sockaddr*)&addr, sizeof(addr));
 	dup2(new_fd, fd);
 	return 0;
 }
 
-int SSA_send_fd(int fd, unsigned long id)
+int SSA_send_fd(int fd, unsigned long id, int is_accepting)
 {
     struct sockaddr_un addr;
     struct sockaddr_un self;
     int addrlen;
     int ret;
     char buffer[1024];
+    int bytes_to_send;
     int con = socket(PF_UNIX, SOCK_DGRAM, 0);
     if (con == -1) {
         perror("Socket error\n");
@@ -78,11 +79,11 @@ int SSA_send_fd(int fd, unsigned long id)
     }*/
     self.sun_family = AF_UNIX;
 
-    //sprintf(buffer, "%lu", id);
+    bytes_to_send = sprintf(buffer, "%d:%lu", is_accepting, id);
     if (bind(con, (struct sockaddr*)&self, sizeof(sa_family_t)) == -1) {
 	    perror("bind");
     }
-    ret = send_fd_to(con, &id, sizeof(id), fd, &addr, addrlen);
+    ret = send_fd_to(con, buffer, bytes_to_send + 1, fd, &addr, addrlen);
     /* Wait for a confirmation to prevent race condition */
     recv(con, buffer, 1024, 0);
     close(con);

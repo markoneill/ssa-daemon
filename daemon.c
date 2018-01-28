@@ -81,6 +81,7 @@ typedef struct sock_ctx {
 		int rem_addrlen;
 	};
 	int is_connected;
+	int is_accepting;
 	struct evconnlistener* listener;
 	SSL_CTX* tls_ctx;
 	char hostname[MAX_HOSTNAME];
@@ -104,7 +105,6 @@ static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd
 /* special */
 static evutil_socket_t create_upgrade_socket(void);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
-//ssize_t recv_fd(int fd, void *ptr, size_t nbytes, int *recvfd);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
 
 int server_create() {
@@ -194,6 +194,7 @@ int server_create() {
 	hashmap_free(daemon_ctx.sock_map_port);
 	hashmap_deep_free(daemon_ctx.sock_map, (void (*)(void*))free_sock_ctx);
 	event_free(nl_ev);
+	event_free(upgrade_ev);
 	event_free(sev_pipe);
 	event_free(sev_int);
         event_base_free(ev_base);
@@ -362,7 +363,12 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname);
+	if (sock_ctx->is_accepting == 0) {
+		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 0);
+	}
+	else {
+		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 1);
+	}
 	//free(sock_ctx);
 	return;
 }
@@ -654,7 +660,16 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		return;
 	}
 	/* close things here */
-
+	if (sock_ctx->is_accepting == 1) {
+		/* This is an ophan server connection.
+		 * We don't host its corresponding listen socket
+		 * But we were given control of the remote peer
+		 * connection */
+		hashmap_del(ctx->sock_map, id);
+		SSL_CTX_free(sock_ctx->tls_ctx);
+		free(sock_ctx);
+		return;
+	}
 	if (sock_ctx->is_connected == 1) {
 		/* connections under the control of the tls_wrapper code
 		 * clean up themselves as a result of the close event
@@ -719,23 +734,26 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	sock_ctx_t* sock_ctx;
 	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
-	//char msg_buffer[1024];
+	char msg_buffer[256];
 	int new_fd;
 	int bytes_read;
 	unsigned long id;
+	int is_accepting;
 	struct sockaddr_un addr = {};
 	/* Why the 5? Because that's what linux uses for autobinds*/
 	/* Why the 1? Because of the null byte in front of abstract names */
 	int addr_len = sizeof(sa_family_t) + 5 + 1;
-
 	log_printf(LOG_INFO, "Someone wants an upgrade!\n");
-	bytes_read = recv_fd_from(fd, &id, sizeof(id), &new_fd, &addr, addr_len);
+	memset(msg_buffer, 0, 256);
+	bytes_read = recv_fd_from(fd, msg_buffer, 255, &new_fd, &addr, addr_len);
 	if (bytes_read == -1) {
 		log_printf(LOG_ERROR, "recv_fd: %s\n", strerror(errno));
 		return;
 	}
-	log_printf(LOG_INFO, "Got a new descriptor %d, to be associated with %lu from addr %s\n",
-		       	new_fd, id, addr.sun_path+1, addr_len);
+
+	sscanf(msg_buffer, "%d:%lu", &is_accepting, &id);
+	log_printf(LOG_INFO, "Got a new %s descriptor %d, to be associated with %lu from addr %s\n",
+		       	is_accepting == 1 ? "accepting" : "connecting", new_fd, id, addr.sun_path+1, addr_len);
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
 		return;
@@ -743,11 +761,15 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	sock_ctx->fd = new_fd;
 	sock_ctx->is_connected = 1;
+
+	if (is_accepting == 1) {
+		sock_ctx->tls_ctx = tls_server_ctx_create();
+		sock_ctx->is_accepting = 1;
+	}
+
 	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {
 		perror("sendto");
 	}
-	//send(new_fd, "boom baby\n", sizeof("boom baby\n"), 0);
-
 	return;
 }
 
