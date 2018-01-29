@@ -107,7 +107,7 @@ static evutil_socket_t create_upgrade_socket(void);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
 
-int server_create() {
+int server_create(int port) {
 	evutil_socket_t server_sock;
 	evutil_socket_t upgrade_sock;
 	struct evconnlistener* listener;
@@ -149,12 +149,13 @@ int server_create() {
 	tls_daemon_ctx_t daemon_ctx = {
 		.ev_base = ev_base,
 		.netlink_sock = NULL,
+		.port = port,
 		.sock_map = hashmap_create(HASHMAP_NUM_BUCKETS),
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
 	/* Set up server socket with event base */
-	server_sock = create_server_socket(8443, SOCK_STREAM);
+	server_sock = create_server_socket(port, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
@@ -176,11 +177,13 @@ int server_create() {
 	}
 
 	/* Set up upgrade notification socket with event base */
-	upgrade_sock = create_upgrade_socket();
-	upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
-	if (event_add(upgrade_ev, NULL) == -1) {
-		log_printf(LOG_ERROR, "Couldn't add upgrade event");
-		return 1;
+	if (port == 8443) {
+		upgrade_sock = create_upgrade_socket();
+		upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
+		if (event_add(upgrade_ev, NULL) == -1) {
+			log_printf(LOG_ERROR, "Couldn't add upgrade event");
+			return 1;
+		}
 	}
 
 	/* Main event loop */	
@@ -194,7 +197,9 @@ int server_create() {
 	hashmap_free(daemon_ctx.sock_map_port);
 	hashmap_deep_free(daemon_ctx.sock_map, (void (*)(void*))free_sock_ctx);
 	event_free(nl_ev);
-	event_free(upgrade_ev);
+	if (port == 8443) {
+		event_free(upgrade_ev);
+	}
 	event_free(sev_pipe);
 	event_free(sev_int);
         event_base_free(ev_base);

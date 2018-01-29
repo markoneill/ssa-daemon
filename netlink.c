@@ -92,7 +92,7 @@ struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx) {
 	int group;
 	int family;
 	struct nl_sock* netlink_sock = nl_socket_alloc();
-	nl_socket_set_local_port(netlink_sock, 0);
+	nl_socket_set_local_port(netlink_sock, ctx->port);
 	nl_socket_disable_seq_check(netlink_sock);
 	ctx->netlink_sock = netlink_sock;
 	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, handle_netlink_msg, (void*)ctx);

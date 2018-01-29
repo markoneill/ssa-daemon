@@ -41,6 +41,7 @@ typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct nl_sock* netlink_sock;
 	int netlink_family;
+	int port; /* Port to use for both listening and netlink */
 	hmap_t* sock_map;
 	hmap_t* sock_map_port;
 } tls_daemon_ctx_t;
@@ -55,7 +56,7 @@ struct sockaddr_host {
         struct host_addr sin_addr; 
 }; 
 
-int server_create(void);
+int server_create(int port);
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len);

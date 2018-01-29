@@ -1,6 +1,6 @@
 /*
  * TLS Wrapping Daemon - transparent TLS wrapping of plaintext connections
- * Copyright (C) 2017, Mark O'Neill <mark@markoneill.name>
+ * Copyright (C) 2017-2018, Mark O'Neill <mark@markoneill.name>
  * All rights reserved.
  * https://owntrust.org
  * 
@@ -25,18 +25,93 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <signal.h>
 #include "daemon.h"
 #include "log.h"
 
+void sig_handler(int signum);
+pid_t* workers;
+int worker_count;
+
 int main(int argc, char* argv[]) {
+	long cpus_on;
+	long cpus_conf;
+	int i;
+	pid_t pid;
+	struct sigaction sigact;
+	int status;
+	int ret;
+	int starting_port = 8443;
+
+	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
 		fprintf(stderr, "Failed to initialize log\n");
 		exit(EXIT_FAILURE);
 	}
-	if (server_create()) {
+
+	cpus_on = sysconf(_SC_NPROCESSORS_ONLN);
+	cpus_conf = sysconf(_SC_NPROCESSORS_CONF);
+	log_printf(LOG_INFO, "Detected %ld/%ld active CPUs\n", cpus_on, cpus_conf);
+
+
+	workers = malloc(sizeof(pid_t) * cpus_on);
+	worker_count = cpus_on;
+	if (workers == NULL) {
+		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");
 		exit(EXIT_FAILURE);
 	}
+	for (i = 0; i < worker_count; i++) {
+		pid = fork();
+		if (pid == -1) {
+			log_printf(LOG_ERROR, "%s", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		if (pid == 0) {
+			server_create(starting_port + i);
+			exit(EXIT_SUCCESS);
+		}
+		else {
+			workers[i] = pid;
+		}
+	}
+
+	memset(&sigact, 0, sizeof(sigact));
+	sigact.sa_handler = sig_handler;
+	sigaction(SIGINT, &sigact, NULL);
+	while ((ret = wait(&status)) > 0) {
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in waitpid %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		if (WIFEXITED(status)) {
+			log_printf(LOG_INFO, "worker exited, status %d\n", WEXITSTATUS(status));
+		}
+		else if (WIFSIGNALED(status)) {
+				log_printf(LOG_INFO, "worker killed by signal %d\n", WTERMSIG(status));
+		}
+		else if (WIFSTOPPED(status)) {
+			log_printf(LOG_INFO, "worker stopped by signal %d\n", WSTOPSIG(status));
+		}
+		else if (WIFCONTINUED(status)) {
+			log_printf(LOG_INFO, "worker continued\n");
+		}
+	}
+
 	log_close();
+	free(workers);
 	return 0;
 }
 
+void sig_handler(int signum) {
+	int i;
+	if (signum == SIGINT) {
+		for (i = 0; i < worker_count; i++) {
+			kill(workers[i], SIGINT);
+		}
+	}
+	return;
+}
