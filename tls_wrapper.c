@@ -239,6 +239,13 @@ char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len) {
 	char* bio_data;
 	char* pem_data;
 
+	/* Connect if we're not connected. 
+	 * This is only needed because we don't explicitly call it
+	 * during the connection, to support OpenSSL overriding */
+	if (SSL_in_before(tls_conn->tls)) {
+		SSL_do_handshake(tls_conn->tls);
+	}
+
 	cert = SSL_get_peer_certificate(tls_conn->tls);
 	if (cert == NULL) {
 		return NULL;
