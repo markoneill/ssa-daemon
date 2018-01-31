@@ -36,7 +36,7 @@
 #include "tls_wrapper.h"
 #include "log.h"
 
-#define MAX_BUFFER	1024*1024
+#define MAX_BUFFER	1024*1024*10
 
 static SSL* tls_server_create(SSL_CTX* tls_ctx);
 static SSL* tls_client_create(char* hostname);

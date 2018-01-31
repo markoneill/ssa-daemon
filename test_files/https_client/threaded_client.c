@@ -32,7 +32,7 @@ int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* 
 SSL* openssl_connect_to_host(int sock, char* hostname);
 void run_test(FILE* fp);
 
-#define STEP 5
+#define STEP 1
 long CALLS_PER_THREAD = 1;
 long NUM_THREADS = 50;
 long BYTES_TO_FETCH	= 1000000;
@@ -48,7 +48,7 @@ pthread_barrier_t begin_barrier;
 pthread_mutex_t	finished_lock = PTHREAD_MUTEX_INITIALIZER;
 sem_t finished_sem;
 int threads_finished = 0;
-char host[] = "www.google.com";
+char host[] = "www.phoenixteam.net";
 
 int main(int argc, char* argv[]) {
 	char* csv_file_name = NULL;
@@ -141,13 +141,13 @@ int main(int argc, char* argv[]) {
 				run_test(fp);
 				printf("finished: %ld Threads test\n",NUM_THREADS);
 				fflush(stdout);
-				usleep(5000000);
+				usleep(50000);
 			}
 		}
 	}else{
 		for(int r = 0;  r < report; r++){
 			run_test(fp);
-			usleep(5000000);
+			usleep(50000);
 		}
 	}
 	fclose(fp);
@@ -162,7 +162,7 @@ void run_test(FILE* fp){
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
 		//.sin_addr.s_addr = inet_addr("127.0.0.1"),
-		.sin_addr.s_addr = inet_addr("192.168.21.101"),
+		.sin_addr.s_addr = inet_addr("45.56.41.23"),
 		.sin_port = htons(port)
 	};
 	pthread_barrier_init(&begin_barrier, NULL, NUM_THREADS + 1);
@@ -199,6 +199,7 @@ void run_test(FILE* fp){
 		}
 		pthread_create(&t[i], NULL, thread_start, (void*)&t_params[i]);
 	}
+	usleep(5000000);
 	pthread_barrier_wait(&begin_barrier);
 	if(verbose) printf("Threads ready! Start timer!\n");
 	gettimeofday(&tv_before, NULL);
@@ -236,6 +237,7 @@ void* thread_start(void* arg) {
 	for(i = 0; i < CALLS_PER_THREAD; i++) {
 		total_bytes_read = 0;
 		if(ssl){
+			SSL_connect(tls);
 			if(SSL_write(tls,req,strlen(req)) <= 0){
 				printf("SSL Send Error");
 				pthread_mutex_lock(&finished_lock);
@@ -286,6 +288,8 @@ void* thread_start(void* arg) {
 			}
 		}
 	}
+	if(ssl) SSL_shutdown(tls);
+	close(sock_fd);
 	if(verbose) printf("Thread %d finished %d iterations\n", thread_id, i);
 	pthread_mutex_lock(&finished_lock);
 	threads_finished++;
@@ -293,8 +297,6 @@ void* thread_start(void* arg) {
 		sem_post(&finished_sem);
 	}
 	pthread_mutex_unlock(&finished_lock);
-	if(ssl) SSL_shutdown(tls);
-	close(sock_fd);
 	return NULL;
 }
 
@@ -332,7 +334,7 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 	ERR_load_crypto_strings();
 	SSL_load_error_strings();
 
-	tls_ctx = SSL_CTX_new(TLS_client_method());
+	tls_ctx = SSL_CTX_new(SSLv23_client_method());
 	if (tls_ctx == NULL) {
 		fprintf(stderr, "Could not create SSL_CTX\n");
 		exit(EXIT_FAILURE);
@@ -358,10 +360,10 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 	/* Associate socket with TLS context */
 	SSL_set_fd(tls, sock);
 
-	if (SSL_connect(tls) != 1) {
+	/*if (SSL_connect(tls) != 1) {
 		fprintf(stderr, "Failed in SSL_connect\n");
 		exit(EXIT_FAILURE);
-	}
+	}*/
 	//this code is not being used since we are not validating certs
 	/*cert = SSL_get_peer_certificate(tls);
 	if (cert == NULL) {

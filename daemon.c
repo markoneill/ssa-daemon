@@ -112,6 +112,7 @@ int server_create(int port) {
 	evutil_socket_t server_sock;
 	evutil_socket_t upgrade_sock;
 	struct evconnlistener* listener;
+
         const char* ev_version = event_get_version();
 	struct event_base* ev_base = event_base_new();
 	struct event* sev_pipe;
@@ -373,14 +374,14 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
-	//hashmap_del(ctx->sock_map, sock_ctx->id);
+	hashmap_del(ctx->sock_map, sock_ctx->id);
 	if (sock_ctx->is_accepting == 0) {
 		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 0);
 	}
 	else {
 		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 1);
 	}
-	//free(sock_ctx);
+	free(sock_ctx);
 	return;
 }
 
