@@ -95,7 +95,7 @@ static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static void signal_cb(evutil_socket_t fd, short event, void* arg);
-static evutil_socket_t create_server_socket(ev_uint16_t port, int protocol);
+static evutil_socket_t create_server_socket(ev_uint16_t port, int family, int protocol);
 
 /* SSA server functions */
 static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
@@ -157,7 +157,7 @@ int server_create(int port) {
 	};
 
 	/* Set up server socket with event base */
-	server_sock = create_server_socket(port, SOCK_STREAM);
+	server_sock = create_server_socket(port, PF_UNIX, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
@@ -271,7 +271,7 @@ evutil_socket_t create_upgrade_socket(void) {
  * @param port numeric port for listening
  * @param type SOCK_STREAM or SOCK_DGRAM
  */
-evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
+evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
 	evutil_socket_t sock;
 	char port_buf[6];
 	int ret;
@@ -280,13 +280,50 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int type) {
 	struct evutil_addrinfo hints;
 	struct evutil_addrinfo* addr_ptr;
 	struct evutil_addrinfo* addr_list;
+	struct sockaddr_un bind_addr = {
+		.sun_family = AF_UNIX,
+	};
 
 	/* Convert port to string for getaddrinfo */
 	evutil_snprintf(port_buf, sizeof(port_buf), "%d", (int)port);
 
 	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_UNSPEC; /* Both IPv4 and IPv6 */
+	hints.ai_family = family;
 	hints.ai_socktype = type;
+
+	if (family == AF_UNIX) {
+		sock = socket(AF_UNIX, type, 0);
+		if (sock == -1) {
+			log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+
+		ret = evutil_make_listen_socket_reuseable(sock);
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+			EVUTIL_CLOSESOCKET(sock);
+			exit(EXIT_FAILURE);
+		}
+
+		ret = evutil_make_socket_nonblocking(sock);
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+			EVUTIL_CLOSESOCKET(sock);
+			exit(EXIT_FAILURE);
+		}
+
+		strcpy(bind_addr.sun_path+1, port_buf);
+		ret = bind(sock, (struct sockaddr*)&bind_addr, sizeof(sa_family_t) + 1 + strlen(port_buf));
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
+			EVUTIL_CLOSESOCKET(sock);
+			exit(EXIT_FAILURE);
+		}
+		return sock;
+	}
+
 	/* AI_PASSIVE for filtering out addresses on which we
 	 * can't use for servers
 	 *
@@ -357,7 +394,13 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	sock_ctx_t* sock_ctx;
 	tls_daemon_ctx_t* ctx = arg;
 
-	port = (int)ntohs(((struct sockaddr_in*)address)->sin_port);
+	if (address->sa_family == AF_UNIX) {
+		port = strtol(((struct sockaddr_un*)address)->sun_path+1, NULL, 16);
+		log_printf(LOG_INFO, "unix port is %05x", port);
+	}
+	else {
+		port = (int)ntohs(((struct sockaddr_in*)address)->sin_port);
+	}
 	sock_ctx = hashmap_get(ctx->sock_map_port, port);
 	if (sock_ctx == NULL) {
 		log_printf(LOG_ERROR, "Got an unauthorized connection on port %d\n", port);
@@ -581,7 +624,14 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	sock_ctx_t* sock_ctx;
 	int response = 0;
 	int port;
-	port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+
+	if (int_addr->sa_family == AF_UNIX) {
+		port = strtol(((struct sockaddr_un*)int_addr)->sun_path+1, NULL, 16);
+		log_printf(LOG_INFO, "unix port is %05x", port);
+	}
+	else {
+		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+	}
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
