@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
 
 
 	workers = malloc(sizeof(pid_t) * cpus_on);
-	worker_count = cpus_on;
+	worker_count = 1;
 	if (workers == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");
 		exit(EXIT_FAILURE);

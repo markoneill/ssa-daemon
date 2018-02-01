@@ -157,7 +157,7 @@ int server_create(int port) {
 	};
 
 	/* Set up server socket with event base */
-	server_sock = create_server_socket(port, PF_UNIX, SOCK_STREAM);
+	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
@@ -291,7 +291,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
 	hints.ai_family = family;
 	hints.ai_socktype = type;
 
-	if (family == AF_UNIX) {
+	if (family == PF_UNIX) {
 		sock = socket(AF_UNIX, type, 0);
 		if (sock == -1) {
 			log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
@@ -417,14 +417,14 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
-	hashmap_del(ctx->sock_map, sock_ctx->id);
+	//hashmap_del(ctx->sock_map, sock_ctx->id);
 	if (sock_ctx->is_accepting == 0) {
 		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 0);
 	}
 	else {
 		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 1);
 	}
-	free(sock_ctx);
+	//free(sock_ctx);
 	return;
 }
 
