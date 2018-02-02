@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/un.h>
 #include <netinet/tcp.h> 
+#include <fcntl.h> 
 
 #include "hashmap.h"
 
@@ -308,11 +309,11 @@ X509* PEM_str_to_X509(char* pem_str) {
     return cert;
 }
 
-
 int upgrade_sock(int fd, SSL *ssl) {
     unsigned long id;
     int id_len = sizeof(id);
     int is_accepting;
+    int file_flags;
 
     /* This is the address of the SSA daemon */
     struct sockaddr_in addr = {
@@ -329,22 +330,23 @@ int upgrade_sock(int fd, SSL *ssl) {
 
     is_accepting = SSL_in_accept_init(ssl) ? 1 : 0;
 
-    char * message = NULL; 
-    asprintf(&message,"IS ACCEPTING:%d\n", is_accepting);
-    logSSL(message);
-    free(message);
+    file_flags = fcntl(fd, F_GETFL, 0);
+    if (file_flags == -1) {
+        perror("fcntl get flags");
+    }
+    
+    file_flags |= O_NONBLOCK;
+    if (fcntl(fd, F_SETFL, file_flags) == -1)
+    {
+        perror("fcntl set non blocking");
+    }
 
     SSA_send_fd(fd, id, is_accepting);
-    logSSL("Sent fd upgrade\n");
-    //sleep(2);
     if(connect(new_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
         perror("connect SSA FD");
     }
-    logSSL("Finished Connect to SSA\n");
-    //sleep(2);
     dup2(new_fd, fd);
-    logSSL("Finished Socket Dup\n");
-    //sleep(2);
+    logSSL("Upgraded new socket\n");
     return 0;
 }
 
