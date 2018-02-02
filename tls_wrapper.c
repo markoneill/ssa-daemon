@@ -49,7 +49,7 @@ static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd,
-		struct event_base* ev_base, char* hostname, int is_accepting) {
+		struct event_base* ev_base, char* hostname, int is_accepting, SSL* s_ctx) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -75,19 +75,20 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		return NULL;
 	}
 
-	/* Set up TLS/SSL state with openssl */
-	ctx->tls = tls_client_create(hostname);
-	if (ctx->tls == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
-		free_tls_conn_ctx(ctx);
-		return NULL;
-	}
 
 	if (is_accepting == 1) {
-		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
+		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, s_ctx,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 	else {
+	
+		/* Set up TLS/SSL state with openssl */
+		ctx->tls = tls_client_create(hostname);
+		if (ctx->tls == NULL) {
+			log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
+			free_tls_conn_ctx(ctx);
+			return NULL;
+		}
 		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
