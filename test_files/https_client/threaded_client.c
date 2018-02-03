@@ -32,7 +32,7 @@ int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* 
 SSL* openssl_connect_to_host(int sock, char* hostname);
 void run_test(FILE* fp);
 
-#define STEP 1
+int STEP = 1;
 long CALLS_PER_THREAD = 1;
 long NUM_THREADS = 50;
 long BYTES_TO_FETCH	= 1000000;
@@ -43,6 +43,8 @@ int ssl = 0;
 int report = 1;
 int reportAll = 0;
 int levels = 0;
+int testDownload = 0;
+int begin = 0;
 static char request[] = "GET /%ld.gar HTTP/1.1\r\nHost: %s\r\n\r\n";
 pthread_barrier_t begin_barrier;
 pthread_mutex_t	finished_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -54,7 +56,7 @@ int main(int argc, char* argv[]) {
 	char* csv_file_name = NULL;
 	extern char *optarg;
 	extern int optind;
-	int c, err = 0, len; 
+	int c, err = 0, len;
 	static char usage[] = "usage: %s [-b <bufsize> -c <calls per thread> -d <bytes to download>  -f <filename> -h -t <number of threads>]\n";
 
 	static struct option long_options[] =
@@ -70,11 +72,14 @@ int main(int argc, char* argv[]) {
 
 		};
 	int option_index = 0;
-	while ((c = getopt_long(argc, argv, "a:b:c:d:f:ht:p:vsr:",long_options,&option_index)) != -1){
+	while ((c = getopt_long(argc, argv, "a:b:B:c:d:Df:ht:p:vsr:S:",long_options,&option_index)) != -1){
 		switch (c) {
 		case 'a':
 			reportAll = 1;
 			levels = strtol(optarg,NULL,10);
+			break;
+		case 'B':
+			begin = strtol(optarg,NULL,0);
 			break;
 		case 'b':
 			BUFFER_SIZE = strtol(optarg,NULL,10);
@@ -82,9 +87,12 @@ int main(int argc, char* argv[]) {
 		case 'c':
 			CALLS_PER_THREAD = strtol(optarg,NULL,10);
 			break;
+		case 'D':
+			testDownload = 1;
+			break;
 		case 'd':
 			BYTES_TO_FETCH = strtol(optarg,NULL,10);
-			break;	
+			break;
 		case 'f':
 			len = strlen(optarg)+1;
 			csv_file_name = malloc(sizeof(char)*len);
@@ -95,6 +103,9 @@ int main(int argc, char* argv[]) {
 			return 1;
 		case 'r':
 			report = strtol(optarg,NULL,0);
+			break;
+		case 'S':
+			STEP = strtol(optarg,NULL,0);
 			break;
 		case 's':
 			ssl = 1;
@@ -129,25 +140,26 @@ int main(int argc, char* argv[]) {
 	fp = fopen(csv_file_name, "a");
 	if(header == -1) fprintf(fp, "ssl,numThreads,callsPerThread,bufferSize,amountDownloaded,timeElapsed,KbytesPerSec\n");
 	signal(SIGPIPE, SIG_IGN); /* Non-portable but I don't care right now */
-	
+	long* inc = &NUM_THREADS;
+	if(testDownload) inc = &BYTES_TO_FETCH;
 	if(reportAll){
-		for(int x = 0; x < levels; x++){
+		for(int x = begin; x < levels+begin; x++){
 			if(x == 0){
-				NUM_THREADS = 1;
+				(*inc) = 1;
 			}else{
-				NUM_THREADS = x *STEP;
+				(*inc) = begin + (x-begin) * STEP;
 			}
 			for(int r = 0;  r < report; r++){
 				run_test(fp);
-				printf("finished: %ld Threads test\n",NUM_THREADS);
+				printf("finished: %ld Threads test downloading %ld bytes\n",NUM_THREADS, BYTES_TO_FETCH);
 				fflush(stdout);
-				usleep(50000);
+				usleep(5000);
 			}
 		}
 	}else{
 		for(int r = 0;  r < report; r++){
 			run_test(fp);
-			usleep(50000);
+			usleep(5000);
 		}
 	}
 	fclose(fp);
@@ -199,7 +211,7 @@ void run_test(FILE* fp){
 		}
 		pthread_create(&t[i], NULL, thread_start, (void*)&t_params[i]);
 	}
-	usleep(5000000);
+	usleep(50000);
 	pthread_barrier_wait(&begin_barrier);
 	if(verbose) printf("Threads ready! Start timer!\n");
 	gettimeofday(&tv_before, NULL);
@@ -226,7 +238,7 @@ void* thread_start(void* arg) {
 	SSL* tls;
 	char req[1024];
 	//printf(request,BYTES_TO_FETCH,host);
-	sprintf(req,request,BYTES_TO_FETCH,host);
+	sprintf(req,request,1000000000,host);
 	param_t* params = (param_t*)arg;
 	thread_id = params->id;
 	sock_fd = params->sock;
@@ -340,8 +352,8 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 		exit(EXIT_FAILURE);
 	}
 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
-	
-	
+
+
 	if (SSL_CTX_load_verify_locations(tls_ctx, root_store_filename_redhat, NULL) != 1) {
 		fprintf(stderr, "SSL_CTX_load_verify_locations failed\n");
 		exit(EXIT_FAILURE);

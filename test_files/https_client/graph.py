@@ -20,26 +20,40 @@ if __name__ == '__main__':
     from sys import argv
     myargs = getopts(argv)
     fname = 'stats.csv'
-    output = 'ElapsedTime.png'
+    tGraph = 'ThreadsElapsedTime.png'
+    bGraph = 'BytesDownloaded.png'
     if '-f' in myargs:
         fname = myargs['-f']
-    if '-o' in myargs: #outputfilename for the png
-        output = myargs['-o']
+    if '-t' in myargs: #outputfilename for the png
+        tGraph = myargs['-t']
+    if '-b' in myargs:
+        bGraph = myargs['-b']
 
     fig, ax = plt.subplots(1)
     df = pd.read_csv(open(fname,'rb'),sep=',').groupby('ssl')
     sslData = df.get_group(1).groupby("numThreads")["timeElapsed"].mean()
     ssaData = df.get_group(0).groupby("numThreads")["timeElapsed"].mean()
 
-    print(sslData)
-    print(ssaData)
     ppl.plot(ssaData,'b-', label="ssaData")
     ppl.plot(sslData,'r--', label="opensslData")
     ppl.legend(ax, loc ="upper left")
     plt.ylabel('Time Elapsed')
     plt.xlabel('Number of Threads')
-    plt.title('Time Elapsed')
-    fig.savefig(output)
+    plt.title('Time Elapsed Workload')
+
+    fig.savefig(tGraph)
+    fig, ax = plt.subplots(1)
+    #df = pd.read_csv(open(fname,'rb'),sep=',').groupby('ssl')
+    sslData = df.get_group(1).groupby("amountDownloaded")["timeElapsed"].mean()
+    ssaData = df.get_group(0).groupby("amountDownloaded")["timeElapsed"].mean()
+    print(ssaData)
+    ppl.plot(ssaData,'b-', label="ssaData")
+    ppl.plot(sslData,'r--', label="opensslData")
+    ppl.legend(ax, loc ="upper left")
+    plt.ylabel('Time Elapsed')
+    plt.xlabel('Number of Bytes Downloaded')
+    plt.title('Time Elapsed Workload')
+    fig.savefig(tGraph)
 
     #data = np.loadtxt(open(fname,'rb'), delimiter=",", skiprows =1)
 '''
