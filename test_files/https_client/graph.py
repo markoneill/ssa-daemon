@@ -38,45 +38,20 @@ if __name__ == '__main__':
     ppl.plot(sslData,'r--', label="opensslData")
     ppl.legend(ax, loc ="upper left")
     plt.ylabel('Time Elapsed')
-    plt.xlabel('Number of Threads')
+    plt.xlabel('Number of Processes')
     plt.title('Time Elapsed Workload')
 
     fig.savefig(tGraph)
     fig, ax = plt.subplots(1)
-    #df = pd.read_csv(open(fname,'rb'),sep=',').groupby('ssl')
+
     sslData = df.get_group(1).groupby("amountDownloaded")["timeElapsed"].mean()
     ssaData = df.get_group(0).groupby("amountDownloaded")["timeElapsed"].mean()
-    print(ssaData)
+
     ppl.plot(ssaData,'b-', label="ssaData")
     ppl.plot(sslData,'r--', label="opensslData")
     ppl.legend(ax, loc ="upper left")
     plt.ylabel('Time Elapsed')
     plt.xlabel('Number of Bytes Downloaded')
     plt.title('Time Elapsed Workload')
-    fig.savefig(tGraph)
+    fig.savefig(bGraph)
 
-    #data = np.loadtxt(open(fname,'rb'), delimiter=",", skiprows =1)
-'''
-    sslData = np.empty((0,data.shape[1]))
-    ssaData = np.empty((0,data.shape[1]))
-    # Show the whole color range
-    for row in data:
-        if(row[0] == 0):
-            ssaData = np.append(ssaData, [row],axis=0)
-        else:
-            sslData = np.append(sslData, [row],axis=0)
-    sslData = np.sort(np.array(sslData).view('i8,'*(sslData.shape[1]-1)+'i8'), order=['f1'], axis=1).view(np.float)
-    ssaData = np.sort(np.array(ssaData).view('i8,'*(ssaData.shape[1]-1)+'i8'), order=['f1'], axis=0).view(np.float)
-    df = pd.DataFrame(ssaData)
-    print(df[1].mean())
-    #for index in np.unique(ssaData[:,1],axis = 0)):
-    #    np.average(np)
-
-    ppl.plot(ssaData[:,1], ssaData[:,5],'b-', label="ssaData")
-    ppl.plot(sslData[:,1], sslData[:,5],'r--', label="opensslData")
-    ppl.legend(ax, loc ="upper left")
-    plt.ylabel('Time Elapsed')
-    plt.xlabel('Number of Threads')
-    plt.title('Time Elapsed')
-    fig.savefig('plot_prettyplotlib_default.png')
-    '''
