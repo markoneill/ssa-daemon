@@ -28,7 +28,7 @@ typedef struct param {
 	/* add other things here as needed */
 } param_t;
 
-#define WAIT_TIME 5000000
+#define WAIT_TIME 10000000
 void gethostaddr(char* host, struct sockaddr_in *addr);
 void* thread_start(void* arg);
 int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* y);
@@ -172,7 +172,7 @@ int main(int argc, char* argv[]) {
 }
 void run_test(FILE* fp){
 	int i;
-	pthread_t t[NUM_THREADS];
+	pthread_t t[1000];
 	struct timeval tv_before;
 	struct timeval tv_after;
 	struct timeval tv_elapsed;
@@ -200,10 +200,11 @@ void run_test(FILE* fp){
 				perror("failed to create a socket");
 				exit(EXIT_FAILURE);
 			}
-				if (setsockopt(t_params[i].sock, IPPROTO_TLS, SO_HOSTNAME, host, strlen(host)+1) == -1) {
+			if (setsockopt(t_params[i].sock, IPPROTO_TLS, SO_HOSTNAME, host, strlen(host)+1) == -1) {
 				perror("setsockopt: SO_HOSTNAME");
 				exit(EXIT_FAILURE);
 			}
+			//printf("creating sock %d for thread %d\n", t_params[i].sock, i);
 			if (connect(t_params[i].sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
 				perror("connect");
 				exit(EXIT_FAILURE);

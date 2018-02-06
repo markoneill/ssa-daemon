@@ -636,6 +636,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
 		response = -EBADF;
+		printf("id %lu not in daemon\n");
 	}
 	else {
 		/* only connect if we're not already.
