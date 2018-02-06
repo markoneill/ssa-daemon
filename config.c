@@ -1,4 +1,5 @@
 #include "config.h"
+#include "log.h"
 #include <libconfig.h>
 #include <string.h>
 #define MATCH(s, n) strcmp(s, n) == 0
@@ -6,6 +7,7 @@
 void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
     const char* name = config_setting_name(cur_setting);
     const char* value;
+    log_printf(LOG_DEBUG, "Parsing line: %s\n", name);
     if (MATCH(name, "Application")) {
         config->profile = strdup(config_setting_get_string(cur_setting));
     }
@@ -21,7 +23,7 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
             config->min_version = TLS1_VERSION;
         }
         else {
-            // TODO unsupported
+            log_printf(LOG_ERROR, "Unsupported MinVersion: %s\n", value);
         }
     }
     else if (MATCH(name, "CipherSuite")) {
@@ -71,8 +73,13 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
             else if (MATCH(extension, "TICKET")) {
                 config->extensions |= SSA_EXT_TICKET;
             }
+            else {
+                log_printf(LOG_ERROR, "Unsupported Extension: %s\n", extension);
+            }
         }
-        
+    }
+    else {
+        log_printf(LOG_ERROR, "Unsupported configline: %s\n", name);
     }
 }
 
@@ -105,22 +112,22 @@ void free_config() {
     global_config_size = 0;
 }
 
-void parse_config(char* filename) {
-    free_config();
+size_t parse_config(char* filename) {
+    free_config(); // Just incase you call parse_config multiple times
     config_t cfg;
-    config_setting_t *profiles;
-    int num_profiles;
     config_setting_t *default_profile;
     config_setting_t *cur_profile;
     config_setting_t *cur_setting;
+    config_setting_t *profiles;
+    int num_profiles;
     const char* str;
     int myint;
 
     config_init(&cfg);
 
     if (!config_read_file(&cfg, filename)) {
-        // ERROR
-        printf("error loading file %s: %s %d\n", filename, config_error_text(&cfg), config_error_line(&cfg));
+        log_printf(LOG_ERROR, "Error loading config file %s: %s %d\n", filename, config_error_text(&cfg), config_error_line(&cfg));
+        return -1;
     }
 
     profiles = config_lookup(&cfg, "Profiles");
@@ -156,6 +163,7 @@ void parse_config(char* filename) {
         }
     }
     config_destroy(&cfg);
+    return global_config_size;
 }
 
 void main()
