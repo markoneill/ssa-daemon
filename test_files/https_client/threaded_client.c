@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include "../../extras/in_tls.h"
 #include <sys/stat.h>
+#include <arpa/inet.h>
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -104,7 +105,7 @@ int main(int argc, char* argv[]) {
 			break;
 		case 'h':
 			strcpy(host,optarg);
-			return 1;
+			break;
 		case 'r':
 			report = strtol(optarg,NULL,0);
 			break;
@@ -137,6 +138,7 @@ int main(int argc, char* argv[]) {
 		memcpy(csv_file_name,"stats.csv",10);
 	}
 	gethostaddr(host,&addr);
+	printf("still working\n");
 	FILE *fp;
 	struct stat buffer;
 
@@ -407,5 +409,8 @@ void gethostaddr(char* host,struct sockaddr_in *addr){
 		*addr = *(struct sockaddr_in*) addr_ptr->ai_addr;
 		break;
 	}
+	char str[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &(addr->sin_addr), str, INET_ADDRSTRLEN);
+	printf("%s\n", str);
 	freeaddrinfo(addr_list);
 }
