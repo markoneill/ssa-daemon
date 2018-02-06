@@ -25,7 +25,7 @@ typedef struct {
 
 ssa_config_t* global_config = NULL;
 size_t global_config_size = 0;
-void parse_config(char* filename);
+size_t parse_config(char* filename);
 void free_config();
 
 #endif
