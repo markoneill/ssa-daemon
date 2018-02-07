@@ -1,4 +1,5 @@
 import prettyplotlib as ppl
+from cycler import cycler
 import numpy as np
 import csv
 # prettyplotlib imports
@@ -22,61 +23,46 @@ if __name__ == '__main__':
     fname = 'stats.csv'
     tGraph = 'ThreadsElapsedTime.png'
     bGraph = 'BytesDownloaded.png'
+    bytes_downloaded = 0
     if '-f' in myargs:
         fname = myargs['-f']
-    if '-t' in myargs: #outputfilename for the png
-        tGraph = myargs['-t']
+    if '-o' in myargs: #outputfilename for the png
+        tGraph = myargs['-o']
+        bGraph = myargs['-o']
     if '-b' in myargs:
-        bGraph = myargs['-b']
+        bytes_downloaded = 1
 
     fig, ax = plt.subplots(1)
-    df = pd.read_csv(open(fname,'rb'),sep=',').groupby('ssl')
-    sslData = df.get_group(1).groupby("numThreads")["timeElapsed"].mean()
-    ssaData = df.get_group(0).groupby("numThreads")["timeElapsed"].mean()
-
-    ppl.plot(ssaData,'b-', label="ssaData")
-    ppl.plot(sslData,'r--', label="opensslData")
-    ppl.legend(ax, loc ="upper left")
-    plt.ylabel('Time Elapsed')
-    plt.xlabel('Number of Threads')
-    plt.title('Time Elapsed Workload')
-
-    fig.savefig(tGraph)
-    fig, ax = plt.subplots(1)
-    #df = pd.read_csv(open(fname,'rb'),sep=',').groupby('ssl')
-    sslData = df.get_group(1).groupby("amountDownloaded")["timeElapsed"].mean()
-    ssaData = df.get_group(0).groupby("amountDownloaded")["timeElapsed"].mean()
-    print(ssaData)
-    ppl.plot(ssaData,'b-', label="ssaData")
-    ppl.plot(sslData,'r--', label="opensslData")
-    ppl.legend(ax, loc ="upper left")
-    plt.ylabel('Time Elapsed')
-    plt.xlabel('Number of Bytes Downloaded')
-    plt.title('Time Elapsed Workload')
-    fig.savefig(tGraph)
-
-    #data = np.loadtxt(open(fname,'rb'), delimiter=",", skiprows =1)
-'''
-    sslData = np.empty((0,data.shape[1]))
-    ssaData = np.empty((0,data.shape[1]))
-    # Show the whole color range
-    for row in data:
-        if(row[0] == 0):
-            ssaData = np.append(ssaData, [row],axis=0)
+    df = pd.read_csv(open(fname,'rb'),sep=',').groupby('target')
+    plt.rc('lines', linewidth=4)
+    plt.rc('axes', prop_cycle=(cycler('color', ['r', 'g'])))
+    for name,target in df:
+        split = target.groupby('ssl');
+        if name == "www.phoenixteam.net":
+            name = "(remote)"
         else:
-            sslData = np.append(sslData, [row],axis=0)
-    sslData = np.sort(np.array(sslData).view('i8,'*(sslData.shape[1]-1)+'i8'), order=['f1'], axis=1).view(np.float)
-    ssaData = np.sort(np.array(ssaData).view('i8,'*(ssaData.shape[1]-1)+'i8'), order=['f1'], axis=0).view(np.float)
-    df = pd.DataFrame(ssaData)
-    print(df[1].mean())
-    #for index in np.unique(ssaData[:,1],axis = 0)):
-    #    np.average(np)
-
-    ppl.plot(ssaData[:,1], ssaData[:,5],'b-', label="ssaData")
-    ppl.plot(sslData[:,1], sslData[:,5],'r--', label="opensslData")
-    ppl.legend(ax, loc ="upper left")
-    plt.ylabel('Time Elapsed')
-    plt.xlabel('Number of Threads')
-    plt.title('Time Elapsed')
-    fig.savefig('plot_prettyplotlib_default.png')
-    '''
+            name = "(local)"
+        for name2,t in split:
+            if bytes_downloaded == 0:
+                data = t.groupby("numThreads")["timeElapsed"].mean()
+            else:
+                data = t.groupby("amountDownloaded")["timeElapsed"].mean()
+            params = '-'
+            if name2 == 0:
+                name2 = "SSA "
+            else:
+                name2 = "OpenSSL "
+                params = '--'
+            ppl.plot(data,params ,label=name2+name)
+    if bytes_downloaded == 0:
+        ppl.legend(ax, loc ="upper left")
+        plt.ylabel('Time Elapsed')
+        plt.xlabel('Number of Processes')
+        plt.title('Time Elapsed Workload')
+        fig.savefig(tGraph)
+    else:
+        ppl.legend(ax, loc ="upper left")
+        plt.ylabel('Time Elapsed')
+        plt.xlabel('Number of Bytes Downloaded')
+        plt.title('Time Elapsed Workload')
+        fig.savefig(bGraph)
