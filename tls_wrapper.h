@@ -33,6 +33,8 @@
 
 #include <openssl/ssl.h>
 
+#include "daemon.h"
+
 typedef struct channel {
 	struct bufferevent* bev;
 	int closed;
@@ -52,7 +54,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* 
 
 
 /* Helper functions to separate daemon from security library */
-char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len);
+void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn);
 int set_private_key(SSL_CTX* tls_ctx, char* filepath);
 int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath);
 int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname);

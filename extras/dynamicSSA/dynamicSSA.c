@@ -22,7 +22,6 @@
 
 typedef struct conn_stat {
     int upgraded;
-    int hostname;
     int keys;
 } conn_stat_t;
 
@@ -90,7 +89,7 @@ int upgrade_check(SSL *ssl)
 {
     int dup_fd;
     struct tcp_info info;
-    const char * hostname = NULL;
+    char * hostname = NULL;
     char * message = NULL; 
     conn_stat_t * con = NULL;
     int fd = SSL_get_fd(ssl);
@@ -107,9 +106,8 @@ int upgrade_check(SSL *ssl)
             memset(&info,0,infoLen);
             getsockopt(fd, SOL_TCP, TCP_INFO, (void *)&info, (socklen_t *)&infoLen);
 
-            if ( con->hostname ) {
-                hostname = SSL_get_servername(ssl,TLSEXT_NAMETYPE_host_name);
-            }
+            // Access hostname from SSL structure. Also one in the session part of SSL object?
+            hostname = (char *) SSL_get_servername(ssl,TLSEXT_NAMETYPE_host_name);
 
             // What states do we want to upgrade and which ones do we want to leave alone?
             if (info.tcpi_state == TCP_ESTABLISHED) {
@@ -198,16 +196,10 @@ X509 *SSL_get_peer_certificate(const SSL *s)
 
     upgrade_check((SSL *)s);
 
-
-    struct tcp_info info;
-    int infoLen = sizeof(info);
-    memset(&info,0,infoLen);
-    getsockopt(ssl_fd, SOL_TCP, TCP_INFO, (void *)&info, (socklen_t *)&infoLen);
-
     if (getsockopt(ssl_fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, cert, &cert_len) == -1) {
         perror("getsockopt: SO_PEER_CERTIFICATE:");
     }
-    
+
     /* Cert conversion to an X509 OpenSSL Object */
     X509* cert_openssl = PEM_str_to_X509(cert);
 
@@ -254,7 +246,6 @@ int upgrade_sock(int fd, SSL *ssl) {
         perror("getsockopt: SO_ID");
         exit(EXIT_FAILURE);
     }
-    //printf("socket ID is %lu\n", id);
 
     is_accepting = SSL_in_accept_init(ssl) ? 1 : 0;
 

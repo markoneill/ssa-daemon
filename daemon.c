@@ -35,6 +35,7 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 #include <netdb.h>
+#include <assert.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
@@ -155,6 +156,11 @@ int server_create(int port) {
 		.sock_map = hashmap_create(HASHMAP_NUM_BUCKETS),
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
+
+	/* Register index for SLL ex_data for id and daemon
+	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
+	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL)==1);
+	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL)==2);
 
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
@@ -572,13 +578,10 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 				netlink_notify_kernel(ctx, id, -ENOTCONN);
 				return;
 			}
-			data = get_peer_certificate(sock_ctx->tls_conn, &len);
-			if (data == NULL) {
-				netlink_notify_kernel(ctx, id, -ENOTCONN);
-				return;
-			}
-			netlink_send_and_notify_kernel(ctx, id, data, len);
-			free(data);
+			
+			/* get_peer_certificate will register a callback 
+			 * that send the kernel notification on its success/failure*/
+			get_peer_certificate(ctx, id, sock_ctx->tls_conn);
 			return;
 		default:
 			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");

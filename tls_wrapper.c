@@ -36,7 +36,9 @@
 #include "tls_wrapper.h"
 #include "log.h"
 
-#define MAX_BUFFER	1024*1024*10
+#define MAX_BUFFER		1024*1024*10
+#define SO_ID			89
+#define IPPROTO_TLS 	(715 % 255)
 
 static SSL* tls_server_create(SSL_CTX* tls_ctx);
 static SSL* tls_client_create(char* hostname);
@@ -234,47 +236,108 @@ int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname) {
 	return 1;
 }
 
-char* get_peer_certificate(tls_conn_ctx_t* tls_conn, unsigned int* len) {
+
+int peer_certificate_cb(tls_daemon_ctx_t* ctx, unsigned long id, SSL* ssl) {
 	X509 * cert;
 	BIO * bio;
 	char* bio_data;
 	char* pem_data;
+	unsigned int len = 0;
+
+	if (!SSL_is_init_finished(ssl)) {
+		log_printf(LOG_ERROR, "Requested certificate before handshake completed\n");
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+	}
+
+	cert = SSL_get_peer_certificate(ssl);
+	if (cert == NULL) {
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+		return 0;
+	}
+	bio = BIO_new(BIO_s_mem());
+	if (bio == NULL) {
+		X509_free(cert);
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+		return 0;
+	}
+	if (PEM_write_bio_X509(bio, cert) == 0) {
+		X509_free(cert);
+		BIO_free(bio);
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+		return 0;
+	}
+
+	len = BIO_get_mem_data(bio, &bio_data);
+	pem_data = malloc((len) + 1); /* +1 for null terminator */
+	if (pem_data == NULL) {
+		X509_free(cert);
+		BIO_free(bio);
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+		return 0;
+	}
+
+	memcpy(pem_data, bio_data, len);
+	pem_data[len] = '\0';
+	X509_free(cert);
+	BIO_free(bio);
+
+	if (pem_data == NULL) {
+		log_printf(LOG_DEBUG, "pem_data Call\n");
+		netlink_notify_kernel(ctx, id, -ENOTCONN);
+		return 0;
+	}
+	netlink_send_and_notify_kernel(ctx, id, pem_data, len);
+	free(pem_data);
+	return 1;
+}
+
+void certificate_handshake_cb(SSL *s, int where, int ret)
+{
+	unsigned long * id;
+	tls_daemon_ctx_t* ctx;
+	int id_len = sizeof(id);
+	int fd = SSL_get_wfd(s);
+
+	if(where == SSL_CB_HANDSHAKE_DONE)
+	{
+
+		/* Get the id and daemon_ctx from the SSL object */
+		id = SSL_get_ex_data(s, 1);
+		ctx = SSL_get_ex_data(s, 2);
+
+		peer_certificate_cb(ctx,*id,s);
+
+		/* free the id becuase we only use it for this function. */
+		free(id);
+		SSL_set_ex_data(s, 1, NULL);
+	}
+	
+}
+
+void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn) {
+
+	unsigned long * idp;
 
 	/* Connect if we're not connected. 
 	 * This is only needed because we don't explicitly call it
 	 * during the connection, to support OpenSSL overriding */
 	if (SSL_in_before(tls_conn->tls)) {
+		
+		idp = malloc(sizeof(id));
+		*idp = id;
+		SSL_set_ex_data(tls_conn->tls, 1, idp);
+		SSL_set_ex_data(tls_conn->tls, 2, ctx);
+		SSL_set_info_callback(tls_conn->tls, certificate_handshake_cb);
 		SSL_do_handshake(tls_conn->tls);
+		return;
 	}
 
-	cert = SSL_get_peer_certificate(tls_conn->tls);
-	if (cert == NULL) {
-		return NULL;
-	}
-	bio = BIO_new(BIO_s_mem());
-	if (bio == NULL) {
-		X509_free(cert);
-		return NULL;
-	}
-	if (PEM_write_bio_X509(bio, cert) == 0) {
-		X509_free(cert);
-		BIO_free(bio);
-		return NULL;
-	}
+	/* If we have already completed the handshake we do not 
+	 * need to register a callback and can get the certificate
+	 * imediataly  */
+	peer_certificate_cb(ctx,id,tls_conn->tls);
 
-	*len = BIO_get_mem_data(bio, &bio_data);
-	pem_data = malloc((*len) + 1); /* +1 for null terminator */
-	if (pem_data == NULL) {
-		X509_free(cert);
-		BIO_free(bio);
-		return NULL;
-	}
-
-	memcpy(pem_data, bio_data, *len);
-	pem_data[*len] = '\0';
-	X509_free(cert);
-	BIO_free(bio);
-	return pem_data;
+	return;
 }
 
 int server_name_cb(SSL* tls, int* ad, void* arg) {
