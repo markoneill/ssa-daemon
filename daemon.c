@@ -779,6 +779,7 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 	}
 
 	sock_ctx->id = id;
+	sock_ctx->is_connected = 1;
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 	
 	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
