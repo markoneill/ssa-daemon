@@ -49,8 +49,9 @@ typedef struct tls_conn_ctx {
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, 
 	struct event_base* ev_base, char* hostname, int is_accepting, SSL* s_ctx);
-tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, 
-	SSL_CTX* tls_ctx, struct sockaddr* internal_addr, int internal_addrlen);
+tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
+	       	struct event_base* ev_base, SSL_CTX* tls_ctx, 
+		struct sockaddr* internal_addr, int internal_addrlen);
 
 
 /* Helper functions to separate daemon from security library */

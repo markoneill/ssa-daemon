@@ -88,6 +88,7 @@ typedef struct sock_ctx {
 	SSL_CTX* tls_ctx;
 	char hostname[MAX_HOSTNAME];
 	tls_conn_ctx_t* tls_conn;
+	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
@@ -444,19 +445,63 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+void server_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	struct sockaddr *address, int socklen, void *arg) {
+	struct sockaddr_in int_addr = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK)
+	};
+	int intaddr_len = sizeof(int_addr);
 	sock_ctx_t* sock_ctx = (sock_ctx_t*)arg;
+	evutil_socket_t ifd;
+	int port;
+	sock_ctx_t* new_sock_ctx;
         struct event_base *base = evconnlistener_get_base(listener);
+
 	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
 	log_printf_addr(&sock_ctx->int_addr);
-	if (evutil_make_socket_nonblocking(fd) == -1) {
+	if (evutil_make_socket_nonblocking(efd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(fd);
+		EVUTIL_CLOSESOCKET(efd);
 		return;
 	}
-	sock_ctx->tls_conn = tls_server_wrapper_setup(fd, base, sock_ctx->tls_ctx, 
+
+	new_sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
+	if (new_sock_ctx == NULL) {
+		return;
+	}
+	new_sock_ctx->fd = efd;
+
+	ifd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (ifd == -1) {
+		return;
+	}
+
+	if (bind(ifd, (struct sockaddr*)&int_addr, sizeof(int_addr)) == -1) {
+		perror("bind");
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	if (getsockname(ifd, (struct sockaddr*)&int_addr, &intaddr_len) == -1) {
+		perror("getsockname");
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	if (evutil_make_socket_nonblocking(ifd) == -1) {
+		log_printf(LOG_ERROR, "Failed in ifd evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	port = (int)ntohs((&int_addr)->sin_port);
+	hashmap_add(sock_ctx->daemon->sock_map_port, port, (void*)new_sock_ctx);
+	
+	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, base, sock_ctx->tls_ctx, 
 			&sock_ctx->int_addr, sock_ctx->int_addrlen);
 	return;
 }
@@ -704,10 +749,39 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	}
 
 	sock_ctx->tls_ctx = tls_server_ctx_create();
+	sock_ctx->daemon = ctx; /* XXX I don't want this here */
 	sock_ctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
 	evconnlistener_set_error_cb(sock_ctx->listener, server_accept_error_cb);
+	return;
+}
+
+/* XXX THIS NEEDS A PORT... just create an associate command instead
+ * and have it give id and source port */
+void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+
+	/*sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx != NULL) {
+		log_printf(LOG_ERROR, "We have accepted a socket with this ID already: %lu\n", id);
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+
+	sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
+	if (sock_ctx == NULL) {
+		response = -ENOMEM;
+	}
+	else {
+		sock_ctx->id = id;
+		sock_ctx->fd = fd;
+		hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
+	}
+	*/
+	log_printf(LOG_INFO, "Socket %lu accepted on behalf of application %s\n", id, comm);
+	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 

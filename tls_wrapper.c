@@ -122,8 +122,9 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 	return ctx;
 }
 
-tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* ev_base, SSL_CTX* tls_ctx,
-	struct sockaddr* internal_addr, int internal_addrlen) {
+tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
+	       	struct event_base* ev_base, SSL_CTX* tls_ctx, 
+		struct sockaddr* internal_addr, int internal_addrlen) {
 
 	/*  ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -139,12 +140,12 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* 
 	}
 	
 	ctx->tls = tls_server_create(tls_ctx);
-	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, fd, ctx->tls,
+	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [server mode]\n");
-		EVUTIL_CLOSESOCKET(fd);
+		EVUTIL_CLOSESOCKET(efd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
@@ -154,10 +155,11 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t fd, struct event_base* 
 	bufferevent_openssl_set_allow_dirty_shutdown(ctx->cf.bev, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	ctx->sf.bev = bufferevent_socket_new(ev_base, -1,
+	ctx->sf.bev = bufferevent_socket_new(ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (ctx->sf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [server mode]\n");
+		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
