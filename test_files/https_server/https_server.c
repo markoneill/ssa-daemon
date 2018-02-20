@@ -12,10 +12,13 @@
 #define CERT_FILE	"../certificate.pem"
 #define KEY_FILE	"../key.pem"
 #define BUFFER_SIZE	2048
+#define SO_ID	89
 
 void handle_req(char* req, char* resp);
 
 int main() {
+	unsigned long id;
+	int id_len = sizeof(id);
 	char request[BUFFER_SIZE];
 	char response[BUFFER_SIZE];
 	memset(request, 0, BUFFER_SIZE);
@@ -39,6 +42,11 @@ int main() {
 		struct sockaddr_storage addr;
 		socklen_t addr_len = sizeof(addr);
 		int c_fd = accept(fd, (struct sockaddr*)&addr, &addr_len);
+		if (getsockopt(c_fd, IPPROTO_TLS, SO_ID, &id, &id_len) == -1) {
+			perror("getsockopt: SO_ID");
+			exit(EXIT_FAILURE);
+		}
+		printf("socket ID is %lu\n", id);
 		recv(c_fd, request, BUFFER_SIZE, 0);
 		handle_req(request, response);
 		send(c_fd, response, BUFFER_SIZE, 0);

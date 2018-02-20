@@ -757,30 +757,31 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	return;
 }
 
-/* XXX THIS NEEDS A PORT... just create an associate command instead
- * and have it give id and source port */
-void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
+void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen) {
 	sock_ctx_t* sock_ctx;
 	int response = 0;
+	int port;
 
-	/*sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
-	if (sock_ctx != NULL) {
-		log_printf(LOG_ERROR, "We have accepted a socket with this ID already: %lu\n", id);
+	if (int_addr->sa_family == AF_UNIX) {
+		port = strtol(((struct sockaddr_un*)int_addr)->sun_path+1, NULL, 16);
+		log_printf(LOG_INFO, "unix port is %05x", port);
+	}
+	else {
+		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+	}
+	sock_ctx = hashmap_get(ctx->sock_map_port, port);
+	hashmap_del(ctx->sock_map_port, port);
+	if (sock_ctx == NULL) {
+		log_printf(LOG_ERROR, "port provided in associate_cb not found");
+		response = -EBADF;
 		netlink_notify_kernel(ctx, id, response);
 		return;
 	}
 
-	sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
-	if (sock_ctx == NULL) {
-		response = -ENOMEM;
-	}
-	else {
-		sock_ctx->id = id;
-		sock_ctx->fd = fd;
-		hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
-	}
-	*/
-	log_printf(LOG_INFO, "Socket %lu accepted on behalf of application %s\n", id, comm);
+	sock_ctx->id = id;
+	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
+	
+	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
 	netlink_notify_kernel(ctx, id, response);
 	return;
 }

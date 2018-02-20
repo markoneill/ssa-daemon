@@ -457,11 +457,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	channel_t* startpoint = (bev == ctx->cf.bev) ? &ctx->cf : &ctx->sf;
 	if (events & BEV_EVENT_CONNECTED) {
 		log_printf(LOG_INFO, "%s endpoint connected\n", bev == ctx->cf.bev ? "client facing" : "server facing");
-		if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
+		//if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
 		startpoint->connected = 1;
 	}
 	if (events & BEV_EVENT_ERROR) {
-		log_printf(LOG_INFO, "%s endpoint encountered an error\n", bev == ctx->cf.bev ? "client facing" : "server facing");
+		//log_printf(LOG_INFO, "%s endpoint encountered an error\n", bev == ctx->cf.bev ? "client facing" : "server facing");
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
