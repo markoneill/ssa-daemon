@@ -37,6 +37,17 @@
 #include "hashmap.h"
 #include "queue.h"
 
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#define OPENSSL_EX_DATA_ID	1
+#define OPENSSL_EX_DATA_CTX	2
+#else
+#define OPENSSL_EX_DATA_ID	0
+#define OPENSSL_EX_DATA_CTX	1
+#endif
+
+
+
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct nl_sock* netlink_sock;
@@ -57,7 +68,7 @@ struct sockaddr_host {
 }; 
 
 int server_create(int port);
-void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len);
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option);

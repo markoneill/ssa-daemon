@@ -38,6 +38,7 @@
 enum {
         SSA_NL_A_UNSPEC,
 	SSA_NL_A_ID,
+	SSA_NL_A_COMM,
 	SSA_NL_A_SOCKADDR_INTERNAL,
 	SSA_NL_A_SOCKADDR_EXTERNAL,
 	SSA_NL_A_SOCKADDR_REMOTE,
@@ -77,6 +78,7 @@ enum ssa_nl_groups {
 static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
         [SSA_NL_A_UNSPEC] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_ID] = { .type = NLA_UNSPEC },
+	[SSA_NL_A_COMM] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_INTERNAL] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_EXTERNAL] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_SOCKADDR_REMOTE] = { .type = NLA_UNSPEC },
@@ -139,6 +141,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
         struct nlattr* attrs[SSA_NL_A_MAX + 1];
 
 	unsigned long id;
+	char comm[PATH_MAX];
 	int addr_internal_len;
 	int addr_external_len;
 	int addr_remote_len;
@@ -149,6 +152,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 	int level;
 	int optname;
 	char* optval;
+	int commlen;
 	socklen_t optlen;
 
         // Get Message
@@ -159,7 +163,9 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 		case SSA_NL_C_SOCKET_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			log_printf(LOG_INFO, "Received socket notification %lu\n", id);
-			socket_cb(ctx, id);
+			commlen = nla_len(attrs[SSA_NL_A_COMM]);
+			memcpy(comm, nla_data(attrs[SSA_NL_A_COMM]), commlen);
+			socket_cb(ctx, id, comm);
 			break;
 		case SSA_NL_C_SETSOCKOPT_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);

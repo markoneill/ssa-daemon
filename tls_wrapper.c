@@ -215,6 +215,7 @@ SSL_CTX* tls_server_ctx_create(void) {
 }
 
 int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath) {
+	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
 	if (SSL_CTX_use_certificate_chain_file(tls_ctx, filepath) != 1) {
 		return 0;
 	}
@@ -222,6 +223,8 @@ int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath) {
 }
 
 int set_private_key(SSL_CTX* tls_ctx, char* filepath) {
+	//readlink(
+	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
 	if (SSL_CTX_use_PrivateKey_file(tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
 		return 0;
 	}
@@ -302,8 +305,8 @@ void certificate_handshake_cb(SSL *s, int where, int ret)
 	{
 
 		/* Get the id and daemon_ctx from the SSL object */
-		id = SSL_get_ex_data(s, 1);
-		ctx = SSL_get_ex_data(s, 2);
+		id = SSL_get_ex_data(s, OPENSSL_EX_DATA_ID);
+		ctx = SSL_get_ex_data(s, OPENSSL_EX_DATA_CTX);
 
 		peer_certificate_cb(ctx,*id,s);
 
@@ -325,8 +328,8 @@ void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_
 		
 		idp = malloc(sizeof(id));
 		*idp = id;
-		SSL_set_ex_data(tls_conn->tls, 1, idp);
-		SSL_set_ex_data(tls_conn->tls, 2, ctx);
+		SSL_set_ex_data(tls_conn->tls, OPENSSL_EX_DATA_ID, idp);
+		SSL_set_ex_data(tls_conn->tls, OPENSSL_EX_DATA_CTX, ctx);
 		SSL_set_info_callback(tls_conn->tls, certificate_handshake_cb);
 		SSL_do_handshake(tls_conn->tls);
 		return;

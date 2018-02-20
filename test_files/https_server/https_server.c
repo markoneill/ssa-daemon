@@ -9,8 +9,8 @@
 #include <netdb.h>
 #include "../../extras/in_tls.h"
 
-#define CERT_FILE	"path"
-#define KEY_FILE	"path"
+#define CERT_FILE	"../certificate.pem"
+#define KEY_FILE	"../key.pem"
 #define BUFFER_SIZE	2048
 
 void handle_req(char* req, char* resp);
@@ -27,9 +27,13 @@ int main() {
 
 	int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
 	bind(fd, (struct sockaddr*)&addr, sizeof(addr));
-	setsockopt(fd, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE, sizeof(CERT_FILE));
-	setsockopt(fd, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE, sizeof(KEY_FILE));
 	listen(fd, SOMAXCONN);
+	if (setsockopt(fd, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE, sizeof(CERT_FILE)) == -1) {
+		perror("cert");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE, sizeof(KEY_FILE)) == -1) {
+		perror("key");
+	}
 
 	while (1) {	
 		struct sockaddr_storage addr;

@@ -55,6 +55,7 @@
 #include "netlink.h"
 #include "log.h"
 
+
 /* XXX These should really be linked with
  * the socktls.h file from the other repo */
 #define SO_HOSTNAME		85
@@ -136,12 +137,12 @@ int server_create(int port) {
 	/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
 	if (sev_pipe == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event");
+		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event\n");
 		return 1;
 	}
 	sev_int = evsignal_new(ev_base, SIGINT, signal_cb, ev_base);
 	if (sev_int == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create SIGINT handler event");
+		log_printf(LOG_ERROR, "Couldn't create SIGINT handler event\n");
 		return 1;
 	}
 	evsignal_add(sev_pipe, NULL);
@@ -157,17 +158,17 @@ int server_create(int port) {
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
-	/* Register index for SLL ex_data for id and daemon
+	/* Register index for SSL ex_data for id and daemon
 	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
-	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL)==1);
-	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL)==2);
+	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL) == OPENSSL_EX_DATA_ID);
+	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL) == OPENSSL_EX_DATA_CTX);
 
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create evconnlistener");
+		log_printf(LOG_ERROR, "Couldn't create evconnlistener\n");
 		return 1;
 	}
 	evconnlistener_set_error_cb(listener, accept_error_cb);
@@ -175,7 +176,7 @@ int server_create(int port) {
 	/* Set up netlink socket with event base */
 	netlink_sock = netlink_connect(&daemon_ctx);
 	if (netlink_sock == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
+		log_printf(LOG_ERROR, "Couldn't create Netlink socket\n");
 		return 1;
 	}
 	ret = evutil_make_socket_nonblocking(nl_socket_get_fd(netlink_sock));
@@ -185,7 +186,7 @@ int server_create(int port) {
 	}
 	nl_ev = event_new(ev_base, nl_socket_get_fd(netlink_sock), EV_READ | EV_PERSIST, netlink_recv, netlink_sock);
 	if (event_add(nl_ev, NULL) == -1) {
-		log_printf(LOG_ERROR, "Couldn't add Netlink event");
+		log_printf(LOG_ERROR, "Couldn't add Netlink event\n");
 		return 1;
 	}
 
@@ -194,7 +195,7 @@ int server_create(int port) {
 		upgrade_sock = create_upgrade_socket();
 		upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
 		if (event_add(upgrade_ev, NULL) == -1) {
-			log_printf(LOG_ERROR, "Couldn't add upgrade event");
+			log_printf(LOG_ERROR, "Couldn't add upgrade event\n");
 			return 1;
 		}
 	}
@@ -485,7 +486,7 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 	return;
 }
 
-void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
 	int response = 0;
@@ -512,15 +513,15 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 			hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 		}
 	}
+	log_printf(LOG_INFO, "Socket created on behalf of application %s\n", comm);
 	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len) {
-	int ret;
 	sock_ctx_t* sock_ctx;
-	int response = 0;
+	int response = 0; /* Default is success */
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
@@ -535,28 +536,22 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
 					sock_ctx->hostname, id);
 			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
-			ret = 0; /* Success */
 			break;
 		case SO_CERTIFICATE_CHAIN:
 			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {
-				response = -EBADF;
-				netlink_notify_kernel(ctx, id, response);
+				response = -EINVAL;
 			}
-			ret = 0;
 			break;
 		case SO_PRIVATE_KEY:
 			if (set_private_key(sock_ctx->tls_ctx, value) == 0) {
-				response = -EBADF;
-				netlink_notify_kernel(ctx, id, response);
+				response = -EINVAL;
 			}
-			ret = 0;
 			break;
 		default:
-			ret = setsockopt(sock_ctx->fd, level, option, value, len);
+			if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
+				response = -errno;
+			}
 			break;
-	}
-	if (ret == -1) {
-		response = -errno;
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;
