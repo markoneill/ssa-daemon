@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include "../../extras/in_tls.h"
 #include <sys/stat.h>
+#include <arpa/inet.h>
 
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
@@ -27,6 +28,8 @@ typedef struct param {
 	/* add other things here as needed */
 } param_t;
 
+#define WAIT_TIME 0
+void gethostaddr(char* host, struct sockaddr_in *addr);
 void* thread_start(void* arg);
 int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* y);
 SSL* openssl_connect_to_host(int sock, char* hostname);
@@ -44,19 +47,21 @@ int report = 1;
 int reportAll = 0;
 int levels = 0;
 int testDownload = 0;
-int begin = 0;
+int begin = 1;
 static char request[] = "GET /%ld.gar HTTP/1.1\r\nHost: %s\r\n\r\n";
 pthread_barrier_t begin_barrier;
 pthread_mutex_t	finished_lock = PTHREAD_MUTEX_INITIALIZER;
 sem_t finished_sem;
 int threads_finished = 0;
-char host[] = "www.phoenixteam.net";
+char host[256];
+struct sockaddr_in addr;
 
 int main(int argc, char* argv[]) {
 	char* csv_file_name = NULL;
 	extern char *optarg;
 	extern int optind;
 	int c, err = 0, len;
+	strcpy(host,"www.phoenixteam.net");
 	static char usage[] = "usage: %s [-b <bufsize> -c <calls per thread> -d <bytes to download>  -f <filename> -h -t <number of threads>]\n";
 
 	static struct option long_options[] =
@@ -72,7 +77,7 @@ int main(int argc, char* argv[]) {
 
 		};
 	int option_index = 0;
-	while ((c = getopt_long(argc, argv, "a:b:B:c:d:Df:ht:p:vsr:S:",long_options,&option_index)) != -1){
+	while ((c = getopt_long(argc, argv, "a:b:B:c:d:Df:h:t:p:vsr:S:",long_options,&option_index)) != -1){
 		switch (c) {
 		case 'a':
 			reportAll = 1;
@@ -99,8 +104,8 @@ int main(int argc, char* argv[]) {
 			memcpy(csv_file_name,optarg,len);
 			break;
 		case 'h':
-			fprintf(stderr, usage, argv[0]);
-			return 1;
+			strcpy(host,optarg);
+			break;
 		case 'r':
 			report = strtol(optarg,NULL,0);
 			break;
@@ -132,13 +137,14 @@ int main(int argc, char* argv[]) {
 		csv_file_name = malloc(sizeof(char) *10);
 		memcpy(csv_file_name,"stats.csv",10);
 	}
-
+	gethostaddr(host,&addr);
+	//printf("still working\n");
 	FILE *fp;
 	struct stat buffer;
 
 	int header = stat(csv_file_name,&buffer);
 	fp = fopen(csv_file_name, "a");
-	if(header == -1) fprintf(fp, "ssl,numThreads,callsPerThread,bufferSize,amountDownloaded,timeElapsed,KbytesPerSec\n");
+	if(header == -1) fprintf(fp, "ssl,numThreads,callsPerThread,bufferSize,amountDownloaded,timeElapsed,KbytesPerSec,target\n");
 	signal(SIGPIPE, SIG_IGN); /* Non-portable but I don't care right now */
 	long* inc = &NUM_THREADS;
 	if(testDownload) inc = &BYTES_TO_FETCH;
@@ -153,30 +159,24 @@ int main(int argc, char* argv[]) {
 				run_test(fp);
 				printf("finished: %ld Threads test downloading %ld bytes\n",NUM_THREADS, BYTES_TO_FETCH);
 				fflush(stdout);
-				usleep(5000);
+				usleep(WAIT_TIME);
 			}
 		}
 	}else{
 		for(int r = 0;  r < report; r++){
 			run_test(fp);
-			usleep(5000);
+			usleep(WAIT_TIME);
 		}
 	}
 	fclose(fp);
 }
 void run_test(FILE* fp){
 	int i;
-	pthread_t t[NUM_THREADS];
+	pthread_t t[1000];
 	struct timeval tv_before;
 	struct timeval tv_after;
 	struct timeval tv_elapsed;
 	param_t t_params[NUM_THREADS];
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		//.sin_addr.s_addr = inet_addr("127.0.0.1"),
-		.sin_addr.s_addr = inet_addr("45.56.41.23"),
-		.sin_port = htons(port)
-	};
 	pthread_barrier_init(&begin_barrier, NULL, NUM_THREADS + 1);
 	sem_init(&finished_sem, 0, 0);
 	threads_finished = 0;
@@ -200,10 +200,11 @@ void run_test(FILE* fp){
 				perror("failed to create a socket");
 				exit(EXIT_FAILURE);
 			}
-				if (setsockopt(t_params[i].sock, IPPROTO_TLS, SO_HOSTNAME, host, strlen(host)+1) == -1) {
+			if (setsockopt(t_params[i].sock, IPPROTO_TLS, SO_HOSTNAME, host, strlen(host)+1) == -1) {
 				perror("setsockopt: SO_HOSTNAME");
 				exit(EXIT_FAILURE);
 			}
+			//printf("creating sock %d for thread %d\n", t_params[i].sock, i);
 			if (connect(t_params[i].sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
 				perror("connect");
 				exit(EXIT_FAILURE);
@@ -211,7 +212,7 @@ void run_test(FILE* fp){
 		}
 		pthread_create(&t[i], NULL, thread_start, (void*)&t_params[i]);
 	}
-	usleep(50000);
+	usleep(WAIT_TIME);
 	pthread_barrier_wait(&begin_barrier);
 	if(verbose) printf("Threads ready! Start timer!\n");
 	gettimeofday(&tv_before, NULL);
@@ -224,7 +225,7 @@ void run_test(FILE* fp){
 		fprintf(stderr, "Oh no! Difference between after and before was negative!\n");
 	}
 	double bytes_per_second = ((NUM_THREADS*CALLS_PER_THREAD*BYTES_TO_FETCH)/1000)/((double)tv_elapsed.tv_sec+((double)tv_elapsed.tv_usec/1000000));
-	fprintf(fp, "%d,%ld,%ld,%ld,%ld,%ld.%06ld,%.6lf\n", ssl,NUM_THREADS, CALLS_PER_THREAD,BUFFER_SIZE,BYTES_TO_FETCH, tv_elapsed.tv_sec, tv_elapsed.tv_usec,bytes_per_second);
+	fprintf(fp, "%d,%ld,%ld,%ld,%ld,%ld.%06ld,%.6lf,%s\n", ssl,NUM_THREADS, CALLS_PER_THREAD,BUFFER_SIZE,BYTES_TO_FETCH, tv_elapsed.tv_sec, tv_elapsed.tv_usec,bytes_per_second,host);
 	fflush(fp);
 }
 
@@ -389,4 +390,28 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 	}*/
 
 	return tls;
+}
+void gethostaddr(char* host,struct sockaddr_in *addr){
+	int ret;
+	struct addrinfo hints;
+	struct addrinfo* addr_ptr;
+	struct addrinfo* addr_list;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_family = AF_INET; // IP4 or IP6, we don't care
+	ret = getaddrinfo(host, "443", &hints, &addr_list);
+	if (ret != 0) {
+		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
+		exit(EXIT_FAILURE);
+	}
+
+	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
+		*addr = *(struct sockaddr_in*) addr_ptr->ai_addr;
+		break;
+	}
+	char str[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &(addr->sin_addr), str, INET_ADDRSTRLEN);
+	//printf("%s\n", str);
+	freeaddrinfo(addr_list);
 }

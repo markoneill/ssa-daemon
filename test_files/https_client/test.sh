@@ -1,13 +1,24 @@
 #!/bin/bash
 
-for i in {1..100}
-do
-	./threaded_https_client -b 1024 -c 1 -d 1000000 -f fresher.txt -t $i
-	sleep 5
-done
+#./threaded_https_client -a 100 -b 1024 -c 1 -d 1000000 -f fullTest.csv -h 192.168.21.101
+#./threaded_https_client -a 100 -b 1024 -c 1 -d 1000000 -f fullTest.csv -h 192.168.21.101 -s
+#./threaded_https_client -a 100 -b 1024 -c 1 -d 1000000 -f fullTest.csv -h www.phoenixteam.net
+#./threaded_https_client -a 100 -b 1024 -c 1 -d 1000000 -f fullTest.csv -h www.phoenixteam.net -s
 
-for i in {1..100}
+for j in {1..10}
 do
-	./threaded_https_client -b 1024 -c 1 -d 1000000 -f fresher.txt -t $i -s
-	sleep 5
+	echo "Iteration $j"
+	for i in {1..100}
+	do
+		echo "Iteration $i"
+		./threaded_https_client -b 1024 -c 1 -d 1000000 -f remote_02.csv -h www.phoenixteam.net -t $i
+		#sleep 5
+	done
+
+	for i in {1..100}
+	do
+		echo "Iteration $i"
+		./threaded_https_client -b 1024 -c 1 -d 1000000 -f remote_02.csv -h www.phoenixteam.net -t $i -s
+		#sleep 5
+	done
 done

@@ -58,11 +58,11 @@ if __name__ == '__main__':
         ppl.legend(ax, loc ="upper left")
         plt.ylabel('Time Elapsed')
         plt.xlabel('Number of Processes')
-        plt.title('Time Elapsed Workload')
+        #plt.title('Time Elapsed Workload')
         fig.savefig(tGraph)
     else:
         ppl.legend(ax, loc ="upper left")
         plt.ylabel('Time Elapsed')
         plt.xlabel('Number of Bytes Downloaded')
-        plt.title('Time Elapsed Workload')
+        #plt.title('Time Elapsed Workload')
         fig.savefig(bGraph)
