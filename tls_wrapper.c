@@ -350,8 +350,7 @@ void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_
 	/* Connect if we're not connected. 
 	 * This is only needed because we don't explicitly call it
 	 * during the connection, to support OpenSSL overriding */
-	if (SSL_in_before(tls_conn->tls)) {
-		
+	if (SSL_in_init(tls_conn->tls)) {
 		idp = malloc(sizeof(id));
 		*idp = id;
 		SSL_set_ex_data(tls_conn->tls, OPENSSL_EX_DATA_ID, idp);
