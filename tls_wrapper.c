@@ -40,8 +40,8 @@
 #define SO_ID			89
 #define IPPROTO_TLS 	(715 % 255)
 
-static SSL* tls_server_create(SSL_CTX* tls_ctx);
-static SSL* tls_client_create(char* hostname);
+static SSL* tls_server_setup(SSL_CTX* tls_ctx);
+static SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname);
 static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
@@ -51,7 +51,7 @@ static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd,
-		struct event_base* ev_base, char* hostname, int is_accepting, SSL* s_ctx) {
+		struct event_base* ev_base, char* hostname, int is_accepting, SSL_CTX* tls_ctx) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -65,12 +65,18 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
 		return NULL;
 	}
+	ctx->tls = tls_client_setup(tls_ctx, hostname);
+	if (ctx->tls == NULL) {
+		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
+		free_tls_conn_ctx(ctx);
+		return NULL;
+	}
 
 	ctx->cf.bev = bufferevent_socket_new(ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [client mode]\n");
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [direct mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
 		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
@@ -78,24 +84,17 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 	}
 
 
-	if (is_accepting == 1) {
-		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, s_ctx,
+	if (is_accepting == 1) { /* TLS server role */
+		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
-	else {
-	
-		/* Set up TLS/SSL state with openssl */
-		ctx->tls = tls_client_create(hostname);
-		if (ctx->tls == NULL) {
-			log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
-			free_tls_conn_ctx(ctx);
-			return NULL;
-		}
+	else { /* TLS client role */
 		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
+
 	if (ctx->sf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [client mode]\n");
+		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [direct mode]\n");
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
@@ -114,7 +113,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 
 	/* Connect server facing socket */
 	/*if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
-		log_printf(LOG_ERROR, "bufferevent_socket_connect [client mode]: %s\n", strerror(errno));
+		log_printf(LOG_ERROR, "bufferevent_socket_connect [direct mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
 	}*/
@@ -139,12 +138,12 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 		return NULL;
 	}
 	
-	ctx->tls = tls_server_create(tls_ctx);
+	ctx->tls = tls_server_setup(tls_ctx);
 	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [server mode]\n");
+		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [listener mode]\n");
 		EVUTIL_CLOSESOCKET(efd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
@@ -158,7 +157,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	ctx->sf.bev = bufferevent_socket_new(ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (ctx->sf.bev == NULL) {
-		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [server mode]\n");
+		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [listener mode]\n");
 		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
@@ -172,7 +171,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	
 	/* Connect to local application server */
 	if (bufferevent_socket_connect(ctx->sf.bev, internal_addr, internal_addrlen) < 0) {
-		log_printf(LOG_ERROR, "bufferevent_socket_connect [server mode]: %s\n", strerror(errno));
+		log_printf(LOG_ERROR, "bufferevent_socket_connect [listener mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
 	}
@@ -212,6 +211,31 @@ SSL_CTX* tls_server_ctx_create(void) {
 	//SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem");
 	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
+
+	return tls_ctx;
+}
+
+SSL_CTX* tls_client_ctx_create(void) {
+	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
+	if (tls_ctx == NULL) {
+		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
+		return NULL;
+	}
+	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
+
+	/* We're going to commit the cardinal sin for a bit. Hook up TrustBase here XXX */
+	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
+
+	/* There's a billion options we can/should set here by admin config XXX
+ 	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
+
+
+	/* Should also allow some sort of session resumption here XXX
+  	 * See SSL_set_session for details  */
+
+
+	/* For client auth portion of the SSA utilize 
+	 * SSL_CTX_set_default_passwd_cb */
 
 	return tls_ctx;
 }
@@ -351,44 +375,24 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 	return SSL_TLSEXT_ERR_OK;
 }
 
-SSL* tls_client_create(char* hostname) {
-	SSL_CTX* tls_ctx;
+SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	SSL* tls;
 
-	/* Parameterize all this later XXX */
-	tls_ctx = SSL_CTX_new(SSLv23_method());
-	if (tls_ctx == NULL) {
-		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [client]\n");
-		return NULL;
-	}
-
-	/* There's a billion options we can/should set here by admin config XXX
- 	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
-
-	/* We're going to commit the cardinal sin for a bit. Hook up TrustBase here XXX */
-	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
-
 	tls = SSL_new(tls_ctx);
-	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
+	//SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
 	if (tls == NULL) {
 		return NULL;
 	}
 
 	/* set server name indication for client hello */
-	SSL_set_tlsext_host_name(tls, hostname);
-
-
-	/* Should also allow some sort of session resumption here XXX
-  	 * See SSL_set_session for details  */
-
-
-	/* For client auth portion of the SSA utilize 
-	 * SSL_CTX_set_default_passwd_cb */
+	if (hostname != NULL) {
+		SSL_set_tlsext_host_name(tls, hostname);
+	}
 
 	return tls;
 }
 
-SSL* tls_server_create(SSL_CTX* tls_ctx) {
+SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 	SSL* tls = SSL_new(tls_ctx);
 	//SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
 	if (tls == NULL) {

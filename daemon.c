@@ -93,16 +93,16 @@ typedef struct sock_ctx {
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
-/* SSA client functions */
+/* SSA direct functions */
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static void signal_cb(evutil_socket_t fd, short event, void* arg);
 static evutil_socket_t create_server_socket(ev_uint16_t port, int family, int protocol);
 
-/* SSA server functions */
-static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
-static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+/* SSA listener functions */
+static void listener_accept_error_cb(struct evconnlistener *listener, void *ctx);
+static void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 
 /* special */
@@ -426,12 +426,8 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	if (sock_ctx->is_accepting == 0) {
-		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 0, NULL);
-	}
-	else {
-		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 1, SSL_new(sock_ctx->tls_ctx));
-	}
+	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, 
+				sock_ctx->hostname, sock_ctx->is_accepting, sock_ctx->tls_ctx);
 	//free(sock_ctx);
 	return;
 }
@@ -445,7 +441,7 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void server_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
+void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	struct sockaddr *address, int socklen, void *arg) {
 	struct sockaddr_in int_addr = {
 		.sin_family = AF_INET,
@@ -506,7 +502,7 @@ void server_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	return;
 }
 
-void server_accept_error_cb(struct evconnlistener *listener, void *ctx) {
+void listener_accept_error_cb(struct evconnlistener *listener, void *ctx) {
         struct event_base *base = evconnlistener_get_base(listener);
         int err = EVUTIL_SOCKET_ERROR();
         log_printf(LOG_ERROR, "Got an error %d (%s) on a server listener\n", 
@@ -703,6 +699,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			sock_ctx->rem_addr = *rem_addr;
 			sock_ctx->rem_addrlen = rem_addrlen;
 			sock_ctx->is_connected = 1;
+			sock_ctx->tls_ctx = tls_client_ctx_create();
 		}
 	}
 	netlink_notify_kernel(ctx, id, response);
@@ -750,10 +747,10 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 
 	sock_ctx->tls_ctx = tls_server_ctx_create();
 	sock_ctx->daemon = ctx; /* XXX I don't want this here */
-	sock_ctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, sock_ctx,
+	sock_ctx->listener = evconnlistener_new(ctx->ev_base, listener_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
-	evconnlistener_set_error_cb(sock_ctx->listener, server_accept_error_cb);
+	evconnlistener_set_error_cb(sock_ctx->listener, listener_accept_error_cb);
 	return;
 }
 
@@ -813,6 +810,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * only need to clean up the sock_ctx */
 		//netlink_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
+		SSL_CTX_free(sock_ctx->tls_ctx);
 		free(sock_ctx);
 		return;
 	}
@@ -901,6 +899,10 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	if (is_accepting == 1) {
 		sock_ctx->tls_ctx = tls_server_ctx_create();
 		sock_ctx->is_accepting = 1;
+	}
+	else {
+		sock_ctx->tls_ctx = tls_client_ctx_create();
+		sock_ctx->is_accepting = 0;
 	}
 
 	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {

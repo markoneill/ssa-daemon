@@ -48,7 +48,7 @@ typedef struct tls_conn_ctx {
 } tls_conn_ctx_t;
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, 
-	struct event_base* ev_base, char* hostname, int is_accepting, SSL* s_ctx);
+	struct event_base* ev_base, char* hostname, int is_accepting, SSL_CTX* tls_ctx);
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
 	       	struct event_base* ev_base, SSL_CTX* tls_ctx, 
 		struct sockaddr* internal_addr, int internal_addrlen);
@@ -60,4 +60,5 @@ int set_private_key(SSL_CTX* tls_ctx, char* filepath);
 int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath);
 int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname);
 SSL_CTX* tls_server_ctx_create(void);
+SSL_CTX* tls_client_ctx_create(void);
 #endif
