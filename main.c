@@ -77,18 +77,14 @@ int main(int argc, char* argv[]) {
 		}
 		if (pid == 0) {
 			server_create(starting_port + i);
+			free(workers);
+			return 0;
 		}
 		else {
 			workers[i] = pid;
 			is_parent = 1;
 		}
 	}
-
-	if (is_parent == 0) {
-		free(workers);
-		return 0;
-	}
-
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
 			log_printf(LOG_ERROR, "Failed in waitpid %s\n", strerror(errno));
