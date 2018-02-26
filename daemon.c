@@ -49,21 +49,12 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 
+#include "in_tls.h"
 #include "daemon.h"
 #include "hashmap.h"
 #include "tls_wrapper.h"
 #include "netlink.h"
 #include "log.h"
-
-
-/* XXX These should really be linked with
- * the socktls.h file from the other repo */
-#define SO_HOSTNAME		85
-#define SO_PEER_CERTIFICATE	86
-#define SO_CERTIFICATE_CHAIN	87
-#define SO_PRIVATE_KEY		88
-#define SO_ID			89
-
 
 #define MAX_HOSTNAME		255
 #define MAX_UPGRADE_SOCKET  18

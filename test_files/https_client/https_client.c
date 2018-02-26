@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "../../extras/in_tls.h"
+#include "../../in_tls.h"
 
 int main() {
 	struct sockaddr_host addr;

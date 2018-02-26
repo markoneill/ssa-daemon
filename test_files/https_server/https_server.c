@@ -7,12 +7,11 @@
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "../../extras/in_tls.h"
+#include "../../in_tls.h"
 
 #define CERT_FILE	"../certificate.pem"
 #define KEY_FILE	"../key.pem"
 #define BUFFER_SIZE	2048
-#define SO_ID	89
 
 void handle_req(char* req, char* resp);
 

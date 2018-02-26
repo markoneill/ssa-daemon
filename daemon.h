@@ -57,16 +57,6 @@ typedef struct tls_daemon_ctx {
 	hmap_t* sock_map_port;
 } tls_daemon_ctx_t;
 
-struct host_addr { 
-        unsigned char name[255]; 
-}; 
- 
-struct sockaddr_host { 
-        sa_family_t sin_family; 
-        unsigned short sin_port; 
-        struct host_addr sin_addr; 
-}; 
-
 int server_create(int port);
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 

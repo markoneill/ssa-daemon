@@ -1,13 +1,8 @@
 #define _GNU_SOURCE
-#define SO_HOSTNAME             85
-#define TCP_UPGRADE_TLS         33
-#define IPPROTO_TLS             (715 % 255)
-#define SO_PEER_CERTIFICATE     86
 #define MAP_BUCKETS             10
 
 #define LOG_FILE "/tmp/sslLog.txt"
 #define SOCKET_PATH "\0tls_upgrade"
-#define SO_ID   89
 
 #include <dlfcn.h>
 #include <openssl/ssl.h>
@@ -18,6 +13,7 @@
 #include <netinet/tcp.h> 
 #include <fcntl.h> 
 
+#include "../../in_tls.h"
 #include "hashmap.h"
 
 
