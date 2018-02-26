@@ -66,6 +66,7 @@
 
 
 #define MAX_HOSTNAME		255
+#define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
 
 typedef struct sock_ctx {
@@ -106,7 +107,7 @@ static void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t 
 	struct sockaddr *address, int socklen, void *arg);
 
 /* special */
-static evutil_socket_t create_upgrade_socket(void);
+static evutil_socket_t create_upgrade_socket(int port);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
 
@@ -192,13 +193,11 @@ int server_create(int port) {
 	}
 
 	/* Set up upgrade notification socket with event base */
-	if (port == 8443) {
-		upgrade_sock = create_upgrade_socket();
-		upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
-		if (event_add(upgrade_ev, NULL) == -1) {
-			log_printf(LOG_ERROR, "Couldn't add upgrade event\n");
-			return 1;
-		}
+	upgrade_sock = create_upgrade_socket(port);
+	upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
+	if (event_add(upgrade_ev, NULL) == -1) {
+		log_printf(LOG_ERROR, "Couldn't add upgrade event\n");
+		return 1;
 	}
 
 	/* Main event loop */	
@@ -212,9 +211,8 @@ int server_create(int port) {
 	hashmap_free(daemon_ctx.sock_map_port);
 	hashmap_deep_free(daemon_ctx.sock_map, (void (*)(void*))free_sock_ctx);
 	event_free(nl_ev);
-	if (port == 8443) {
-		event_free(upgrade_ev);
-	}
+
+	event_free(upgrade_ev);
 	event_free(sev_pipe);
 	event_free(sev_int);
         event_base_free(ev_base);
@@ -242,15 +240,16 @@ int server_create(int port) {
         return 0;
 }
 
-evutil_socket_t create_upgrade_socket(void) {
+evutil_socket_t create_upgrade_socket(int port) {
 	evutil_socket_t sock;
 	int ret;
 	struct sockaddr_un addr;
 	int addrlen;
-	char name[] = "\0tls_upgrade";
+	char name[MAX_UPGRADE_SOCKET];
+	int namelen = snprintf(name, MAX_UPGRADE_SOCKET, "%ctls_upgrade%d", '\0', port);
 	addr.sun_family = AF_UNIX;
-	memcpy(addr.sun_path, "\0tls_upgrade", sizeof(name));
-	addrlen = sizeof(name) + sizeof(sa_family_t);
+	memcpy(addr.sun_path, name, namelen);
+	addrlen = namelen + sizeof(sa_family_t);
 
 	sock = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (sock == -1) {

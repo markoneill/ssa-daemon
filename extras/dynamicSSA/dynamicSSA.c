@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #define SO_HOSTNAME             85
+#define TCP_UPGRADE_TLS         33
 #define IPPROTO_TLS             (715 % 255)
 #define SO_PEER_CERTIFICATE     86
 #define MAP_BUCKETS             10
@@ -33,11 +34,6 @@ int logSSL(char* msg);
 int upgrade_check(SSL *ssl);
 X509* PEM_str_to_X509(char* pem_str);
 int dup_socket_TLS(int fd, const char * ssl_hostname);
-
-int upgrade_sock(int fd, SSL *ssl); 
-int SSA_send_fd(int fd, unsigned long id, int is_accepting);
-ssize_t send_fd_to(int fd, void* iobuf, size_t nbytes, int sendfd, struct sockaddr_un* addr, int addr_len);
-
 
 hmap_t* connection_map = NULL;
 
@@ -94,6 +90,7 @@ int upgrade_check(SSL *ssl)
     conn_stat_t * con = NULL;
     int fd = SSL_get_fd(ssl);
     int infoLen = sizeof(info);
+    int is_accepting = SSL_in_accept_init(ssl) ? 1 : 0;
 
     if (connection_map) {
 
@@ -110,12 +107,16 @@ int upgrade_check(SSL *ssl)
             hostname = (char *) SSL_get_servername(ssl,TLSEXT_NAMETYPE_host_name);
 
             // What states do we want to upgrade and which ones do we want to leave alone?
-            if (info.tcpi_state == TCP_ESTABLISHED) {
-                upgrade_sock(SSL_get_fd(ssl),ssl);
-                /* code */
+            if (info.tcpi_state != 0) { //== TCP_ESTABLISHED) {
+                if (setsockopt(fd, IPPROTO_TCP, TCP_UPGRADE_TLS, &is_accepting, sizeof(int)) == -1){
+                      perror("setsockopt: TCP_UPGRADE_TLS");
+                      close(fd);
+               }
+
                 if (hostname)
                 {
-                    if (setsockopt(fd, IPPROTO_IP, SO_HOSTNAME, hostname, strlen(hostname)+1) == -1){
+                    // printf("HOSTNAME %s\n", hostname);
+                    if (setsockopt(fd, IPPROTO_TCP, SO_HOSTNAME, hostname, strlen(hostname)+1) == -1){
                        perror("setsockopt: SO_HOSTNAME");
                        close(fd);
                     }
@@ -130,10 +131,10 @@ int upgrade_check(SSL *ssl)
             }
             else
             {
+                asprintf(&message,"Unaccounted state %u\n", info.tcpi_state);
+                logSSL(message);
+                free(message);
                 perror("Unaccounted connection state");
-                // asprintf(&message,"Unaccounted state? %u\n", info.tcpi_state);
-                // logSSL(message);
-                // free(message);
             }
             
             con->upgraded = 1;
@@ -146,7 +147,7 @@ int SSL_write(SSL *ssl, const void *buf, int num)
     int wfd, ret;
 
     upgrade_check(ssl);
-    // logSSL("Writing to socket\n");
+    logSSL("Writing to socket\n");
     wfd = SSL_get_wfd(ssl);
     return send(wfd, buf, num, 0);
 
@@ -157,7 +158,7 @@ int SSL_read(SSL *ssl, void *buf, int num)
     int rfd, ret;
 
     upgrade_check(ssl);
-    // logSSL("Reading from socket\n");
+    logSSL("Reading from socket\n");
     rfd = SSL_get_rfd(ssl);
     return recv(rfd, buf, num, 0);
 
@@ -193,8 +194,11 @@ X509 *SSL_get_peer_certificate(const SSL *s)
     int ssl_fd = SSL_get_rfd(s);
     int cert_len = 1024*4;
     char cert[1024*4];
-
+    
+    // SSL *ssl, void *buf, int num
     upgrade_check((SSL *)s);
+
+    // SSL_write((SSL*)s,"GET / HTTP/1.1\r\nhost: google.com\r\n\r\n",1);
 
     if (getsockopt(ssl_fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, cert, &cert_len) == -1) {
         perror("getsockopt: SO_PEER_CERTIFICATE:");
@@ -227,166 +231,6 @@ X509* PEM_str_to_X509(char* pem_str) {
 
     BIO_free(bio);
     return cert;
-}
-
-int upgrade_sock(int fd, SSL *ssl) {
-    unsigned long id;
-    int id_len = sizeof(id);
-    int is_accepting;
-    int file_flags;
-
-    /* This is the address of the SSA daemon */
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(8443),
-        .sin_addr.s_addr = htonl(INADDR_LOOPBACK)
-    };
-    int new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TLS);
-    if (getsockopt(new_fd, IPPROTO_TLS, SO_ID, &id, &id_len) == -1) {
-        perror("getsockopt: SO_ID");
-        exit(EXIT_FAILURE);
-    }
-
-    is_accepting = SSL_in_accept_init(ssl) ? 1 : 0;
-
-    file_flags = fcntl(new_fd, F_GETFL, 0);
-    if (file_flags == -1) {
-        // logSSL("fcntl get");
-        perror("fcntl get flags");
-    }
-    
-    file_flags |= O_NONBLOCK;
-    if (fcntl(new_fd, F_SETFL, file_flags) == -1)
-    {
-        // logSSL("fcntl set");
-        perror("fcntl set non blocking");
-    }
-
-    SSA_send_fd(fd, id, is_accepting);
-    if(connect(new_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        // perror("connect SSA FD");
-    }
-    dup2(new_fd, fd);
-    // logSSL("Upgraded new socket\n");
-    return 0;
-}
-
-int SSA_send_fd(int fd, unsigned long id, int is_accepting)
-{
-    struct sockaddr_un addr;
-    struct sockaddr_un self;
-    int addrlen;
-    int ret;
-    char buffer[1024];
-    int bytes_to_send;
-    int con = socket(PF_UNIX, SOCK_DGRAM, 0);
-    if (con == -1) {
-        perror("Socket error\n");
-        return -1;
-    }
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    memcpy(addr.sun_path, SOCKET_PATH, sizeof(SOCKET_PATH));
-    addrlen = sizeof(SOCKET_PATH) + sizeof(sa_family_t);
-
-    /*if (connect(con, (struct sockaddr*)&addr, addrlen)) {
-        perror("Connect error\n");
-        return -1;
-    }*/
-    self.sun_family = AF_UNIX;
-
-    bytes_to_send = sprintf(buffer, "%d:%lu", is_accepting, id);
-    if (bind(con, (struct sockaddr*)&self, sizeof(sa_family_t)) == -1) {
-        perror("bind");
-    }
-    ret = send_fd_to(con, buffer, bytes_to_send + 1, fd, &addr, addrlen);
-    /* Wait for a confirmation to prevent race condition */
-    recv(con, buffer, 1024, 0);
-    close(con);
-    
-    return ret;
-}
-
-ssize_t send_fd_to(int fd, void* iobuf, size_t nbytes, int sendfd,
-            struct sockaddr_un* addr, int addr_len) {
-    struct msghdr msg = {0};
-    struct iovec iov[1];
-
-    // should have an ifdef here to be thurough, check for HAVE_MSGHDR_MSG_CONTROL
-    union {
-        struct cmsghdr cm;
-        char control[CMSG_SPACE(sizeof(int))];
-    } control_un;
-    struct cmsghdr* cmptr;
-
-    msg.msg_control = control_un.control;
-    msg.msg_controllen = sizeof(control_un.control);
-
-    cmptr = CMSG_FIRSTHDR(&msg);
-    cmptr->cmsg_len = CMSG_LEN(sizeof(int));
-    cmptr->cmsg_level = SOL_SOCKET;
-    cmptr->cmsg_type = SCM_RIGHTS;
-
-    *((int*) CMSG_DATA(cmptr)) = sendfd;
-
-    msg.msg_name = addr;
-    msg.msg_namelen = addr_len;
-
-    iov[0].iov_base = iobuf;
-    iov[0].iov_len = nbytes;
-
-    msg.msg_iov = iov;
-    msg.msg_iovlen = 1;
-
-    return sendmsg(fd, &msg, 0);
-}
-
-
-int dup_socket_TLS(int sock_fd, const char * ssl_hostname)
-{
-   
-    int type;
-    int type_length = sizeof( int );
-    int new_socket;
-    char clientip[20];
-    struct sockaddr_in addr;
-    socklen_t addr_size = sizeof(struct sockaddr_in);
-
-    
-    int err = getpeername(sock_fd, (struct sockaddr *)&addr, &addr_size);
-    if (err != 0) {
-       // error
-    }
-    
-    strcpy(clientip, inet_ntoa(addr.sin_addr));
-
-    getsockopt( sock_fd, SOL_SOCKET, SO_TYPE, &type, &type_length );
-
-    new_socket = socket(addr.sin_family, type, IPPROTO_TLS);
-    if (new_socket == -1) {
-            perror("socket");
-    }
-
-    
-    if (ssl_hostname != NULL){
-
-        if (setsockopt(new_socket, IPPROTO_IP, SO_HOSTNAME, ssl_hostname, strlen(ssl_hostname)+1) == -1){
-           perror("setsockopt: SO_HOSTNAME");
-           close(sock_fd);
-        }
-    }
-    else{
-        perror("No host specified within SSL context\n");
-    }
-
-    if (connect(new_socket, (struct sockaddr *) &addr,sizeof(addr)) == -1) {
-            perror("connect");
-            close(sock_fd);
-    }
-    
-    return new_socket;
-
 }
 
 void SSL_free(SSL *ssl)
