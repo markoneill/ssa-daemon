@@ -561,12 +561,15 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		return;
 	}
 	switch (option) {
-		case SO_HOSTNAME:
+		case SO_REMOTE_HOSTNAME:
 			/* The kernel validated this data for us */
 			memcpy(sock_ctx->hostname, value, len);
 			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
 					sock_ctx->hostname, id);
 			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
+			break;
+		case SO_HOSTNAME:
+				response = -ENOPROTOOPT; /* get only */
 			break;
 		case SO_CERTIFICATE_CHAIN:
 			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {

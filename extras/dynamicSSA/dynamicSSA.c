@@ -112,8 +112,8 @@ int upgrade_check(SSL *ssl)
                 if (hostname)
                 {
                     // printf("HOSTNAME %s\n", hostname);
-                    if (setsockopt(fd, IPPROTO_TCP, SO_HOSTNAME, hostname, strlen(hostname)+1) == -1){
-                       perror("setsockopt: SO_HOSTNAME");
+                    if (setsockopt(fd, IPPROTO_TCP, SO_REMOTE_HOSTNAME, hostname, strlen(hostname)+1) == -1){
+                       perror("setsockopt: SO_REMOTE_HOSTNAME");
                        close(fd);
                     }
                 }
