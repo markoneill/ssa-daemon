@@ -610,11 +610,11 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	}
 	switch (option) {
 		case SO_PEER_CERTIFICATE:
+			printf("Getting Peer Cert\n");
 			if (sock_ctx->tls_conn == NULL) {
 				netlink_notify_kernel(ctx, id, -ENOTCONN);
 				return;
 			}
-			
 			/* get_peer_certificate will register a callback 
 			 * that send the kernel notification on its success/failure*/
 			get_peer_certificate(ctx, id, sock_ctx->tls_conn);
