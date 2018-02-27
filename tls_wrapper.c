@@ -37,7 +37,6 @@
 #include "log.h"
 
 #define MAX_BUFFER		1024*1024*10
-#define SO_ID			89
 #define IPPROTO_TLS 	(715 % 255)
 
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);

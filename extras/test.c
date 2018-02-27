@@ -5,9 +5,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "../in_tls.h"
 
-#define IPPROTO_TLS	205
-#define SO_ID	89
 #define SOCKET_PATH "\0tls_upgrade"
 
 int upgrade_sock(int fd); 
