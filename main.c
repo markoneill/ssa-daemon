@@ -36,6 +36,7 @@
 void sig_handler(int signum);
 pid_t* workers;
 int worker_count;
+int is_parent;
 
 int main(int argc, char* argv[]) {
 	long cpus_on;
@@ -58,8 +59,12 @@ int main(int argc, char* argv[]) {
 	log_printf(LOG_INFO, "Detected %ld/%ld active CPUs\n", cpus_on, cpus_conf);
 
 
-	workers = malloc(sizeof(pid_t) * cpus_on);
-	worker_count = 1;
+	memset(&sigact, 0, sizeof(sigact));
+	sigact.sa_handler = sig_handler;
+	sigaction(SIGINT, &sigact, NULL);
+
+	worker_count = 12;
+	workers = malloc(sizeof(pid_t) * worker_count);
 	if (workers == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");
 		exit(EXIT_FAILURE);
@@ -72,16 +77,14 @@ int main(int argc, char* argv[]) {
 		}
 		if (pid == 0) {
 			server_create(starting_port + i);
-			exit(EXIT_SUCCESS);
+			free(workers);
+			return 0;
 		}
 		else {
 			workers[i] = pid;
+			is_parent = 1;
 		}
 	}
-
-	memset(&sigact, 0, sizeof(sigact));
-	sigact.sa_handler = sig_handler;
-	sigaction(SIGINT, &sigact, NULL);
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
 			log_printf(LOG_ERROR, "Failed in waitpid %s\n", strerror(errno));
@@ -109,8 +112,14 @@ int main(int argc, char* argv[]) {
 void sig_handler(int signum) {
 	int i;
 	if (signum == SIGINT) {
-		for (i = 0; i < worker_count; i++) {
-			kill(workers[i], SIGINT);
+		if (is_parent == 1) {
+			for (i = 0; i < worker_count; i++) {
+				kill(workers[i], SIGINT);
+			}
+		}
+		else {
+			free(workers);
+			_exit(0);
 		}
 	}
 	return;

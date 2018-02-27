@@ -37,6 +37,17 @@
 #include "hashmap.h"
 #include "queue.h"
 
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+#define OPENSSL_EX_DATA_ID	1
+#define OPENSSL_EX_DATA_CTX	2
+#else
+#define OPENSSL_EX_DATA_ID	0
+#define OPENSSL_EX_DATA_CTX	1
+#endif
+
+
+
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct nl_sock* netlink_sock;
@@ -46,18 +57,8 @@ typedef struct tls_daemon_ctx {
 	hmap_t* sock_map_port;
 } tls_daemon_ctx_t;
 
-struct host_addr { 
-        unsigned char name[255]; 
-}; 
- 
-struct sockaddr_host { 
-        sa_family_t sin_family; 
-        unsigned short sin_port; 
-        struct host_addr sin_addr; 
-}; 
-
 int server_create(int port);
-void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id);
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len);
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option);
@@ -67,6 +68,8 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen);
 void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
+void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
+	       	int int_addrlen);
 void close_cb(tls_daemon_ctx_t* ctx, unsigned long id);
 void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen);

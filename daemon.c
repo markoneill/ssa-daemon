@@ -35,6 +35,7 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 #include <netdb.h>
+#include <assert.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
@@ -48,22 +49,15 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 
+#include "in_tls.h"
 #include "daemon.h"
 #include "hashmap.h"
 #include "tls_wrapper.h"
 #include "netlink.h"
 #include "log.h"
 
-/* XXX These should really be linked with
- * the socktls.h file from the other repo */
-#define SO_HOSTNAME		85
-#define SO_PEER_CERTIFICATE	86
-#define SO_CERTIFICATE_CHAIN	87
-#define SO_PRIVATE_KEY		88
-#define SO_ID			89
-
-
 #define MAX_HOSTNAME		255
+#define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
 
 typedef struct sock_ctx {
@@ -86,24 +80,25 @@ typedef struct sock_ctx {
 	SSL_CTX* tls_ctx;
 	char hostname[MAX_HOSTNAME];
 	tls_conn_ctx_t* tls_conn;
+	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
-/* SSA client functions */
+/* SSA direct functions */
 static void accept_error_cb(struct evconnlistener *listener, void *ctx);
 static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static void signal_cb(evutil_socket_t fd, short event, void* arg);
 static evutil_socket_t create_server_socket(ev_uint16_t port, int family, int protocol);
 
-/* SSA server functions */
-static void server_accept_error_cb(struct evconnlistener *listener, void *ctx);
-static void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+/* SSA listener functions */
+static void listener_accept_error_cb(struct evconnlistener *listener, void *ctx);
+static void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 
 /* special */
-static evutil_socket_t create_upgrade_socket(void);
+static evutil_socket_t create_upgrade_socket(int port);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
 
@@ -135,12 +130,12 @@ int server_create(int port) {
 	/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
 	if (sev_pipe == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event");
+		log_printf(LOG_ERROR, "Couldn't create SIGPIPE handler event\n");
 		return 1;
 	}
 	sev_int = evsignal_new(ev_base, SIGINT, signal_cb, ev_base);
 	if (sev_int == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create SIGINT handler event");
+		log_printf(LOG_ERROR, "Couldn't create SIGINT handler event\n");
 		return 1;
 	}
 	evsignal_add(sev_pipe, NULL);
@@ -156,12 +151,17 @@ int server_create(int port) {
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
+	/* Register index for SSL ex_data for id and daemon
+	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
+	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL) == OPENSSL_EX_DATA_ID);
+	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL) == OPENSSL_EX_DATA_CTX);
+
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, server_sock);
 	if (listener == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create evconnlistener");
+		log_printf(LOG_ERROR, "Couldn't create evconnlistener\n");
 		return 1;
 	}
 	evconnlistener_set_error_cb(listener, accept_error_cb);
@@ -169,7 +169,7 @@ int server_create(int port) {
 	/* Set up netlink socket with event base */
 	netlink_sock = netlink_connect(&daemon_ctx);
 	if (netlink_sock == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create Netlink socket");
+		log_printf(LOG_ERROR, "Couldn't create Netlink socket\n");
 		return 1;
 	}
 	ret = evutil_make_socket_nonblocking(nl_socket_get_fd(netlink_sock));
@@ -179,18 +179,16 @@ int server_create(int port) {
 	}
 	nl_ev = event_new(ev_base, nl_socket_get_fd(netlink_sock), EV_READ | EV_PERSIST, netlink_recv, netlink_sock);
 	if (event_add(nl_ev, NULL) == -1) {
-		log_printf(LOG_ERROR, "Couldn't add Netlink event");
+		log_printf(LOG_ERROR, "Couldn't add Netlink event\n");
 		return 1;
 	}
 
 	/* Set up upgrade notification socket with event base */
-	if (port == 8443) {
-		upgrade_sock = create_upgrade_socket();
-		upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
-		if (event_add(upgrade_ev, NULL) == -1) {
-			log_printf(LOG_ERROR, "Couldn't add upgrade event");
-			return 1;
-		}
+	upgrade_sock = create_upgrade_socket(port);
+	upgrade_ev = event_new(ev_base, upgrade_sock, EV_READ | EV_PERSIST, upgrade_recv, &daemon_ctx);
+	if (event_add(upgrade_ev, NULL) == -1) {
+		log_printf(LOG_ERROR, "Couldn't add upgrade event\n");
+		return 1;
 	}
 
 	/* Main event loop */	
@@ -204,9 +202,8 @@ int server_create(int port) {
 	hashmap_free(daemon_ctx.sock_map_port);
 	hashmap_deep_free(daemon_ctx.sock_map, (void (*)(void*))free_sock_ctx);
 	event_free(nl_ev);
-	if (port == 8443) {
-		event_free(upgrade_ev);
-	}
+
+	event_free(upgrade_ev);
 	event_free(sev_pipe);
 	event_free(sev_int);
         event_base_free(ev_base);
@@ -234,15 +231,16 @@ int server_create(int port) {
         return 0;
 }
 
-evutil_socket_t create_upgrade_socket(void) {
+evutil_socket_t create_upgrade_socket(int port) {
 	evutil_socket_t sock;
 	int ret;
 	struct sockaddr_un addr;
 	int addrlen;
-	char name[] = "\0tls_upgrade";
+	char name[MAX_UPGRADE_SOCKET];
+	int namelen = snprintf(name, MAX_UPGRADE_SOCKET, "%ctls_upgrade%d", '\0', port);
 	addr.sun_family = AF_UNIX;
-	memcpy(addr.sun_path, "\0tls_upgrade", sizeof(name));
-	addrlen = sizeof(name) + sizeof(sa_family_t);
+	memcpy(addr.sun_path, name, namelen);
+	addrlen = namelen + sizeof(sa_family_t);
 
 	sock = socket(PF_UNIX, SOCK_DGRAM, 0);
 	if (sock == -1) {
@@ -418,12 +416,8 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	if (sock_ctx->is_accepting == 0) {
-		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 0, NULL);
-	}
-	else {
-		sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, sock_ctx->hostname, 1, SSL_new(sock_ctx->tls_ctx));
-	}
+	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, 
+				sock_ctx->hostname, sock_ctx->is_accepting, sock_ctx->tls_ctx);
 	//free(sock_ctx);
 	return;
 }
@@ -437,24 +431,68 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void server_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
+void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	struct sockaddr *address, int socklen, void *arg) {
+	struct sockaddr_in int_addr = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK)
+	};
+	int intaddr_len = sizeof(int_addr);
 	sock_ctx_t* sock_ctx = (sock_ctx_t*)arg;
+	evutil_socket_t ifd;
+	int port;
+	sock_ctx_t* new_sock_ctx;
         struct event_base *base = evconnlistener_get_base(listener);
+
 	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
 	log_printf_addr(&sock_ctx->int_addr);
-	if (evutil_make_socket_nonblocking(fd) == -1) {
+	if (evutil_make_socket_nonblocking(efd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(fd);
+		EVUTIL_CLOSESOCKET(efd);
 		return;
 	}
-	sock_ctx->tls_conn = tls_server_wrapper_setup(fd, base, sock_ctx->tls_ctx, 
+
+	new_sock_ctx = (sock_ctx_t*)calloc(1, sizeof(sock_ctx_t));
+	if (new_sock_ctx == NULL) {
+		return;
+	}
+	new_sock_ctx->fd = efd;
+
+	ifd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (ifd == -1) {
+		return;
+	}
+
+	if (bind(ifd, (struct sockaddr*)&int_addr, sizeof(int_addr)) == -1) {
+		perror("bind");
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	if (getsockname(ifd, (struct sockaddr*)&int_addr, &intaddr_len) == -1) {
+		perror("getsockname");
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	if (evutil_make_socket_nonblocking(ifd) == -1) {
+		log_printf(LOG_ERROR, "Failed in ifd evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+		EVUTIL_CLOSESOCKET(ifd);
+		return;
+	}
+
+	port = (int)ntohs((&int_addr)->sin_port);
+	hashmap_add(sock_ctx->daemon->sock_map_port, port, (void*)new_sock_ctx);
+	
+	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, base, sock_ctx->tls_ctx, 
 			&sock_ctx->int_addr, sock_ctx->int_addrlen);
 	return;
 }
 
-void server_accept_error_cb(struct evconnlistener *listener, void *ctx) {
+void listener_accept_error_cb(struct evconnlistener *listener, void *ctx) {
         struct event_base *base = evconnlistener_get_base(listener);
         int err = EVUTIL_SOCKET_ERROR();
         log_printf(LOG_ERROR, "Got an error %d (%s) on a server listener\n", 
@@ -479,7 +517,7 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 	return;
 }
 
-void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
+void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
 	int response = 0;
@@ -506,15 +544,15 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 			hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 		}
 	}
+	log_printf(LOG_INFO, "Socket created on behalf of application %s\n", comm);
 	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len) {
-	int ret;
 	sock_ctx_t* sock_ctx;
-	int response = 0;
+	int response = 0; /* Default is success */
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
@@ -523,34 +561,31 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		return;
 	}
 	switch (option) {
-		case SO_HOSTNAME:
+		case SO_REMOTE_HOSTNAME:
 			/* The kernel validated this data for us */
 			memcpy(sock_ctx->hostname, value, len);
 			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
 					sock_ctx->hostname, id);
 			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
-			ret = 0; /* Success */
+			break;
+		case SO_HOSTNAME:
+				response = -ENOPROTOOPT; /* get only */
 			break;
 		case SO_CERTIFICATE_CHAIN:
 			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {
-				response = -EBADF;
-				netlink_notify_kernel(ctx, id, response);
+				response = -EINVAL;
 			}
-			ret = 0;
 			break;
 		case SO_PRIVATE_KEY:
 			if (set_private_key(sock_ctx->tls_ctx, value) == 0) {
-				response = -EBADF;
-				netlink_notify_kernel(ctx, id, response);
+				response = -EINVAL;
 			}
-			ret = 0;
 			break;
 		default:
-			ret = setsockopt(sock_ctx->fd, level, option, value, len);
+			if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
+				response = -errno;
+			}
 			break;
-	}
-	if (ret == -1) {
-		response = -errno;
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;
@@ -568,17 +603,14 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	}
 	switch (option) {
 		case SO_PEER_CERTIFICATE:
+			printf("Getting Peer Cert\n");
 			if (sock_ctx->tls_conn == NULL) {
 				netlink_notify_kernel(ctx, id, -ENOTCONN);
 				return;
 			}
-			data = get_peer_certificate(sock_ctx->tls_conn, &len);
-			if (data == NULL) {
-				netlink_notify_kernel(ctx, id, -ENOTCONN);
-				return;
-			}
-			netlink_send_and_notify_kernel(ctx, id, data, len);
-			free(data);
+			/* get_peer_certificate will register a callback 
+			 * that send the kernel notification on its success/failure*/
+			get_peer_certificate(ctx, id, sock_ctx->tls_conn);
 			return;
 		default:
 			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
@@ -660,6 +692,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			sock_ctx->rem_addr = *rem_addr;
 			sock_ctx->rem_addrlen = rem_addrlen;
 			sock_ctx->is_connected = 1;
+			sock_ctx->tls_ctx = tls_client_ctx_create();
 		}
 	}
 	netlink_notify_kernel(ctx, id, response);
@@ -706,10 +739,41 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	}
 
 	sock_ctx->tls_ctx = tls_server_ctx_create();
-	sock_ctx->listener = evconnlistener_new(ctx->ev_base, server_accept_cb, sock_ctx,
+	sock_ctx->daemon = ctx; /* XXX I don't want this here */
+	sock_ctx->listener = evconnlistener_new(ctx->ev_base, listener_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
-	evconnlistener_set_error_cb(sock_ctx->listener, server_accept_error_cb);
+	evconnlistener_set_error_cb(sock_ctx->listener, listener_accept_error_cb);
+	return;
+}
+
+void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen) {
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+	int port;
+
+	if (int_addr->sa_family == AF_UNIX) {
+		port = strtol(((struct sockaddr_un*)int_addr)->sun_path+1, NULL, 16);
+		log_printf(LOG_INFO, "unix port is %05x", port);
+	}
+	else {
+		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+	}
+	sock_ctx = hashmap_get(ctx->sock_map_port, port);
+	hashmap_del(ctx->sock_map_port, port);
+	if (sock_ctx == NULL) {
+		log_printf(LOG_ERROR, "port provided in associate_cb not found");
+		response = -EBADF;
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+
+	sock_ctx->id = id;
+	sock_ctx->is_connected = 1;
+	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
+	
+	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
+	netlink_notify_kernel(ctx, id, response);
 	return;
 }
 
@@ -739,6 +803,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * only need to clean up the sock_ctx */
 		//netlink_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
+		SSL_CTX_free(sock_ctx->tls_ctx);
 		free(sock_ctx);
 		return;
 	}
@@ -827,6 +892,10 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	if (is_accepting == 1) {
 		sock_ctx->tls_ctx = tls_server_ctx_create();
 		sock_ctx->is_accepting = 1;
+	}
+	else {
+		sock_ctx->tls_ctx = tls_client_ctx_create();
+		sock_ctx->is_accepting = 0;
 	}
 
 	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {

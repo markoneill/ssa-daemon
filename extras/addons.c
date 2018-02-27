@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include "in_tls.h"
+#include "../in_tls.h"
 
 #define PORT_LENGTH	32
 char* custom_itoa(int num, char* buf, int len);
@@ -43,7 +43,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 	/* Set hostname (only works on TLS sockets, so we check retval) */
 	host_addr = (struct sockaddr_host*)addr;
 	hostname = host_addr->sin_addr.name;
-	setsockopt(sockfd, IPPROTO_TLS, SO_HOSTNAME, hostname, strlen(hostname)+1);
+	setsockopt(sockfd, IPPROTO_TLS, SO_REMOTE_HOSTNAME, hostname, strlen(hostname)+1);
 
 	/* Resolve hostname */
 	memset(&hints, 0, sizeof(hints));
