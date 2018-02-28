@@ -239,7 +239,48 @@ SSL_CTX* tls_client_ctx_create(void) {
 	return tls_ctx;
 }
 
-int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath) {
+int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* value, int len) {
+	//SSL_CTX_add_client_CA_list(tls_ctx, ...);
+	return 1;
+}
+
+int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos) {
+	char* next;
+	char* proto;
+	int proto_len;
+	char alpn_string[256];
+	int alpn_len;
+	char* alpn_str_ptr;
+	proto = protos;
+	alpn_str_ptr = alpn_string;
+	memset(alpn_string, 0, sizeof(alpn_string));
+	while ((next = strchr(proto, ',')) != NULL) {
+		*next = '\0';
+		proto_len = strlen(proto);
+		alpn_str_ptr[0] = proto_len;
+		alpn_str_ptr++;
+		memcpy(alpn_str_ptr, proto, proto_len);
+		alpn_str_ptr += proto_len;
+		proto = next + 1; /* +1 to skip delimeter */
+	}
+	alpn_len = strlen(alpn_string);
+	if (SSL_CTX_set_alpn_protos(tls_ctx, alpn_string, alpn_len) == 1) {
+		return 0;
+	}
+	return 1;
+}
+
+int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher) {
+	//SSL_CTX_set_cipher_list
+	return 1;
+}
+
+int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl) {
+	//SSL_SESSION_set_timeout
+	return 1;
+}
+
+int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
 	if (SSL_CTX_use_certificate_chain_file(tls_ctx, filepath) != 1) {
 		return 0;
@@ -247,8 +288,7 @@ int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath) {
 	return 1;
 }
 
-int set_private_key(SSL_CTX* tls_ctx, char* filepath) {
-	//readlink(
+int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
 	if (SSL_CTX_use_PrivateKey_file(tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
 		return 0;
@@ -256,11 +296,11 @@ int set_private_key(SSL_CTX* tls_ctx, char* filepath) {
 	return 1;
 }
 
-int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname) {
-	if (tls_conn_ctx == NULL) {
+int set_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname) {
+	if (conn_ctx == NULL) {
 		return 1;
 	}
-	SSL_set_tlsext_host_name(tls_conn_ctx->tls, hostname);
+	SSL_set_tlsext_host_name(conn_ctx->tls, hostname);
 	return 1;
 }
 

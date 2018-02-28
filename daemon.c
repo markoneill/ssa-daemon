@@ -560,32 +560,60 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		netlink_notify_kernel(ctx, id, response);
 		return;
 	}
+
 	switch (option) {
-		case SO_REMOTE_HOSTNAME:
-			/* The kernel validated this data for us */
-			memcpy(sock_ctx->hostname, value, len);
-			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
-					sock_ctx->hostname, id);
-			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
-			break;
-		case SO_HOSTNAME:
-				response = -ENOPROTOOPT; /* get only */
-			break;
-		case SO_CERTIFICATE_CHAIN:
-			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {
-				response = -EINVAL;
-			}
-			break;
-		case SO_PRIVATE_KEY:
-			if (set_private_key(sock_ctx->tls_ctx, value) == 0) {
-				response = -EINVAL;
-			}
-			break;
-		default:
-			if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
-				response = -errno;
-			}
-			break;
+	case SO_REMOTE_HOSTNAME:
+		/* The kernel validated this data for us */
+		memcpy(sock_ctx->hostname, value, len);
+		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->hostname, id);
+		if (set_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, sock_ctx->hostname) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_HOSTNAME:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	case SO_TRUSTED_PEER_CERTIFICATES:
+		if (set_trusted_peer_certificates(sock_ctx->tls_ctx, sock_ctx->tls_conn, value, len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_CERTIFICATE_CHAIN:
+		if (set_certificate_chain(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PRIVATE_KEY:
+		if (set_private_key(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_ALPN:
+		if (set_alpn_protos(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_SESSION_TTL:
+		if (set_session_ttl(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_DISABLE_CIPHER:
+		if (set_disbled_cipher(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PEER_CERTIFICATE:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	case SO_ID:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	default:
+		if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
+			response = -errno;
+		}
+		break;
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;

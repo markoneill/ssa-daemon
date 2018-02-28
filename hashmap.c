@@ -93,6 +93,7 @@ int hashmap_add(hmap_t* map, unsigned long key, void* value) {
 	new_node->next = NULL;
 	
 	index = hash(map, key);
+	if (key > 65535) printf("%lu %d\n", key, index);
 	cur = map->buckets[index];
 	if (cur == NULL) {
 		map->buckets[index] = new_node;

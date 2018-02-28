@@ -55,10 +55,14 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 
 
 /* Helper functions to separate daemon from security library */
+int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* value, int len);
+int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos);
+int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher);
+int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl);
+int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
+int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
 void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn);
-int set_private_key(SSL_CTX* tls_ctx, char* filepath);
-int set_certificate_chain(SSL_CTX* tls_ctx, char* filepath);
-int set_hostname(tls_conn_ctx_t* tls_conn_ctx, char* hostname);
+int set_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname);
 SSL_CTX* tls_server_ctx_create(void);
 SSL_CTX* tls_client_ctx_create(void);
 #endif
