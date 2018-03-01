@@ -35,6 +35,10 @@
 
 #include "daemon.h"
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
+#endif
+
 typedef struct channel {
 	struct bufferevent* bev;
 	int closed;

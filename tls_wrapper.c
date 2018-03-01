@@ -276,12 +276,24 @@ int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher)
 }
 
 int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl) {
-	//SSL_SESSION_set_timeout
+	long timeout;
+	timeout = strtol(ttl, NULL, 10);
+	if (conn_ctx != NULL) {
+		return SSL_SESSION_set_timeout(conn_ctx->tls, timeout);
+	}
+	SSL_CTX_set_timeout(tls_ctx, timeout);
 	return 1;
 }
 
 int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
+	if (conn_ctx != NULL) {
+		if (SSL_use_certificate_chain_file(conn_ctx->tls, filepath) != 1) {
+			/* Get ready for renegotiation */
+			return 0;
+		}
+		return 1;
+	}
 	if (SSL_CTX_use_certificate_chain_file(tls_ctx, filepath) != 1) {
 		return 0;
 	}
@@ -290,14 +302,26 @@ int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* file
 
 int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
+	if (conn_ctx != NULL) {
+		if (SSL_use_PrivateKey_file(conn_ctx->tls, filepath, SSL_FILETYPE_PEM) == 1) {
+			/* Renegotiate now? */
+			return 0;
+		}
+		return 1;
+	}
 	if (SSL_CTX_use_PrivateKey_file(tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
 		return 0;
 	}
+	/* Should call these as appropriate in this func */
+	//SSL_CTX_check_private_key
+	//SSL_check_private_key
 	return 1;
 }
 
 int set_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname) {
 	if (conn_ctx == NULL) {
+		/* We don't fail here because this will be set when the
+		 * connection is actually created by tls_client_setup */
 		return 1;
 	}
 	SSL_set_tlsext_host_name(conn_ctx->tls, hostname);
@@ -570,3 +594,107 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	return;
 }
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+/* The following is lifted from the OpenSSL codebase.
+ * This function was added in OpenSSL 1.1 */
+static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
+{
+    BIO *in;
+    int ret = 0;
+    X509 *x = NULL;
+    pem_password_cb *passwd_callback;
+    void *passwd_callback_userdata;
+
+    ERR_clear_error();          /* clear error stack for
+                                 * SSL_CTX_use_certificate() */
+
+    if (ctx != NULL) {
+        passwd_callback = ctx->default_passwd_callback;
+        passwd_callback_userdata = ctx->default_passwd_callback_userdata;
+    } else {
+        passwd_callback = ssl->default_passwd_callback;
+        passwd_callback_userdata = ssl->default_passwd_callback_userdata;
+    }
+
+    in = BIO_new(BIO_s_file());
+    if (in == NULL) {
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_BUF_LIB);
+        goto end;
+    }
+
+    if (BIO_read_filename(in, file) <= 0) {
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_SYS_LIB);
+        goto end;
+    }
+
+    x = PEM_read_bio_X509_AUX(in, NULL, passwd_callback,
+                              passwd_callback_userdata);
+    if (x == NULL) {
+        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_PEM_LIB);
+        goto end;
+    }
+
+    if (ctx)
+        ret = SSL_CTX_use_certificate(ctx, x);
+    else
+        ret = SSL_use_certificate(ssl, x);
+
+    if (ERR_peek_error() != 0)
+        ret = 0;                /* Key/certificate mismatch doesn't imply
+                                 * ret==0 ... */
+    if (ret) {
+        /*
+         * If we could set up our certificate, now proceed to the CA
+         * certificates.
+         */
+        X509 *ca;
+        int r;
+        unsigned long err;
+
+        if (ctx)
+            r = SSL_CTX_clear_chain_certs(ctx);
+        else
+            r = SSL_clear_chain_certs(ssl);
+
+        if (r == 0) {
+            ret = 0;
+            goto end;
+        }
+
+        while ((ca = PEM_read_bio_X509(in, NULL, passwd_callback,
+                                       passwd_callback_userdata))
+               != NULL) {
+            if (ctx)
+                r = SSL_CTX_add0_chain_cert(ctx, ca);
+            else
+                r = SSL_add0_chain_cert(ssl, ca);
+            /*
+             * Note that we must not free ca if it was successfully added to
+             * the chain (while we must free the main certificate, since its
+             * reference count is increased by SSL_CTX_use_certificate).
+             */
+            if (!r) {
+                X509_free(ca);
+                ret = 0;
+                goto end;
+            }
+        }
+        /* When the while loop ends, it's usually just EOF. */
+        err = ERR_peek_last_error();
+        if (ERR_GET_LIB(err) == ERR_LIB_PEM
+            && ERR_GET_REASON(err) == PEM_R_NO_START_LINE)
+            ERR_clear_error();
+        else
+            ret = 0;            /* some real error */
+    }
+
+ end:
+    X509_free(x);
+    BIO_free(in);
+    return ret;
+}
+
+int SSL_use_certificate_chain_file(SSL *ssl, const char *file) {
+	return use_certificate_chain_file(NULL, ssl, file);
+}
+#endif
