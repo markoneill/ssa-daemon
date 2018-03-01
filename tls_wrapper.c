@@ -595,7 +595,7 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 }
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
-/* The following is lifted from the OpenSSL codebase.
+/* The following is largely lifted from the OpenSSL codebase.
  * This function was added in OpenSSL 1.1 */
 static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
 {
@@ -609,11 +609,11 @@ static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
                                  * SSL_CTX_use_certificate() */
 
     if (ctx != NULL) {
-        passwd_callback = ctx->default_passwd_callback;
-        passwd_callback_userdata = ctx->default_passwd_callback_userdata;
+        passwd_callback = SSL_CTX_get_default_passwd_cb(ctx);
+        passwd_callback_userdata = SSL_CTX_get_default_passwd_cb_userdata(ctx);
     } else {
-        passwd_callback = ssl->default_passwd_callback;
-        passwd_callback_userdata = ssl->default_passwd_callback_userdata;
+        passwd_callback = SSL_get_default_passwd_cb(ssl);
+        passwd_callback_userdata = SSL_get_default_passwd_cb_userdata(ssl);
     }
 
     in = BIO_new(BIO_s_file());
