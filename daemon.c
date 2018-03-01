@@ -566,7 +566,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		/* The kernel validated this data for us */
 		memcpy(sock_ctx->hostname, value, len);
 		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->hostname, id);
-		if (set_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, sock_ctx->hostname) == 0) {
+		if (set_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
