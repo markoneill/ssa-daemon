@@ -566,7 +566,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		/* The kernel validated this data for us */
 		memcpy(sock_ctx->hostname, value, len);
 		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->hostname, id);
-		if (set_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
+		if (set_remote_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
@@ -621,6 +621,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
+	int response = 0;
 	char* data = NULL;
 	unsigned int len = 0;
 
@@ -630,20 +631,67 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	switch (option) {
-		case SO_PEER_CERTIFICATE:
-			printf("Getting Peer Cert\n");
-			if (sock_ctx->tls_conn == NULL) {
-				netlink_notify_kernel(ctx, id, -ENOTCONN);
-				return;
-			}
-			/* get_peer_certificate will register a callback 
-			 * that send the kernel notification on its success/failure*/
-			get_peer_certificate(ctx, id, sock_ctx->tls_conn);
-			return;
-		default:
-			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
-			netlink_notify_kernel(ctx, id, -EBADF);
-			return;
+	case SO_REMOTE_HOSTNAME:
+		if (get_remote_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_HOSTNAME:
+		if (get_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_TRUSTED_PEER_CERTIFICATES:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_CERTIFICATE_CHAIN:
+		if (get_certificate_chain(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PRIVATE_KEY:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_ALPN:
+		if (get_alpn_protos(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_SESSION_TTL:
+		if (get_session_ttl(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = EINVAL;
+		}
+		break;
+	case SO_DISABLE_CIPHER:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_PEER_CERTIFICATE:
+		if (sock_ctx->tls_conn == NULL) {
+			response = -ENOTCONN;
+			break;
+		}
+		/* get_peer_certificate will register a callback 
+		 * that send the kernel notification on its success/failure*/
+		get_peer_certificate(ctx, id, sock_ctx->tls_conn);
+		return; /* return instead of break because callback will handle notify */
+	case SO_ID:
+		/* This case is handled directly by the kernel.
+		 * If we want to change that, uncomment the lines below */
+		/* data = &id;
+		len = sizeof(id);
+		break; */
+	default:
+		log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
+		response = -EBADF;
+		break;
+	}
+	if (response != 0) {
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+	netlink_send_and_notify_kernel(ctx, id, data, len);
+	if (len > 0) {
+		free(data);
 	}
 	return;
 }

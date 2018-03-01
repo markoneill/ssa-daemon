@@ -65,8 +65,15 @@ int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher)
 int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl);
 int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
 int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
+int set_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname);
+
+int get_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
 void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn);
-int set_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname);
+
 SSL_CTX* tls_server_ctx_create(void);
 SSL_CTX* tls_client_ctx_create(void);
 #endif

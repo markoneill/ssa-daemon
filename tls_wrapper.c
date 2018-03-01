@@ -344,7 +344,7 @@ int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) 
 	return 1;
 }
 
-int set_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname) {
+int set_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname) {
 	if (conn_ctx == NULL) {
 		/* We don't fail here because this will be set when the
 		 * connection is actually created by tls_client_setup */
@@ -455,6 +455,29 @@ void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_
 
 	return;
 }
+
+int get_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	/* XXX hostname is a bit of a misnomer for the client auth case, as it's actually client identity
+	 * instead of hostname. Perhaps rename this option or make an alias for it */
+	return 1;
+}
+
+int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	return 1;
+}
+
+int get_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	return 1;
+}
+
+int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	return 1;
+}
+
+int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	return 1;
+}
+
 
 int server_name_cb(SSL* tls, int* ad, void* arg) {
 	/* Here is where we'd do anything needed for handling
