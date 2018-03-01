@@ -239,8 +239,26 @@ SSL_CTX* tls_client_ctx_create(void) {
 	return tls_ctx;
 }
 
+
 int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* value, int len) {
-	//SSL_CTX_add_client_CA_list(tls_ctx, ...);
+	/* XXX update this to take in-memory PEM chains as well as file names */
+	STACK_OF(X509_NAME)* cert_names;
+
+	if (conn_ctx != NULL) {
+		/* These options not supported after connection (for now) */
+		return 0;
+	}
+	if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
+		return 0;
+	}
+
+	/* Really we should only do this if we're the server */
+	cert_names = SSL_load_client_CA_file(value);
+	if (cert_names == NULL) {
+		return 0;
+	}
+
+	SSL_CTX_set_client_CA_list(tls_ctx, cert_names);
 	return 1;
 }
 
@@ -271,7 +289,13 @@ int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos) {
 }
 
 int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher) {
+	//char* cur_cipher;
+	// XXX to make this function less than 500 lines we need access to the
+	// config string for this app.
+	// There is no function in OpenSSL to get back a cipher string and append
+	// the desired !cipher to it. All ways to do it are endlessly hairy.
 	//SSL_CTX_set_cipher_list
+	//SSL_set_cipher_list
 	return 1;
 }
 
@@ -286,6 +310,7 @@ int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl) {
 }
 
 int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	/* XXX update this to take in-memory PEM chains as well as file names */
 	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
 	if (conn_ctx != NULL) {
 		if (SSL_use_certificate_chain_file(conn_ctx->tls, filepath) != 1) {
@@ -301,6 +326,7 @@ int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* file
 }
 
 int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	/* XXX update this to take in-memory PEM keys as well as file names */
 	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
 	if (conn_ctx != NULL) {
 		if (SSL_use_PrivateKey_file(conn_ctx->tls, filepath, SSL_FILETYPE_PEM) == 1) {
@@ -383,8 +409,7 @@ int peer_certificate_cb(tls_daemon_ctx_t* ctx, unsigned long id, SSL* ssl) {
 	return 1;
 }
 
-void certificate_handshake_cb(SSL *s, int where, int ret)
-{
+void certificate_handshake_cb(SSL *s, int where, int ret) {
 	unsigned long * id;
 	tls_daemon_ctx_t* ctx;
 	int id_len = sizeof(id);
