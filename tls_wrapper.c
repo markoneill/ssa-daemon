@@ -32,8 +32,10 @@
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/x509.h>
 
 #include "tls_wrapper.h"
+#include "openssl_compat.h"
 #include "log.h"
 
 #define MAX_BUFFER		1024*1024*10
@@ -45,6 +47,7 @@ static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 static int server_name_cb(SSL* tls, int* ad, void* arg);
+static SSL_CTX* get_tls_ctx_from_name(server_ctx_t* server_ctx, char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
@@ -187,7 +190,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
  * If the certificate doesn't exist, do we try to use Let's Encrypt to
  * dynamically get one?
  */
-SSL_CTX* tls_server_ctx_create(void) {
+SSL_CTX* tls_server_ctx_create(server_ctx_t* server_ctx) {
 	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
 	if (tls_ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
@@ -204,7 +207,7 @@ SSL_CTX* tls_server_ctx_create(void) {
 
 	/* SNI configuration */
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
-	//SSL_CTX_set_tlsext_servername_arg(tls_ctx, ctx);
+	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)server_ctx);
 
 	//SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	//SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
@@ -313,7 +316,11 @@ int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* file
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
 	if (conn_ctx != NULL) {
+		#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 		if (SSL_use_certificate_chain_file(conn_ctx->tls, filepath) != 1) {
+		#else
+		if (compat_SSL_use_certificate_chain_file(conn_ctx->tls, filepath) != 1) {
+		#endif
 			/* Get ready for renegotiation */
 			return 0;
 		}
@@ -463,25 +470,81 @@ int get_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data,
 }
 
 int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	char* hostname;
+	char* hostname_copy;
+	if (conn_ctx == NULL) {
+		return 0;
+	}
+	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
+	if (hostname == NULL) {
+		*len = 0;
+		*data = NULL;
+		return 1;
+	}
+	*len = strlen(hostname)+1;
+	hostname_copy = malloc(*len);
+	if (hostname_copy == NULL) {
+		return 0;
+	}
+	memcpy(hostname_copy, hostname, *len);
+	*data = hostname;
 	return 1;
 }
 
 int get_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	/* XXX stub */
 	return 1;
 }
 
 int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	/* XXX stub */
 	return 1;
 }
 
 int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	/* XXX stub */
 	return 1;
 }
 
+SSL_CTX* get_tls_ctx_from_name(server_ctx_t* server_ctx, char* hostname) {
+	X509* cert;
+	server_ctx_t* cur_server;
+	if (server_ctx == NULL) {
+		return NULL;
+	}
+	cur_server = server_ctx;
+	while (cur_server != NULL) {
+		cert = SSL_CTX_get0_certificate(server_ctx->tls_ctx);
+		if (cert == NULL) {
+			break;
+		}
+		#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+		if (X509_check_host(hostname, 0, 0, NULL) == 1) {
+		#else
+		if (validate_hostname(hostname, cert) == MatchFound) {
+		#endif
+			return cur_server->tls_ctx;
+		}
+		cur_server = cur_server->next;
+	}
+	return NULL;
+}
 
 int server_name_cb(SSL* tls, int* ad, void* arg) {
-	/* Here is where we'd do anything needed for handling
-	 * connections differently based on SNI  */
+	SSL_CTX* tls_ctx;
+	SSL_CTX* old_ctx;
+	old_ctx = SSL_get_SSL_CTX(tls);
+	const char* hostname = SSL_get_servername(tls, TLSEXT_NAMETYPE_host_name);
+	if (hostname == NULL) {
+		return SSL_TLSEXT_ERR_NOACK;
+	}
+	log_printf(LOG_INFO, "SNI from client is %s\n", hostname);
+	tls_ctx = get_tls_ctx_from_name((server_ctx_t*)arg, hostname);
+	if (tls_ctx != NULL) {
+		log_printf(LOG_INFO, "Server SSL_CTX matching SNI was found\n");
+		SSL_set_SSL_CTX(tls, tls_ctx);
+		SSL_set_verify(tls, SSL_CTX_get_verify_mode(old_ctx), SSL_CTX_get_verify_callback(old_ctx));
+	}
 	return SSL_TLSEXT_ERR_OK;
 }
 
@@ -489,7 +552,6 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	SSL* tls;
 
 	tls = SSL_new(tls_ctx);
-	//SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
 	if (tls == NULL) {
 		return NULL;
 	}
@@ -504,7 +566,6 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 
 SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 	SSL* tls = SSL_new(tls_ctx);
-	//SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
 	if (tls == NULL) {
 		return NULL;
 	}
@@ -642,112 +703,3 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	return;
 }
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L
-/* The following is largely lifted from the OpenSSL codebase.
- * This function was added in OpenSSL 1.1 */
-#define SSL_F_USE_CERTIFICATE_CHAIN_FILE                 220
-static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
-{
-    BIO *in;
-    int ret = 0;
-    X509 *x = NULL;
-    pem_password_cb *passwd_callback;
-    void *passwd_callback_userdata;
-
-    ERR_clear_error();          /* clear error stack for
-                                 * SSL_CTX_use_certificate() */
-
-    /*if (ctx != NULL) {
-        passwd_callback = SSL_CTX_get_default_passwd_cb(ctx);
-        passwd_callback_userdata = SSL_CTX_get_default_passwd_cb_userdata(ctx);
-    } else {
-        passwd_callback = SSL_get_default_passwd_cb(ssl);
-        passwd_callback_userdata = SSL_get_default_passwd_cb_userdata(ssl);
-    }*/
-
-    in = BIO_new(BIO_s_file());
-    if (in == NULL) {
-        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_BUF_LIB);
-        goto end;
-    }
-
-    if (BIO_read_filename(in, file) <= 0) {
-        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_SYS_LIB);
-        goto end;
-    }
-
-    /*x = PEM_read_bio_X509_AUX(in, NULL, passwd_callback,
-                              passwd_callback_userdata);*/
-    x = PEM_read_bio_X509_AUX(in, NULL, NULL,
-                              NULL);
-    if (x == NULL) {
-        SSLerr(SSL_F_USE_CERTIFICATE_CHAIN_FILE, ERR_R_PEM_LIB);
-        goto end;
-    }
-
-    if (ctx)
-        ret = SSL_CTX_use_certificate(ctx, x);
-    else
-        ret = SSL_use_certificate(ssl, x);
-
-    if (ERR_peek_error() != 0)
-        ret = 0;                /* Key/certificate mismatch doesn't imply
-                                 * ret==0 ... */
-    if (ret) {
-        /*
-         * If we could set up our certificate, now proceed to the CA
-         * certificates.
-         */
-        X509 *ca;
-        int r;
-        unsigned long err;
-
-        if (ctx)
-            r = SSL_CTX_clear_chain_certs(ctx);
-        else
-            r = SSL_clear_chain_certs(ssl);
-
-        if (r == 0) {
-            ret = 0;
-            goto end;
-        }
-
-        /*while ((ca = PEM_read_bio_X509(in, NULL, passwd_callback,
-                                       passwd_callback_userdata))*/
-        while ((ca = PEM_read_bio_X509(in, NULL, NULL,
-                                       NULL))
-               != NULL) {
-            if (ctx)
-                r = SSL_CTX_add0_chain_cert(ctx, ca);
-            else
-                r = SSL_add0_chain_cert(ssl, ca);
-            /*
-             * Note that we must not free ca if it was successfully added to
-             * the chain (while we must free the main certificate, since its
-             * reference count is increased by SSL_CTX_use_certificate).
-             */
-            if (!r) {
-                X509_free(ca);
-                ret = 0;
-                goto end;
-            }
-        }
-        /* When the while loop ends, it's usually just EOF. */
-        err = ERR_peek_last_error();
-        if (ERR_GET_LIB(err) == ERR_LIB_PEM
-            && ERR_GET_REASON(err) == PEM_R_NO_START_LINE)
-            ERR_clear_error();
-        else
-            ret = 0;            /* some real error */
-    }
-
- end:
-    X509_free(x);
-    BIO_free(in);
-    return ret;
-}
-
-int SSL_use_certificate_chain_file(SSL *ssl, const char *file) {
-	return use_certificate_chain_file(NULL, ssl, file);
-}
-#endif

@@ -56,9 +56,9 @@
 #include "netlink.h"
 #include "log.h"
 
-#define MAX_HOSTNAME		255
 #define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
+
 
 typedef struct sock_ctx {
 	unsigned long id;
@@ -78,7 +78,8 @@ typedef struct sock_ctx {
 	int is_accepting;
 	struct evconnlistener* listener;
 	SSL_CTX* tls_ctx;
-	char hostname[MAX_HOSTNAME];
+	server_ctx_t* server_ctx_list;
+	char rem_hostname[MAX_HOSTNAME];
 	tls_conn_ctx_t* tls_conn;
 	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
@@ -413,11 +414,11 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
+	log_printf(LOG_INFO, "Remote Hostname: %s (%p)\n", sock_ctx->rem_hostname, sock_ctx->rem_hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//hashmap_del(ctx->sock_map, sock_ctx->id);
 	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, 
-				sock_ctx->hostname, sock_ctx->is_accepting, sock_ctx->tls_ctx);
+				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_ctx);
 	//free(sock_ctx);
 	return;
 }
@@ -564,8 +565,8 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 	switch (option) {
 	case SO_REMOTE_HOSTNAME:
 		/* The kernel validated this data for us */
-		memcpy(sock_ctx->hostname, value, len);
-		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->hostname, id);
+		memcpy(sock_ctx->rem_hostname, value, len);
+		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->rem_hostname, id);
 		if (set_remote_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
@@ -579,6 +580,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		}
 		break;
 	case SO_CERTIFICATE_CHAIN:
+
 		if (set_certificate_chain(sock_ctx->tls_ctx, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
@@ -632,6 +634,10 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	}
 	switch (option) {
 	case SO_REMOTE_HOSTNAME:
+		if (sock_ctx->rem_hostname != NULL) {
+			netlink_send_and_notify_kernel(ctx, id, sock_ctx->rem_hostname, strlen(sock_ctx->rem_hostname)+1);
+			return;
+		}
 		if (get_remote_hostname(sock_ctx->tls_ctx, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
 		}
@@ -814,7 +820,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 		return;
 	}
 
-	sock_ctx->tls_ctx = tls_server_ctx_create();
+	sock_ctx->tls_ctx = tls_server_ctx_create(sock_ctx->server_ctx_list);
 	sock_ctx->daemon = ctx; /* XXX I don't want this here */
 	sock_ctx->listener = evconnlistener_new(ctx->ev_base, listener_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
@@ -966,7 +972,7 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	sock_ctx->is_connected = 1;
 
 	if (is_accepting == 1) {
-		sock_ctx->tls_ctx = tls_server_ctx_create();
+		sock_ctx->tls_ctx = tls_server_ctx_create(sock_ctx->server_ctx_list);
 		sock_ctx->is_accepting = 1;
 	}
 	else {

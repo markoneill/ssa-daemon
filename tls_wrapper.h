@@ -32,12 +32,19 @@
 #include <netinet/in.h>
 
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
 
 #include "daemon.h"
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
 int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 #endif
+
+typedef struct server_ctx {
+	SSL_CTX* tls_ctx;
+	struct server_ctx* next;
+	char server_name[MAX_HOSTNAME];
+} server_ctx_t;
 
 typedef struct channel {
 	struct bufferevent* bev;
@@ -74,6 +81,6 @@ int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, uns
 int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
 void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn);
 
-SSL_CTX* tls_server_ctx_create(void);
+SSL_CTX* tls_server_ctx_create(server_ctx_t* server_ctx);
 SSL_CTX* tls_client_ctx_create(void);
 #endif

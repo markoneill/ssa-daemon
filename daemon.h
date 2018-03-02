@@ -38,6 +38,8 @@
 #include "queue.h"
 
 
+#define MAX_HOSTNAME		255
+
 #if OPENSSL_VERSION_NUMBER >= 0x10100000L
 #define OPENSSL_EX_DATA_ID	1
 #define OPENSSL_EX_DATA_CTX	2
