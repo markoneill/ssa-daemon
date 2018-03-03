@@ -199,9 +199,18 @@ tls_opts_t* tls_opts_create(char* path) {
 }
 
 void tls_opts_free(tls_opts_t* opts) {
-	/*XXX FREE ALL OF THEM */
-	SSL_CTX_free(opts->tls_ctx);
-	free(opts);
+	tls_opts_t* cur_opts;
+	tls_opts_t* tmp_opts;
+	/* opts can be NULL (e.g., accepted sockets
+	 * have no opts because they adopt the
+	 * listening socket's opts upon accept */
+	cur_opts = opts;
+	while (cur_opts != NULL) {
+		tmp_opts = cur_opts->next;
+		SSL_CTX_free(cur_opts->tls_ctx);
+		free(cur_opts);
+		cur_opts = tmp_opts;
+	}
 	return;
 }
 
@@ -329,10 +338,12 @@ int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
 	return 1;
 }
 
+/* XXX update this to take in-memory PEM chains as well as file names */
 int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
-	/* XXX update this to take in-memory PEM chains as well as file names */
-	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
+	tls_opts_t* cur_opts;
+	tls_opts_t* new_opts;
+
+	/* If a connection already exists, set the certs on the existing connection*/
 	if (conn_ctx != NULL) {
 		#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 		if (SSL_use_certificate_chain_file(conn_ctx->tls, filepath) != 1) {
@@ -344,30 +355,78 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 		}
 		return 1;
 	}
-	if (SSL_CTX_use_certificate_chain_file(tls_ctx, filepath) != 1) {
+
+	/* If no connection exists, set the certs on the options */
+	if (tls_opts == NULL) {
 		return 0;
 	}
+	cur_opts = tls_opts;
+	/* There is no cert set yet on the first SSL_CTX so we'll use that */
+	if (SSL_CTX_get0_certificate(cur_opts->tls_ctx) == NULL) {
+		if (SSL_CTX_use_certificate_chain_file(cur_opts->tls_ctx, filepath) != 1) {
+			log_printf(LOG_ERROR, "Unable to assign certificate chain\n");
+			return 0;
+		}
+		log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
+		return 1;
+	}
+
+	/* Otherwise create a new options struct and use that */
+	while (cur_opts->next != NULL) {
+		cur_opts = cur_opts->next;
+	}
+	new_opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
+	if (new_opts == NULL) {
+		log_printf(LOG_ERROR, "Unable to allocate space for tls_opts\n");
+		return 0;
+	}
+
+	new_opts = tls_opts_create(NULL);
+	if (new_opts == NULL) {
+		return 0;
+	}
+	
+	if (SSL_CTX_use_certificate_chain_file(new_opts->tls_ctx, filepath) != 1) {
+		log_printf(LOG_ERROR, "Unable to assign certificate chain\n");
+		return 0;
+	}
+	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
+	/* Add new opts to option list */
+	cur_opts->next = new_opts;
 	return 1;
 }
 
+/* XXX update this to take in-memory PEM keys as well as file names */
 int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
-	/* XXX update this to take in-memory PEM keys as well as file names */
-	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
+	tls_opts_t* cur_opts;
+
+	/* If an active connection exists, just set the key for that session */
 	if (conn_ctx != NULL) {
 		if (SSL_use_PrivateKey_file(conn_ctx->tls, filepath, SSL_FILETYPE_PEM) == 1) {
 			/* Renegotiate now? */
 			return 0;
 		}
+		log_printf(LOG_INFO, "Using key located at %s\n", filepath);
 		return 1;
 	}
-	if (SSL_CTX_use_PrivateKey_file(tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
-		return 0;
+
+	/* Otherwise set the key to the first SSL_CTX that doesn't currently have one */
+	cur_opts = tls_opts;
+	while (cur_opts != NULL) {
+		if (SSL_CTX_get0_privatekey(cur_opts->tls_ctx) == NULL) {
+			if (SSL_CTX_use_PrivateKey_file(cur_opts->tls_ctx, filepath, SSL_FILETYPE_PEM) != 1) {
+				return 0;
+			}
+			log_printf(LOG_INFO, "Using key located at %s\n", filepath);
+			return 1;
+		}
+		cur_opts = cur_opts->next;
 	}
-	/* Should call these as appropriate in this func */
+
+	/* XXX Should call these as appropriate in this func */
 	//SSL_CTX_check_private_key
 	//SSL_check_private_key
-	return 1;
+	return 0;
 }
 
 int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname) {
@@ -447,7 +506,7 @@ void certificate_handshake_cb(SSL *s, int where, int ret) {
 		id = SSL_get_ex_data(s, OPENSSL_EX_DATA_ID);
 		ctx = SSL_get_ex_data(s, OPENSSL_EX_DATA_CTX);
 
-		peer_certificate_cb(ctx,*id,s);
+		peer_certificate_cb(ctx, *id, s);
 
 		/* free the id becuase we only use it for this function. */
 		free(id);
