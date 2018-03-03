@@ -47,13 +47,13 @@ static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 static int server_name_cb(SSL* tls, int* ad, void* arg);
-static SSL_CTX* get_tls_ctx_from_name(server_ctx_t* server_ctx, char* hostname);
+static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd,
-		struct event_base* ev_base, char* hostname, int is_accepting, SSL_CTX* tls_ctx) {
+		struct event_base* ev_base, char* hostname, int is_accepting, tls_opts_t* tls_opts) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -67,7 +67,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
 		return NULL;
 	}
-	ctx->tls = tls_client_setup(tls_ctx, hostname);
+	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
 		free_tls_conn_ctx(ctx);
@@ -124,7 +124,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 }
 
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
-	       	struct event_base* ev_base, SSL_CTX* tls_ctx, 
+	       	struct event_base* ev_base, tls_opts_t* tls_opts, 
 		struct sockaddr* internal_addr, int internal_addrlen) {
 
 	/*  ctx will hold all data for interacting with the connection to
@@ -140,7 +140,8 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 		return NULL;
 	}
 	
-	ctx->tls = tls_server_setup(tls_ctx);
+	/* We're sending just the first tls_ctx here because our SNI callbacks will fix it if needed */
+	ctx->tls = tls_server_setup(tls_opts->tls_ctx);
 	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
@@ -180,22 +181,35 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	return ctx;
 }
 
-/* XXX Parameterize later
- * Suggestion: Perhaps look up privkey and cert in a
- * protected ssa store with a hostname as an index?
- *
- * The lame option is to have the programmer decide what cert
- * and key to use. We can support this, but the other option seems cool too.
- *
- * If the certificate doesn't exist, do we try to use Let's Encrypt to
- * dynamically get one?
- */
-SSL_CTX* tls_server_ctx_create(server_ctx_t* server_ctx) {
-	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
-	if (tls_ctx == NULL) {
-		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
+
+tls_opts_t* tls_opts_create(char* path) {
+	tls_opts_t* opts;
+	SSL_CTX* tls_ctx;
+	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
+	if (opts == NULL) {
 		return NULL;
 	}
+
+	/* Configure default settings for connections based on
+	 * admin preferences */
+	tls_ctx = SSL_CTX_new(SSLv23_method());
+
+	opts->tls_ctx = tls_ctx;
+	return opts;
+}
+
+void tls_opts_free(tls_opts_t* opts) {
+	/*XXX FREE ALL OF THEM */
+	SSL_CTX_free(opts->tls_ctx);
+	free(opts);
+	return;
+}
+
+int tls_opts_server_setup(tls_opts_t* tls_opts) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+	
+	tls_opts->is_server = 1;
+	
 	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
@@ -207,22 +221,21 @@ SSL_CTX* tls_server_ctx_create(server_ctx_t* server_ctx) {
 
 	/* SNI configuration */
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
-	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)server_ctx);
+	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)tls_opts);
 
 	//SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	//SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem");
 	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
 
-	return tls_ctx;
+	return 1;
 }
 
-SSL_CTX* tls_client_ctx_create(void) {
-	SSL_CTX* tls_ctx = SSL_CTX_new(SSLv23_method());
-	if (tls_ctx == NULL) {
-		log_printf(LOG_ERROR, "Failed in SSL_CTX_new() [server]\n");
-		return NULL;
-	}
+int tls_opts_client_setup(tls_opts_t* tls_opts) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+
+	tls_opts->is_server = 0;
+
 	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
 
 	/* We're going to commit the cardinal sin for a bit. Hook up TrustBase here XXX */
@@ -239,11 +252,12 @@ SSL_CTX* tls_client_ctx_create(void) {
 	/* For client auth portion of the SSA utilize 
 	 * SSL_CTX_set_default_passwd_cb */
 
-	return tls_ctx;
+	return 1;
 }
 
 
-int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* value, int len) {
+int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	STACK_OF(X509_NAME)* cert_names;
 
@@ -265,7 +279,7 @@ int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, ch
 	return 1;
 }
 
-int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos) {
+int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos) {
 	char* next;
 	char* proto;
 	int proto_len;
@@ -274,6 +288,7 @@ int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos) {
 	char* alpn_str_ptr;
 	proto = protos;
 	alpn_str_ptr = alpn_string;
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	memset(alpn_string, 0, sizeof(alpn_string));
 	while ((next = strchr(proto, ',')) != NULL) {
 		*next = '\0';
@@ -291,7 +306,8 @@ int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos) {
 	return 1;
 }
 
-int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher) {
+int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cipher) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	//char* cur_cipher;
 	// XXX to make this function less than 500 lines we need access to the
 	// config string for this app.
@@ -302,7 +318,8 @@ int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher)
 	return 1;
 }
 
-int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl) {
+int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	long timeout;
 	timeout = strtol(ttl, NULL, 10);
 	if (conn_ctx != NULL) {
@@ -312,7 +329,8 @@ int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl) {
 	return 1;
 }
 
-int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
+int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
 	if (conn_ctx != NULL) {
@@ -332,7 +350,8 @@ int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* file
 	return 1;
 }
 
-int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) {
+int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	/* XXX update this to take in-memory PEM keys as well as file names */
 	log_printf(LOG_INFO, "Using key located at %s\n", filepath);
 	if (conn_ctx != NULL) {
@@ -351,7 +370,8 @@ int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath) 
 	return 1;
 }
 
-int set_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname) {
+int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname) {
+	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	if (conn_ctx == NULL) {
 		/* We don't fail here because this will be set when the
 		 * connection is actually created by tls_client_setup */
@@ -422,9 +442,7 @@ void certificate_handshake_cb(SSL *s, int where, int ret) {
 	int id_len = sizeof(id);
 	int fd = SSL_get_wfd(s);
 
-	if(where == SSL_CB_HANDSHAKE_DONE)
-	{
-
+	if (where == SSL_CB_HANDSHAKE_DONE) {
 		/* Get the id and daemon_ctx from the SSL object */
 		id = SSL_get_ex_data(s, OPENSSL_EX_DATA_ID);
 		ctx = SSL_get_ex_data(s, OPENSSL_EX_DATA_CTX);
@@ -463,13 +481,13 @@ void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_
 	return;
 }
 
-int get_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	/* XXX hostname is a bit of a misnomer for the client auth case, as it's actually client identity
 	 * instead of hostname. Perhaps rename this option or make an alias for it */
 	return 1;
 }
 
-int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	char* hostname;
 	char* hostname_copy;
 	if (conn_ctx == NULL) {
@@ -491,30 +509,30 @@ int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsign
 	return 1;
 }
 
-int get_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	/* XXX stub */
 	return 1;
 }
 
-int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	/* XXX stub */
 	return 1;
 }
 
-int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	/* XXX stub */
 	return 1;
 }
 
-SSL_CTX* get_tls_ctx_from_name(server_ctx_t* server_ctx, char* hostname) {
+SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
 	X509* cert;
-	server_ctx_t* cur_server;
-	if (server_ctx == NULL) {
+	tls_opts_t* cur_opts;
+	if (tls_opts == NULL) {
 		return NULL;
 	}
-	cur_server = server_ctx;
-	while (cur_server != NULL) {
-		cert = SSL_CTX_get0_certificate(server_ctx->tls_ctx);
+	cur_opts = tls_opts;
+	while (cur_opts != NULL) {
+		cert = SSL_CTX_get0_certificate(cur_opts->tls_ctx);
 		if (cert == NULL) {
 			break;
 		}
@@ -523,9 +541,9 @@ SSL_CTX* get_tls_ctx_from_name(server_ctx_t* server_ctx, char* hostname) {
 		#else
 		if (validate_hostname(hostname, cert) == MatchFound) {
 		#endif
-			return cur_server->tls_ctx;
+			return cur_opts->tls_ctx;
 		}
-		cur_server = cur_server->next;
+		cur_opts = cur_opts->next;
 	}
 	return NULL;
 }
@@ -539,7 +557,7 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 		return SSL_TLSEXT_ERR_NOACK;
 	}
 	log_printf(LOG_INFO, "SNI from client is %s\n", hostname);
-	tls_ctx = get_tls_ctx_from_name((server_ctx_t*)arg, hostname);
+	tls_ctx = get_tls_ctx_from_name((tls_opts_t*)arg, hostname);
 	if (tls_ctx != NULL) {
 		log_printf(LOG_INFO, "Server SSL_CTX matching SNI was found\n");
 		SSL_set_SSL_CTX(tls, tls_ctx);

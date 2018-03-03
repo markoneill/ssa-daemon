@@ -40,11 +40,11 @@
 int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 #endif
 
-typedef struct server_ctx {
+typedef struct tls_opts {
 	SSL_CTX* tls_ctx;
-	struct server_ctx* next;
-	char server_name[MAX_HOSTNAME];
-} server_ctx_t;
+	int is_server;
+	struct tls_ops* next;
+} tls_opts_t;
 
 typedef struct channel {
 	struct bufferevent* bev;
@@ -59,28 +59,30 @@ typedef struct tls_conn_ctx {
 } tls_conn_ctx_t;
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, 
-	struct event_base* ev_base, char* hostname, int is_accepting, SSL_CTX* tls_ctx);
+	struct event_base* ev_base, char* hostname, int is_accepting, tls_opts_t* tls_opts);
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
-	       	struct event_base* ev_base, SSL_CTX* tls_ctx, 
+	       	struct event_base* ev_base, tls_opts_t* tls_opts, 
 		struct sockaddr* internal_addr, int internal_addrlen);
+tls_opts_t* tls_opts_create(char* path);
+void tls_opts_free(tls_opts_t*);
+int tls_ops_server_setup(tls_opts_t* ops);
+int tls_ops_client_setup(tls_opts_t* ops);
 
 
 /* Helper functions to separate daemon from security library */
-int set_trusted_peer_certificates(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* value, int len);
-int set_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* protos);
-int set_disbled_cipher(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* cipher);
-int set_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* ttl);
-int set_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
-int set_private_key(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* filepath);
-int set_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char* hostname);
+int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len);
+int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos);
+int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cipher);
+int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl);
+int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath);
+int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath);
+int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname);
 
-int get_remote_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
-int get_hostname(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
-int get_certificate_chain(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
-int get_alpn_protos(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
-int get_session_ttl(SSL_CTX* tls_ctx, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
+int get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
 void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn);
 
-SSL_CTX* tls_server_ctx_create(server_ctx_t* server_ctx);
-SSL_CTX* tls_client_ctx_create(void);
 #endif
