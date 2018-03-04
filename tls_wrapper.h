@@ -58,11 +58,11 @@ typedef struct tls_conn_ctx {
 	SSL* tls;
 } tls_conn_ctx_t;
 
-tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, 
-	struct event_base* ev_base, char* hostname, int is_accepting, tls_opts_t* tls_opts);
-tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
-	       	struct event_base* ev_base, tls_opts_t* tls_opts, 
-		struct sockaddr* internal_addr, int internal_addrlen);
+tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
+	char* hostname, int is_accepting, tls_opts_t* tls_opts);
+tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
+	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen);
+int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id);
 tls_opts_t* tls_opts_create(char* path);
 void tls_opts_free(tls_opts_t*);
 int tls_ops_server_setup(tls_opts_t* ops);

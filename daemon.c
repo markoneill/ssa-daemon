@@ -59,7 +59,6 @@
 #define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
 
-
 typedef struct sock_ctx {
 	unsigned long id;
 	evutil_socket_t fd;
@@ -155,6 +154,7 @@ int server_create(int port) {
 	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
 	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL) == OPENSSL_EX_DATA_ID);
 	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL) == OPENSSL_EX_DATA_CTX);
+	assert(SSL_get_ex_new_index(0, "want_send", NULL, NULL, NULL) == OPENSSL_EX_DATA_WANT_SEND);
 
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
@@ -415,10 +415,10 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	log_printf(LOG_INFO, "Remote Hostname: %s (%p)\n", sock_ctx->rem_hostname, sock_ctx->rem_hostname);
 	hashmap_del(ctx->sock_map_port, port);
-	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, 
+	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx, 
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
-	//free(sock_ctx);
+
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id); 
 	return;
 }
 
@@ -459,6 +459,10 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 		return;
 	}
 	new_sock_ctx->fd = efd;
+	//new_sock_ctx->daemon = sock_ctx->daemon;
+	//new_sock_ctx->tls_opts = sock_ctx->tls_opts;
+	//new_sock_ctx->int_addr = sock_ctx->int_addr;
+	//new_sock_ctx->int_addrlen = sock_ctx->int_addrlen;
 
 	ifd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (ifd == -1) {
@@ -487,8 +491,8 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	port = (int)ntohs((&int_addr)->sin_port);
 	hashmap_add(sock_ctx->daemon->sock_map_port, port, (void*)new_sock_ctx);
 	
-	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, base, sock_ctx->tls_opts, 
-			&sock_ctx->int_addr, sock_ctx->int_addrlen);
+	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, sock_ctx->daemon,
+			sock_ctx->tls_opts, &sock_ctx->int_addr, sock_ctx->int_addrlen);
 	return;
 }
 
@@ -623,6 +627,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
+	int ret;
 	int response = 0;
 	char* data = NULL;
 	unsigned int len = 0;
@@ -643,10 +648,15 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		}
 		break;
 	case SO_HOSTNAME:
-		if (get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+		ret = get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len);
+		if (ret == 0) {
 			response = -EINVAL;
 		}
-		break;
+		else if (ret == 1) {
+			break;
+		}
+		/* If we got here it means we set a callback to report data */
+		return;
 	case SO_TRUSTED_PEER_CERTIFICATES:
 		response = -ENOPROTOOPT; /* set only */
 		break;
@@ -854,6 +864,7 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 	sock_ctx->is_connected = 1;
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 	
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
 	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
 	netlink_notify_kernel(ctx, id, response);
 	return;
@@ -906,17 +917,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, 
 		struct sockaddr* int_addr, int int_addrlen) {
-	int port;
-	int fd = (int)id; /* the ID is actually the new socket descriptor */
-	port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
-
-	/* XXX To make this function work we need:
-	 * 	1) daemon's fd for old existing socket connection
-	 * 	2) kernel socket pointer (ID) for new socket created for app
-	 * 	3) port to which new socket created for app is bound (and we need to bind it too)
-	 * 	4) information on whether or not this socket is passive or active (has listen() been called?)
-	 * 	5) if socket is active but NOT a server socket (SSL_accept case)...we need to know this
-	 */
+	/* This was implemented in the kernel directly. */
 	return;
 }
 

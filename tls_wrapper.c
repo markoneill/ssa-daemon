@@ -52,8 +52,8 @@ static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 
-tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd,
-		struct event_base* ev_base, char* hostname, int is_accepting, tls_opts_t* tls_opts) {
+tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
+	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
 	
 	/* ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -68,13 +68,13 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		return NULL;
 	}
 	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
+
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
-
-	ctx->cf.bev = bufferevent_socket_new(ev_base, ifd,
+	ctx->cf.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
@@ -87,11 +87,11 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 
 
 	if (is_accepting == 1) { /* TLS server role */
-		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
+		ctx->sf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 	else { /* TLS client role */
-		ctx->sf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
+		ctx->sf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 
@@ -123,9 +123,8 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 	return ctx;
 }
 
-tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd,
-	       	struct event_base* ev_base, tls_opts_t* tls_opts, 
-		struct sockaddr* internal_addr, int internal_addrlen) {
+tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
+	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen) {
 
 	/*  ctx will hold all data for interacting with the connection to
 	 *  the application server socket and the remote socket (client)
@@ -142,7 +141,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	
 	/* We're sending just the first tls_ctx here because our SNI callbacks will fix it if needed */
 	ctx->tls = tls_server_setup(tls_opts->tls_ctx);
-	ctx->cf.bev = bufferevent_openssl_socket_new(ev_base, efd, ctx->tls,
+	ctx->cf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->cf.connected = 1;
 	if (ctx->cf.bev == NULL) {
@@ -157,7 +156,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	bufferevent_openssl_set_allow_dirty_shutdown(ctx->cf.bev, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	ctx->sf.bev = bufferevent_socket_new(ev_base, ifd,
+	ctx->sf.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	if (ctx->sf.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [listener mode]\n");
@@ -375,11 +374,6 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 	while (cur_opts->next != NULL) {
 		cur_opts = cur_opts->next;
 	}
-	new_opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
-	if (new_opts == NULL) {
-		log_printf(LOG_ERROR, "Unable to allocate space for tls_opts\n");
-		return 0;
-	}
 
 	new_opts = tls_opts_create(NULL);
 	if (new_opts == NULL) {
@@ -556,7 +550,11 @@ int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, un
 	if (hostname == NULL) {
 		*len = 0;
 		*data = NULL;
-		return 1;
+		/* We don't have this info yet, have the servername callback send the info 
+		 * back when it gets called */
+
+		SSL_set_ex_data(conn_ctx->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)1);
+		return 2; /* 2 indicates wait */
 	}
 	*len = strlen(hostname)+1;
 	hostname_copy = malloc(*len);
@@ -564,7 +562,7 @@ int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, un
 		return 0;
 	}
 	memcpy(hostname_copy, hostname, *len);
-	*data = hostname;
+	*data = hostname_copy;
 	return 1;
 }
 
@@ -610,9 +608,20 @@ SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
 int server_name_cb(SSL* tls, int* ad, void* arg) {
 	SSL_CTX* tls_ctx;
 	SSL_CTX* old_ctx;
+	unsigned long id;
+	tls_daemon_ctx_t* daemon_ctx;
+	int want_send;
+
 	old_ctx = SSL_get_SSL_CTX(tls);
+	id = SSL_get_ex_data(tls, OPENSSL_EX_DATA_ID);
+	daemon_ctx = SSL_get_ex_data(tls, OPENSSL_EX_DATA_CTX);
+	want_send = SSL_get_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND);
+
 	const char* hostname = SSL_get_servername(tls, TLSEXT_NAMETYPE_host_name);
 	if (hostname == NULL) {
+		if (want_send == 1) {
+			netlink_send_and_notify_kernel(daemon_ctx, id, NULL, 0);
+		}
 		return SSL_TLSEXT_ERR_NOACK;
 	}
 	log_printf(LOG_INFO, "SNI from client is %s\n", hostname);
@@ -622,17 +631,18 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 		SSL_set_SSL_CTX(tls, tls_ctx);
 		SSL_set_verify(tls, SSL_CTX_get_verify_mode(old_ctx), SSL_CTX_get_verify_callback(old_ctx));
 	}
+	if (want_send == 1) {
+		netlink_send_and_notify_kernel(daemon_ctx, id, hostname, strlen(hostname)+1);
+	}
 	return SSL_TLSEXT_ERR_OK;
 }
 
 SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	SSL* tls;
-
 	tls = SSL_new(tls_ctx);
 	if (tls == NULL) {
 		return NULL;
 	}
-
 	/* set server name indication for client hello */
 	if (hostname != NULL) {
 		SSL_set_tlsext_host_name(tls, hostname);
@@ -647,6 +657,13 @@ SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 		return NULL;
 	}
 	return tls;
+}
+
+int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id) {
+	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_ID, (void*)id);
+	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_CTX, (void*)daemon_ctx);
+	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
+	return 1;
 }
 
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {

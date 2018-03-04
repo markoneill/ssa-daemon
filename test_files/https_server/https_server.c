@@ -9,15 +9,17 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 
-#define CERT_FILE	"../certificate.pem"
-#define KEY_FILE	"../key.pem"
+#define CERT_FILE_A	"../certificate_a.pem"
+#define KEY_FILE_A	"../key_a.pem"
+#define CERT_FILE_B	"../certificate_b.pem"
+#define KEY_FILE_B	"../key_b.pem"
 #define BUFFER_SIZE	2048
 
 void handle_req(char* req, char* resp);
 
 int main() {
-	unsigned long id;
-	int id_len = sizeof(id);
+	char servername[255];
+	int servername_len = sizeof(servername);
 	char request[BUFFER_SIZE];
 	char response[BUFFER_SIZE];
 	memset(request, 0, BUFFER_SIZE);
@@ -29,23 +31,29 @@ int main() {
 
 	int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
 	bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+	if (setsockopt(fd, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
+		perror("cert a");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
+		perror("key a");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
+		perror("cert b");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
+		perror("key b");
+	}
 	listen(fd, SOMAXCONN);
-	if (setsockopt(fd, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE, sizeof(CERT_FILE)) == -1) {
-		perror("cert");
-	}
-	if (setsockopt(fd, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE, sizeof(KEY_FILE)) == -1) {
-		perror("key");
-	}
 
 	while (1) {	
 		struct sockaddr_storage addr;
 		socklen_t addr_len = sizeof(addr);
 		int c_fd = accept(fd, (struct sockaddr*)&addr, &addr_len);
-		if (getsockopt(c_fd, IPPROTO_TLS, SO_ID, &id, &id_len) == -1) {
-			perror("getsockopt: SO_ID");
+		if (getsockopt(c_fd, IPPROTO_TLS, SO_HOSTNAME, servername, &servername_len) == -1) {
+			perror("getsockopt: SO_HOSTNAME");
 			exit(EXIT_FAILURE);
 		}
-		printf("socket ID is %lu\n", id);
+		printf("Client requested host %d %s\n", servername_len,  servername);
 		recv(c_fd, request, BUFFER_SIZE, 0);
 		handle_req(request, response);
 		send(c_fd, response, BUFFER_SIZE, 0);
