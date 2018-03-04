@@ -651,6 +651,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		ret = get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len);
 		if (ret == 0) {
 			response = -EINVAL;
+			break;
 		}
 		else if (ret == 1) {
 			break;
@@ -886,6 +887,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * connection */
 		hashmap_del(ctx->sock_map, id);
 		tls_opts_free(sock_ctx->tls_opts);
+		free_tls_conn_ctx(sock_ctx->tls_conn);
 		free(sock_ctx);
 		return;
 	}
@@ -897,6 +899,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		//netlink_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
 		tls_opts_free(sock_ctx->tls_opts);
+		free_tls_conn_ctx(sock_ctx->tls_conn);
 		free(sock_ctx);
 		return;
 	}
@@ -937,6 +940,9 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 		EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	}
 	tls_opts_free(sock_ctx->tls_opts);
+	if (sock_ctx->tls_conn != NULL) {
+		free_tls_conn_ctx(sock_ctx->tls_conn);
+	}
 	free(sock_ctx);
 	return;
 }

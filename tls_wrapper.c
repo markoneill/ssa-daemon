@@ -50,7 +50,7 @@ static int server_name_cb(SSL* tls, int* ad, void* arg);
 static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
-static void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
+static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
@@ -543,7 +543,7 @@ int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** d
 int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	char* hostname;
 	char* hostname_copy;
-	if (conn_ctx == NULL) {
+	if (conn_ctx == NULL || conn_ctx->tls == NULL) {
 		return 0;
 	}
 	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
@@ -621,6 +621,7 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 	if (hostname == NULL) {
 		if (want_send == 1) {
 			netlink_send_and_notify_kernel(daemon_ctx, id, NULL, 0);
+			SSL_set_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
 		}
 		return SSL_TLSEXT_ERR_NOACK;
 	}
@@ -633,6 +634,7 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 	}
 	if (want_send == 1) {
 		netlink_send_and_notify_kernel(daemon_ctx, id, hostname, strlen(hostname)+1);
+		SSL_set_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
 	}
 	return SSL_TLSEXT_ERR_OK;
 }
@@ -660,6 +662,9 @@ SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 }
 
 int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id) {
+	if (conn->tls == NULL) {
+		return 1;
+	}
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_ID, (void*)id);
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_CTX, (void*)daemon_ctx);
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
@@ -775,7 +780,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
-		free_tls_conn_ctx(ctx);
+		shutdown_tls_conn_ctx(ctx);
 	}
 	return;
 }
@@ -785,14 +790,32 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 	return ctx;
 }
 
-void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	unsigned long id;
+	tls_daemon_ctx_t* daemon_ctx;
+	int want_send;
 	if (ctx == NULL) return;
-	/* Line below seems to be handled by bufferevent_free */
+
 	if (ctx->tls != NULL) {
+		want_send = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_WANT_SEND);
+		if (want_send == 1) {
+			id = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_ID);
+			daemon_ctx = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_CTX);
+			netlink_notify_kernel(daemon_ctx, id, -ENOTCONN);
+			SSL_set_ex_data(ctx->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
+		}
 		SSL_shutdown(ctx->tls);
 	}
+	ctx->tls = NULL;
 	if (ctx->cf.bev != NULL) bufferevent_free(ctx->cf.bev);
+	ctx->cf.bev = NULL;
 	if (ctx->sf.bev != NULL) bufferevent_free(ctx->sf.bev);
+	ctx->sf.bev = NULL;
+	return;
+}
+
+void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	shutdown_tls_conn_ctx(ctx);
 	free(ctx);
 	return;
 }
