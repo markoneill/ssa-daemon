@@ -47,6 +47,8 @@ static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_read_cb(struct bufferevent *bev, void *arg);
 static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 static int server_name_cb(SSL* tls, int* ad, void* arg);
+static int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen,
+	       	const unsigned char *in, unsigned int inlen, void *arg);
 static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
@@ -278,12 +280,21 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	char* next;
 	char* proto;
 	int proto_len;
-	char alpn_string[256];
+	//char alpn_string[256];
+	char* alpn_string;
 	int alpn_len;
 	char* alpn_str_ptr;
+	tls_opts_t* cur_opts;
+
+	if (conn_ctx != NULL) {
+		/* Already connected */
+		return 0;
+	}
+	alpn_string = tls_opts->alpn_string;
 	proto = protos;
 	alpn_str_ptr = alpn_string;
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+	log_printf(LOG_INFO, "ALPN Setting: %s\n", protos);
 	memset(alpn_string, 0, sizeof(alpn_string));
 	while ((next = strchr(proto, ',')) != NULL) {
 		*next = '\0';
@@ -294,10 +305,25 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 		alpn_str_ptr += proto_len;
 		proto = next + 1; /* +1 to skip delimeter */
 	}
+	proto_len = strlen(proto);
+	alpn_str_ptr[0] = proto_len;
+	alpn_str_ptr++;
+	memcpy(alpn_str_ptr, proto, proto_len);
+
 	alpn_len = strlen(alpn_string);
+
+	/* We need to apply the callback to all relevant SSL_CTXs */
+	cur_opts = tls_opts;
+	while (cur_opts != NULL) {
+		SSL_CTX_set_alpn_select_cb(cur_opts->tls_ctx, server_alpn_cb, (void*)tls_opts);
+		cur_opts = cur_opts->next;
+	}
+	
 	if (SSL_CTX_set_alpn_protos(tls_ctx, alpn_string, alpn_len) == 1) {
 		return 0;
 	}
+	
+
 	return 1;
 }
 
@@ -532,14 +558,13 @@ int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, un
 	if (conn_ctx == NULL) {
 		return 0;
 	}
-	hostname = conn_ctx->servername;
-	*len = strlen(hostname)+1;
-	hostname_copy = malloc(*len);
-	if (hostname_copy == NULL) {
-		return 0;
+	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
+	*data = hostname;
+	if (hostname == NULL) {
+		*len = 0;
+		return 1;
 	}
-	memcpy(hostname_copy, hostname, *len);
-	*data = hostname_copy;
+	*len = strlen(hostname)+1;
 	return 1;
 }
 
@@ -549,8 +574,7 @@ int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char**
 }
 
 int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	/* XXX stub */
-	char* proto;
+	SSL_get0_alpn_selected(conn_ctx->tls, data, len);
 	return 1;
 }
 
@@ -600,6 +624,22 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 		SSL_set_verify(tls, SSL_CTX_get_verify_mode(old_ctx), SSL_CTX_get_verify_callback(old_ctx));
 	}
 	return SSL_TLSEXT_ERR_OK;
+}
+
+int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, const unsigned char *in,
+	       	unsigned int inlen, void *arg) {
+	tls_opts_t* opts = (tls_opts_t*)arg;
+	int ret;
+	unsigned char* nc_out;
+
+	//printf("alpn string is %s\n", opts->alpn_string);
+	ret = SSL_select_next_proto(&nc_out, outlen, opts->alpn_string, strlen(opts->alpn_string),
+			in, inlen);
+	*out = nc_out;
+
+	ret = OPENSSL_NPN_NEGOTIATED ? SSL_TLSEXT_ERR_OK : SSL_TLSEXT_ERR_ALERT_FATAL;
+	//printf("ret is %s\n", ret == OPENSSL_NPN_NEGOTIATED ? "good" : "bad");
+	return ret;
 }
 
 SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
@@ -698,9 +738,9 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		//if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
 		startpoint->connected = 1;
 		if (bev == ctx->secure.bev) { /* This should only take place with SSA servers */
-			if ((servername = SSL_get_servername(ctx->tls, TLSEXT_NAMETYPE_host_name)) != NULL) {
+			/*if ((servername = SSL_get_servername(ctx->tls, TLSEXT_NAMETYPE_host_name)) != NULL) {
 				strcpy(ctx->servername, servername);
-			}
+			}*/
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
 			bufferevent_socket_connect(ctx->plain.bev, ctx->addr, ctx->addrlen);
@@ -763,31 +803,21 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
-	unsigned long id;
-	tls_daemon_ctx_t* daemon_ctx;
-	int want_send;
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL) {
-		want_send = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_WANT_SEND);
-		if (want_send == 1) {
-			id = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_ID);
-			daemon_ctx = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_CTX);
-			netlink_notify_kernel(daemon_ctx, id, -ENOTCONN);
-			SSL_set_ex_data(ctx->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
-		}
 		SSL_shutdown(ctx->tls);
 	}
-	ctx->tls = NULL;
-	if (ctx->secure.bev != NULL) bufferevent_free(ctx->secure.bev);
-	ctx->secure.bev = NULL;
-	if (ctx->plain.bev != NULL) bufferevent_free(ctx->plain.bev);
-	ctx->plain.bev = NULL;
 	return;
 }
 
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	shutdown_tls_conn_ctx(ctx);
+	ctx->tls = NULL;
+	if (ctx->secure.bev != NULL) bufferevent_free(ctx->secure.bev);
+	ctx->secure.bev = NULL;
+	if (ctx->plain.bev != NULL) bufferevent_free(ctx->plain.bev);
+	ctx->plain.bev = NULL;
 	free(ctx);
 	return;
 }

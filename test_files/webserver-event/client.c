@@ -7,6 +7,7 @@
 #include <search.h>
 #include <time.h>
 #include <sys/time.h>
+#include <string.h>
 #include "client.h"
 #include "http_server.h"
 #include "utils.h"
@@ -19,9 +20,10 @@ void timeval_add(struct timeval* result, struct timeval* x, struct timeval* y);
 int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* y);
 int timeval_cmp(struct timeval* x, struct timeval* y);
 
+void get_alpn(client_t* client);
+void get_hostname(client_t* client);
+
 client_t* create_client(int server_sock) {
-	char servername[255];
-	socklen_t servername_len = sizeof(servername);
 	struct sockaddr_storage addr;
 	socklen_t addr_len = sizeof(struct sockaddr_storage);
 	int new_fd = accept(server_sock, (struct sockaddr*)&addr, &addr_len);
@@ -29,15 +31,16 @@ client_t* create_client(int server_sock) {
 		perror("accept");
 		return NULL;
 	}
-	if (getsockopt(new_fd, IPPROTO_TLS, SO_HOSTNAME, servername, &servername_len) == -1) {
-		perror("getsockopt: SO_HOSTNAME");
-	}
-	printf("Client requested host %s\n", servername);
+
 	client_t* client = (client_t*)malloc(sizeof(client_t));
 	if (client == NULL) {
 		return NULL;
 	}
 	client->fd = new_fd;
+
+	get_alpn(client);
+	get_hostname(client);
+
 	int ret = getnameinfo((struct sockaddr*)&addr, addr_len, client->hostname, NI_MAXHOST, client->port, NI_MAXSERV, 0);
 	if (ret != 0) {
 		client->hostname[0] = '\0';
@@ -178,3 +181,33 @@ int timeval_cmp(struct timeval* x, struct timeval* y) {
 	return x->tv_sec < y_cpy.tv_sec;
 }
 
+void get_alpn(client_t* client) {
+	char alpn[255];
+	memset(alpn, 0, 255);
+	socklen_t alpn_len = sizeof(alpn);
+	if (getsockopt(client->fd, IPPROTO_TLS, SO_ALPN, alpn, &alpn_len) == -1) {
+		perror("getsockopt: SO_ALPN");
+	}
+	if (alpn_len > 0) {
+		printf("Protocol negotiatated: %s\n", alpn);
+	}
+	else {
+		printf("No protocol negotiated\n");
+	}
+	return;
+}
+
+void get_hostname(client_t* client) {
+	char servername[255];
+	socklen_t servername_len = sizeof(servername);
+	if (getsockopt(client->fd, IPPROTO_TLS, SO_HOSTNAME, servername, &servername_len) == -1) {
+		perror("getsockopt: SO_HOSTNAME");
+	}
+	if (servername_len > 0) {
+		printf("Client requested host %s\n", servername);
+	}
+	else {
+		printf("Client did not use SNI\n");
+	}
+	return;
+}

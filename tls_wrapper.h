@@ -43,6 +43,7 @@ int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 typedef struct tls_opts {
 	SSL_CTX* tls_ctx;
 	int is_server;
+	char alpn_string[256];
 	struct tls_ops* next;
 } tls_opts_t;
 
@@ -56,7 +57,6 @@ typedef struct tls_conn_ctx {
 	channel_t plain;
 	channel_t secure;
 	SSL* tls;
-	char servername[MAX_HOSTNAME];
 	struct sockaddr* addr;
 	int addrlen;
 } tls_conn_ctx_t;

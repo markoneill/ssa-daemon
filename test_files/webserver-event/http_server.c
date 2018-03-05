@@ -48,6 +48,7 @@ char* first_non_space(char* str);
 char* strnstr(char* haystack, char* needle, int length);
 char* resolve_path(char* root_dir, char* path);
 int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request);
+void set_alpn(int fd);
 
 /* HTTP functions */
 int parse_request_line(char* request_header, http_request_t* request);
@@ -832,6 +833,7 @@ int create_server_socket(char* port, int protocol) {
         if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
+	set_alpn(sock);
 
 
 	// Turn the socket into a listening socket if TCP
@@ -959,5 +961,14 @@ char* strnstr(char* haystack, char* needle, int length) {
 		if (j == needle_length)	return &haystack[i];
 	}
 	return NULL;
+}
+
+void set_alpn(int fd) {
+	char protos[] = "http/1.1";
+	socklen_t protos_len = sizeof(protos);
+	if (setsockopt(fd, IPPROTO_TLS, SO_ALPN, protos, protos_len) == -1) {
+		perror("setsockopt: SO_ALPN");
+	}
+	return;
 }
 

@@ -445,8 +445,8 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	sock_ctx_t* new_sock_ctx;
         struct event_base *base = evconnlistener_get_base(listener);
 
-	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
-	log_printf_addr(&sock_ctx->int_addr);
+	//log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
+	//log_printf_addr(&sock_ctx->int_addr);
 	if (evutil_make_socket_nonblocking(efd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
@@ -860,7 +860,7 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 	
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
-	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
+	//log_printf(LOG_INFO, "Socket %lu accepted\n", id);
 	netlink_notify_kernel(ctx, id, response);
 	return;
 }
