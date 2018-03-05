@@ -22,6 +22,8 @@ int timeval_cmp(struct timeval* x, struct timeval* y);
 
 void get_alpn(client_t* client);
 void get_hostname(client_t* client);
+void get_session_ttl(client_t* client);
+void set_session_ttl(client_t* client);
 
 client_t* create_client(int server_sock) {
 	struct sockaddr_storage addr;
@@ -40,6 +42,8 @@ client_t* create_client(int server_sock) {
 
 	get_alpn(client);
 	get_hostname(client);
+	set_session_ttl(client);
+	get_session_ttl(client);
 
 	int ret = getnameinfo((struct sockaddr*)&addr, addr_len, client->hostname, NI_MAXHOST, client->port, NI_MAXSERV, 0);
 	if (ret != 0) {
@@ -208,6 +212,28 @@ void get_hostname(client_t* client) {
 	}
 	else {
 		printf("Client did not use SNI\n");
+	}
+	return;
+}
+
+void set_session_ttl(client_t* client) {
+	long ttl;
+	ttl = 400;
+	socklen_t ttl_len = sizeof(ttl);
+	if (setsockopt(client->fd, IPPROTO_TLS, SO_SESSION_TTL, &ttl, ttl_len) == -1) {
+		perror("setsockopt: SO_SESSION_TTL");
+	}
+	return;
+}
+
+void get_session_ttl(client_t* client) {
+	long ttl;
+	socklen_t ttl_len = sizeof(ttl);
+	if (getsockopt(client->fd, IPPROTO_TLS, SO_SESSION_TTL, &ttl, &ttl_len) == -1) {
+		perror("getsockopt: SO_SESSION_TTL");
+	}
+	if (ttl_len > 0) {
+		printf("Session ttl is %ld\n", ttl);
 	}
 	return;
 }

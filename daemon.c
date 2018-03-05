@@ -627,6 +627,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
+	long value;
 	int ret;
 	int response = 0;
 	char* data = NULL;
@@ -669,9 +670,12 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		}
 		break;
 	case SO_SESSION_TTL:
-		if (get_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+		value = get_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn);
+		if (value < 0) {
 			response = EINVAL;
 		}
+		data = &value;
+		len = sizeof(value);
 		break;
 	case SO_DISABLE_CIPHER:
 		response = -ENOPROTOOPT; /* set only */

@@ -340,13 +340,17 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 }
 
 int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+	SSL_CTX* tls_ctx;
 	long timeout;
-	timeout = strtol(ttl, NULL, 10);
+	memcpy(&timeout, ttl, sizeof(timeout));
 	if (conn_ctx != NULL) {
-		return SSL_SESSION_set_timeout(conn_ctx->tls, timeout);
+		return SSL_SESSION_set_timeout(SSL_get0_session(conn_ctx->tls), timeout);
 	}
-	SSL_CTX_set_timeout(tls_ctx, timeout);
+
+	if (tls_opts != NULL) {
+		tls_ctx = tls_opts->tls_ctx;
+		SSL_CTX_set_timeout(tls_ctx, timeout);
+	}
 	return 1;
 }
 
@@ -578,9 +582,18 @@ int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, 
 	return 1;
 }
 
-int get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	/* XXX stub */
-	return 1;
+long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
+	long timeout;
+	SSL_CTX* tls_ctx;
+	if (conn_ctx != NULL) {
+		timeout = SSL_SESSION_get_timeout(SSL_get0_session(conn_ctx->tls));
+		return timeout;
+	}
+	if (tls_opts != NULL) {
+		tls_ctx = tls_opts->tls_ctx;
+		timeout = SSL_CTX_get_timeout(tls_ctx);
+	}
+	return timeout;
 }
 
 SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
