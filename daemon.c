@@ -705,9 +705,6 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	netlink_send_and_notify_kernel(ctx, id, data, len);
-	/*if (len > 0) {
-		free(data);
-	}*/
 	return;
 }
 

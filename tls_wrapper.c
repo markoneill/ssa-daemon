@@ -213,9 +213,8 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
 
-
 	/* XXX We can do all sorts of caching modes and define our own callbacks
-	 * if desired */	
+	 * if desired */
 	SSL_CTX_set_session_cache_mode(tls_ctx, SSL_SESS_CACHE_SERVER);
 
 	/* SNI configuration */
@@ -241,11 +240,6 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
 
-
-	/* Should also allow some sort of session resumption here XXX
-  	 * See SSL_set_session for details  */
-
-
 	/* For client auth portion of the SSA utilize 
 	 * SSL_CTX_set_default_passwd_cb */
 
@@ -265,6 +259,9 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
 		return 0;
 	}
+	
+	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+
 
 	/* Really we should only do this if we're the server */
 	cert_names = SSL_load_client_CA_file(value);
