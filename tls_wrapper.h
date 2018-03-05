@@ -61,8 +61,9 @@ typedef struct tls_conn_ctx {
 	int addrlen;
 } tls_conn_ctx_t;
 
-tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
+tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts);
+void associate_fd(tls_conn_ctx_t* conn, evutil_socket_t ifd);
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
 	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen);
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx);

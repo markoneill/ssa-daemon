@@ -54,7 +54,7 @@ static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
 
-tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
+tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
 	
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
@@ -69,13 +69,13 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
-	ctx->plain.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
+	/* socket set to -1 because we set it later */
+	ctx->plain.bev = bufferevent_socket_new(daemon_ctx->ev_base, -1,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	ctx->plain.connected = 1;
 	if (ctx->plain.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [direct mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
-		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
@@ -106,7 +106,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 	bufferevent_setcb(ctx->secure.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
 	bufferevent_enable(ctx->secure.bev, EV_READ | EV_WRITE);
 	bufferevent_setcb(ctx->plain.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
-	bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
+	//bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
 
 	/* Connect server facing socket */
 	/*if (bufferevent_socket_connect(ctx->secure.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
@@ -117,6 +117,13 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 	//SSL_connect(ctx->tls);
 	return ctx;
 }
+
+void associate_fd(tls_conn_ctx_t* conn, evutil_socket_t ifd) {
+	bufferevent_setfd(conn->plain.bev, ifd);
+	bufferevent_enable(conn->plain.bev, EV_READ | EV_WRITE);
+	return;
+}
+
 
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
 	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen) {
@@ -170,7 +177,6 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	}*/
 	return ctx;
 }
-
 
 tls_opts_t* tls_opts_create(char* path) {
 	tls_opts_t* opts;
@@ -752,8 +758,18 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				strcpy(ctx->servername, servername);
 			}*/
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
-			bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
-			bufferevent_socket_connect(ctx->plain.bev, ctx->addr, ctx->addrlen);
+			if (bufferevent_getfd(ctx->plain.bev) == -1) {
+				tls_daemon_ctx_t* daemon_ctx;
+				unsigned long id;
+				id = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_ID);
+				daemon_ctx = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_CTX);
+				printf("hmmm %lu\n", id);
+				netlink_send_and_notify_kernel(daemon_ctx, id, "handshake", strlen("handshake"));
+			}
+			else {
+				bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
+				bufferevent_socket_connect(ctx->plain.bev, ctx->addr, ctx->addrlen);
+			}
 		}
 	}
 	if (events & BEV_EVENT_ERROR) {
