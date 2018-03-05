@@ -185,7 +185,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			break;
 		case SSA_NL_C_GETSOCKOPT_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
-			log_printf(LOG_INFO, "Received setsockopt notification %lu\n", id);
+			log_printf(LOG_INFO, "Received getsockopt notification %lu\n", id);
 			level = nla_get_u32(attrs[SSA_NL_A_OPTLEVEL]);
 			optname = nla_get_u32(attrs[SSA_NL_A_OPTNAME]);
 			getsockopt_cb(ctx, id, level, optname);

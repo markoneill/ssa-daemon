@@ -55,13 +55,6 @@ static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx);
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
 	
-	/* ctx will hold all data for interacting with the connection to
-	 *  the application server socket and the remote socket (client)
-	 *
-	 * ctx->cf = local client (application)
-	 * ctx->sf = remote server
-	 *
-	 **/
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
@@ -74,10 +67,10 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
-	ctx->cf.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
+	ctx->plain.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	ctx->cf.connected = 1;
-	if (ctx->cf.bev == NULL) {
+	ctx->plain.connected = 1;
+	if (ctx->plain.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [direct mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
 		EVUTIL_CLOSESOCKET(ifd);
@@ -87,15 +80,15 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 
 
 	if (is_accepting == 1) { /* TLS server role */
-		ctx->sf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
+		ctx->secure.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 	else { /* TLS client role */
-		ctx->sf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
+		ctx->secure.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_CONNECTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 	}
 
-	if (ctx->sf.bev == NULL) {
+	if (ctx->secure.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [direct mode]\n");
 		free_tls_conn_ctx(ctx);
 		return NULL;
@@ -103,18 +96,18 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 
 	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
 	/* Comment out this line if you need to do better debugging of OpenSSL behavior */
-	bufferevent_openssl_set_allow_dirty_shutdown(ctx->sf.bev, 1);
+	bufferevent_openssl_set_allow_dirty_shutdown(ctx->secure.bev, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
 
 	/* Register callbacks for reading and writing to both bevs */
-	bufferevent_setcb(ctx->sf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
-	bufferevent_enable(ctx->sf.bev, EV_READ | EV_WRITE);
-	bufferevent_setcb(ctx->cf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
-	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
+	bufferevent_setcb(ctx->secure.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	bufferevent_enable(ctx->secure.bev, EV_READ | EV_WRITE);
+	bufferevent_setcb(ctx->plain.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
 
 	/* Connect server facing socket */
-	/*if (bufferevent_socket_connect(ctx->sf.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
+	/*if (bufferevent_socket_connect(ctx->secure.bev, (struct sockaddr*)server_addr, server_addrlen) < 0) {
 		log_printf(LOG_ERROR, "bufferevent_socket_connect [direct mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
@@ -126,13 +119,6 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t ifd, evutil_socket_t ef
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
 	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen) {
 
-	/*  ctx will hold all data for interacting with the connection to
-	 *  the application server socket and the remote socket (client)
-	 *
-	 * ctx->cf = remote client
-	 * ctx->sf = local server (application)
-	 *
-	 *  */
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate server tls_conn_ctx_t: %s\n", strerror(errno));
@@ -141,10 +127,10 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	
 	/* We're sending just the first tls_ctx here because our SNI callbacks will fix it if needed */
 	ctx->tls = tls_server_setup(tls_opts->tls_ctx);
-	ctx->cf.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
+	ctx->secure.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	ctx->cf.connected = 1;
-	if (ctx->cf.bev == NULL) {
+	ctx->secure.connected = 1;
+	if (ctx->secure.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [listener mode]\n");
 		EVUTIL_CLOSESOCKET(efd);
 		free_tls_conn_ctx(ctx);
@@ -153,30 +139,33 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	
 	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
 	/* Comment out this line if you need to do better debugging of OpenSSL behavior */
-	bufferevent_openssl_set_allow_dirty_shutdown(ctx->cf.bev, 1);
+	bufferevent_openssl_set_allow_dirty_shutdown(ctx->secure.bev, 1);
 	#endif /* LIBEVENT_VERSION_NUMBER >= 0x02010000 */
 
-	ctx->sf.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
+	ctx->plain.bev = bufferevent_socket_new(daemon_ctx->ev_base, ifd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	if (ctx->sf.bev == NULL) {
+	if (ctx->plain.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up server facing bufferevent [listener mode]\n");
 		EVUTIL_CLOSESOCKET(ifd);
 		free_tls_conn_ctx(ctx);
 		return NULL;
 	}
+
+	ctx->addr = internal_addr;
+	ctx->addrlen = internal_addrlen;
 	
 	/* Register callbacks for reading and writing to both bevs */
-	bufferevent_setcb(ctx->sf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
-	bufferevent_enable(ctx->sf.bev, EV_READ | EV_WRITE);
-	bufferevent_setcb(ctx->cf.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
-	bufferevent_enable(ctx->cf.bev, EV_READ | EV_WRITE);
+	bufferevent_setcb(ctx->plain.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	//bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
+	bufferevent_setcb(ctx->secure.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	bufferevent_enable(ctx->secure.bev, EV_READ | EV_WRITE);
 	
 	/* Connect to local application server */
-	if (bufferevent_socket_connect(ctx->sf.bev, internal_addr, internal_addrlen) < 0) {
+	/*if (bufferevent_socket_connect(ctx->plain.bev, internal_addr, internal_addrlen) < 0) {
 		log_printf(LOG_ERROR, "bufferevent_socket_connect [listener mode]: %s\n", strerror(errno));
 		free_tls_conn_ctx(ctx);
 		return;
-	}
+	}*/
 	return ctx;
 }
 
@@ -231,8 +220,6 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
 	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)tls_opts);
 
-	//SSL_CTX_use_certificate_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
-	//SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem", SSL_FILETYPE_PEM);
 	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem");
 	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
 
@@ -510,7 +497,6 @@ void certificate_handshake_cb(SSL *s, int where, int ret) {
 }
 
 void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn) {
-
 	unsigned long * idp;
 
 	/* Connect if we're not connected. 
@@ -543,19 +529,10 @@ int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** d
 int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	char* hostname;
 	char* hostname_copy;
-	if (conn_ctx == NULL || conn_ctx->tls == NULL) {
+	if (conn_ctx == NULL) {
 		return 0;
 	}
-	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
-	if (hostname == NULL) {
-		*len = 0;
-		*data = NULL;
-		/* We don't have this info yet, have the servername callback send the info 
-		 * back when it gets called */
-
-		SSL_set_ex_data(conn_ctx->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)1);
-		return 2; /* 2 indicates wait */
-	}
+	hostname = conn_ctx->servername;
 	*len = strlen(hostname)+1;
 	hostname_copy = malloc(*len);
 	if (hostname_copy == NULL) {
@@ -571,8 +548,9 @@ int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char**
 	return 1;
 }
 
-int get_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
 	/* XXX stub */
+	char* proto;
 	return 1;
 }
 
@@ -608,21 +586,10 @@ SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
 int server_name_cb(SSL* tls, int* ad, void* arg) {
 	SSL_CTX* tls_ctx;
 	SSL_CTX* old_ctx;
-	unsigned long id;
-	tls_daemon_ctx_t* daemon_ctx;
-	int want_send;
-
 	old_ctx = SSL_get_SSL_CTX(tls);
-	id = SSL_get_ex_data(tls, OPENSSL_EX_DATA_ID);
-	daemon_ctx = SSL_get_ex_data(tls, OPENSSL_EX_DATA_CTX);
-	want_send = SSL_get_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND);
 
 	const char* hostname = SSL_get_servername(tls, TLSEXT_NAMETYPE_host_name);
 	if (hostname == NULL) {
-		if (want_send == 1) {
-			netlink_send_and_notify_kernel(daemon_ctx, id, NULL, 0);
-			SSL_set_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
-		}
 		return SSL_TLSEXT_ERR_NOACK;
 	}
 	log_printf(LOG_INFO, "SNI from client is %s\n", hostname);
@@ -631,10 +598,6 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 		log_printf(LOG_INFO, "Server SSL_CTX matching SNI was found\n");
 		SSL_set_SSL_CTX(tls, tls_ctx);
 		SSL_set_verify(tls, SSL_CTX_get_verify_mode(old_ctx), SSL_CTX_get_verify_callback(old_ctx));
-	}
-	if (want_send == 1) {
-		netlink_send_and_notify_kernel(daemon_ctx, id, hostname, strlen(hostname)+1);
-		SSL_set_ex_data(tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
 	}
 	return SSL_TLSEXT_ERR_OK;
 }
@@ -674,7 +637,7 @@ int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, un
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 	//log_printf(LOG_DEBUG, "write event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
-	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
+	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
 	struct evbuffer* out_buf;
 
 	if (endpoint->closed) {
@@ -696,7 +659,7 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 	//log_printf(LOG_DEBUG, "read event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
-	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
+	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
 	struct evbuffer* in_buf;
 	struct evbuffer* out_buf;
 	size_t in_len;
@@ -725,17 +688,26 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
+	char* servername;
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
-	channel_t* endpoint = (bev == ctx->cf.bev) ? &ctx->sf : &ctx->cf;
-	channel_t* startpoint = (bev == ctx->cf.bev) ? &ctx->cf : &ctx->sf;
+	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
+	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
 	if (events & BEV_EVENT_CONNECTED) {
-		log_printf(LOG_INFO, "%s endpoint connected\n", bev == ctx->cf.bev ? "client facing" : "server facing");
+		log_printf(LOG_INFO, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		//if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
 		startpoint->connected = 1;
+		if (bev == ctx->secure.bev) { /* This should only take place with SSA servers */
+			if ((servername = SSL_get_servername(ctx->tls, TLSEXT_NAMETYPE_host_name)) != NULL) {
+				strcpy(ctx->servername, servername);
+			}
+			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
+			bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
+			bufferevent_socket_connect(ctx->plain.bev, ctx->addr, ctx->addrlen);
+		}
 	}
 	if (events & BEV_EVENT_ERROR) {
-		//log_printf(LOG_INFO, "%s endpoint encountered an error\n", bev == ctx->cf.bev ? "client facing" : "server facing");
+		//log_printf(LOG_INFO, "%s endpoint encountered an error\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
@@ -762,7 +734,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 
 	}
 	if (events & BEV_EVENT_EOF) {
-		log_printf(LOG_INFO, "%s endpoint got EOF\n", bev == ctx->cf.bev ? "client facing" : "server facing");
+		log_printf(LOG_INFO, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		if (endpoint->closed == 0) {
 			struct evbuffer* in_buf;
 			struct evbuffer* out_buf;
@@ -807,10 +779,10 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 		SSL_shutdown(ctx->tls);
 	}
 	ctx->tls = NULL;
-	if (ctx->cf.bev != NULL) bufferevent_free(ctx->cf.bev);
-	ctx->cf.bev = NULL;
-	if (ctx->sf.bev != NULL) bufferevent_free(ctx->sf.bev);
-	ctx->sf.bev = NULL;
+	if (ctx->secure.bev != NULL) bufferevent_free(ctx->secure.bev);
+	ctx->secure.bev = NULL;
+	if (ctx->plain.bev != NULL) bufferevent_free(ctx->plain.bev);
+	ctx->plain.bev = NULL;
 	return;
 }
 

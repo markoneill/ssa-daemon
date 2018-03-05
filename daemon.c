@@ -648,16 +648,10 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		}
 		break;
 	case SO_HOSTNAME:
-		ret = get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len);
-		if (ret == 0) {
+		if(get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
-			break;
 		}
-		else if (ret == 1) {
-			break;
-		}
-		/* If we got here it means we set a callback to report data */
-		return;
+		break;
 	case SO_TRUSTED_PEER_CERTIFICATES:
 		response = -ENOPROTOOPT; /* set only */
 		break;
@@ -670,7 +664,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		response = -ENOPROTOOPT; /* set only */
 		break;
 	case SO_ALPN:
-		if (get_alpn_protos(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+		if (get_alpn_proto(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
 		}
 		break;
@@ -707,9 +701,9 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	netlink_send_and_notify_kernel(ctx, id, data, len);
-	if (len > 0) {
+	/*if (len > 0) {
 		free(data);
-	}
+	}*/
 	return;
 }
 
