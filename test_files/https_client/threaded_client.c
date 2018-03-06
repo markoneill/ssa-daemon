@@ -250,7 +250,7 @@ void* thread_start(void* arg) {
 	for(i = 0; i < CALLS_PER_THREAD; i++) {
 		total_bytes_read = 0;
 		if(ssl){
-			SSL_connect(tls);
+			//SSL_connect(tls);
 			if(SSL_write(tls,req,strlen(req)) <= 0){
 				printf("SSL Send Error");
 				pthread_mutex_lock(&finished_lock);
@@ -335,7 +335,7 @@ int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* 
         /* Return 1 if result is negative. */
         return x->tv_sec < y_cpy.tv_sec;
 }
-static char root_store_filename_redhat[] = "/etc/pki/tls/certs/ca-bundle.crt";
+//static char root_store_filename_redhat[] = "/etc/pki/tls/certs/ca-bundle.crt";
 
 SSL* openssl_connect_to_host(int sock, char* hostname) {
 	SSL_CTX* tls_ctx;
@@ -354,11 +354,11 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 	}
 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
 
-
-	if (SSL_CTX_load_verify_locations(tls_ctx, root_store_filename_redhat, NULL) != 1) {
+	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
+	/*if (SSL_CTX_load_verify_locations(tls_ctx, root_store_filename_redhat, NULL) != 1) {
 		fprintf(stderr, "SSL_CTX_load_verify_locations failed\n");
 		exit(EXIT_FAILURE);
-	}
+	}*/
 
 	tls = SSL_new(tls_ctx);
 	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
@@ -373,10 +373,10 @@ SSL* openssl_connect_to_host(int sock, char* hostname) {
 	/* Associate socket with TLS context */
 	SSL_set_fd(tls, sock);
 
-	/*if (SSL_connect(tls) != 1) {
+	if (SSL_connect(tls) != 1) {
 		fprintf(stderr, "Failed in SSL_connect\n");
 		exit(EXIT_FAILURE);
-	}*/
+	}
 	//this code is not being used since we are not validating certs
 	/*cert = SSL_get_peer_certificate(tls);
 	if (cert == NULL) {

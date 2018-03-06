@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Webserver Lab Testing #2</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script>
+    $(document).ready(function(){
+      $("button").click(function(){
+        $.ajax({url: "ajax.php", success: function(result){
+            $("#inject").html(result);
+        }});
+      });
+   });
+  </script>
+</head>
+<body>
+  <div class="jumbotron text-center">
+    <h1>Webserver Lab Testing #2</h1>
+    <p>This page should present two forms and an AJAX-powered button. Use these for testing extra credit for POST and CGI functionality.</p>
+    <p>Remember to use the php-cgi binary and make sure PHP is configured to alllow your CGI (by setting cgi.force_redirect = 0 in your php.ini file)</p>
+    <p>You may also modify this page and create your own custom CGI scripts in the language of your choice if you don't want to use PHP</p>
+  </div>
+  <div class="container">
+    <div class="row">
+      <div class="col-sm-12">
+        <h1>GET form</h1>
+        <form method="get" action="get_example.php">
+          <label for="name">Name:</label> <input type="text" name="name" id="name" />
+          <label for="color">Favorite Color:</label>
+          <select name="color" id="color">
+            <option value="red" selected>Red</option>
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+          </select>
+          <input type="submit" value="Submit" />
+        </form>
+        <h1>POST form (also uses cookies)</h1>
+        <p>The correct username is "bob" and the password is "pass"</p>
+        <form method="post" action="post_example.php">
+          <label for="username">Name:</label> <input type="text" name="username" id="username" />
+          <label for="password">Password:</label> <input type="password" name="password" id="password" />
+          <input type="submit" value="Log in" />
+        </form>
+        <h1>AJAX Button</h1>
+        <div id="inject"></div>
+        <button>Update</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

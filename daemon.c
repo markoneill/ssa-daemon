@@ -56,7 +56,6 @@
 #include "netlink.h"
 #include "log.h"
 
-#define MAX_HOSTNAME		255
 #define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
 
@@ -75,13 +74,14 @@ typedef struct sock_ctx {
 		int rem_addrlen;
 	};
 	int is_connected;
-	int is_accepting;
+	int is_accepting; /* acting as a TLS server or client? */
 	struct evconnlistener* listener;
-	SSL_CTX* tls_ctx;
-	char hostname[MAX_HOSTNAME];
+	tls_opts_t* tls_opts;
+	char rem_hostname[MAX_HOSTNAME];
 	tls_conn_ctx_t* tls_conn;
 	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
+
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
@@ -155,6 +155,7 @@ int server_create(int port) {
 	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
 	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL) == OPENSSL_EX_DATA_ID);
 	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL) == OPENSSL_EX_DATA_CTX);
+	assert(SSL_get_ex_new_index(0, "want_send", NULL, NULL, NULL) == OPENSSL_EX_DATA_WANT_SEND);
 
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
@@ -413,12 +414,12 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	log_printf(LOG_INFO, "Hostname: %s (%p)\n", sock_ctx->hostname, sock_ctx->hostname);
+	log_printf(LOG_INFO, "Remote Hostname: %s (%p)\n", sock_ctx->rem_hostname, sock_ctx->rem_hostname);
 	hashmap_del(ctx->sock_map_port, port);
-	//hashmap_del(ctx->sock_map, sock_ctx->id);
-	sock_ctx->tls_conn = tls_client_wrapper_setup(fd, sock_ctx->fd, ctx->ev_base, 
-				sock_ctx->hostname, sock_ctx->is_accepting, sock_ctx->tls_ctx);
-	//free(sock_ctx);
+	//sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+	//			sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+
+	associate_fd(sock_ctx->tls_conn, fd);
 	return;
 }
 
@@ -445,8 +446,8 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	sock_ctx_t* new_sock_ctx;
         struct event_base *base = evconnlistener_get_base(listener);
 
-	log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
-	log_printf_addr(&sock_ctx->int_addr);
+	//log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
+	//log_printf_addr(&sock_ctx->int_addr);
 	if (evutil_make_socket_nonblocking(efd) == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
@@ -459,6 +460,10 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 		return;
 	}
 	new_sock_ctx->fd = efd;
+	//new_sock_ctx->daemon = sock_ctx->daemon;
+	//new_sock_ctx->tls_opts = sock_ctx->tls_opts;
+	//new_sock_ctx->int_addr = sock_ctx->int_addr;
+	//new_sock_ctx->int_addrlen = sock_ctx->int_addrlen;
 
 	ifd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (ifd == -1) {
@@ -487,8 +492,8 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	port = (int)ntohs((&int_addr)->sin_port);
 	hashmap_add(sock_ctx->daemon->sock_map_port, port, (void*)new_sock_ctx);
 	
-	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, base, sock_ctx->tls_ctx, 
-			&sock_ctx->int_addr, sock_ctx->int_addrlen);
+	new_sock_ctx->tls_conn = tls_server_wrapper_setup(efd, ifd, sock_ctx->daemon,
+			sock_ctx->tls_opts, &sock_ctx->int_addr, sock_ctx->int_addrlen);
 	return;
 }
 
@@ -541,6 +546,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 		else {
 			sock_ctx->id = id;
 			sock_ctx->fd = fd;
+			sock_ctx->tls_opts = tls_opts_create(comm);
 			hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 		}
 	}
@@ -560,32 +566,61 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		netlink_notify_kernel(ctx, id, response);
 		return;
 	}
+
 	switch (option) {
-		case SO_REMOTE_HOSTNAME:
-			/* The kernel validated this data for us */
-			memcpy(sock_ctx->hostname, value, len);
-			log_printf(LOG_INFO, "Assigning %s to socket %lu\n",
-					sock_ctx->hostname, id);
-			set_hostname(sock_ctx->tls_conn, sock_ctx->hostname);
-			break;
-		case SO_HOSTNAME:
-				response = -ENOPROTOOPT; /* get only */
-			break;
-		case SO_CERTIFICATE_CHAIN:
-			if (set_certificate_chain(sock_ctx->tls_ctx, value) == 0) {
-				response = -EINVAL;
-			}
-			break;
-		case SO_PRIVATE_KEY:
-			if (set_private_key(sock_ctx->tls_ctx, value) == 0) {
-				response = -EINVAL;
-			}
-			break;
-		default:
-			if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
-				response = -errno;
-			}
-			break;
+	case SO_REMOTE_HOSTNAME:
+		/* The kernel validated this data for us */
+		memcpy(sock_ctx->rem_hostname, value, len);
+		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->rem_hostname, id);
+		if (set_remote_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_HOSTNAME:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	case SO_TRUSTED_PEER_CERTIFICATES:
+		if (set_trusted_peer_certificates(sock_ctx->tls_opts, sock_ctx->tls_conn, value, len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_CERTIFICATE_CHAIN:
+
+		if (set_certificate_chain(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PRIVATE_KEY:
+		if (set_private_key(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_ALPN:
+		if (set_alpn_protos(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_SESSION_TTL:
+		if (set_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_DISABLE_CIPHER:
+		if (set_disbled_cipher(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PEER_CERTIFICATE:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	case SO_ID:
+		response = -ENOPROTOOPT; /* get only */
+		break;
+	default:
+		if (setsockopt(sock_ctx->fd, level, option, value, len) == -1) {
+			response = -errno;
+		}
+		break;
 	}
 	netlink_notify_kernel(ctx, id, response);
 	return;
@@ -593,6 +628,9 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
+	long value;
+	int ret;
+	int response = 0;
 	char* data = NULL;
 	unsigned int len = 0;
 
@@ -602,21 +640,72 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	switch (option) {
-		case SO_PEER_CERTIFICATE:
-			printf("Getting Peer Cert\n");
-			if (sock_ctx->tls_conn == NULL) {
-				netlink_notify_kernel(ctx, id, -ENOTCONN);
-				return;
-			}
-			/* get_peer_certificate will register a callback 
-			 * that send the kernel notification on its success/failure*/
-			get_peer_certificate(ctx, id, sock_ctx->tls_conn);
+	case SO_REMOTE_HOSTNAME:
+		if (sock_ctx->rem_hostname != NULL) {
+			netlink_send_and_notify_kernel(ctx, id, sock_ctx->rem_hostname, strlen(sock_ctx->rem_hostname)+1);
 			return;
-		default:
-			log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
-			netlink_notify_kernel(ctx, id, -EBADF);
-			return;
+		}
+		if (get_remote_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_HOSTNAME:
+		if(get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_TRUSTED_PEER_CERTIFICATES:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_CERTIFICATE_CHAIN:
+		if (get_certificate_chain(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_PRIVATE_KEY:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_ALPN:
+		if (get_alpn_proto(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -EINVAL;
+		}
+		break;
+	case SO_SESSION_TTL:
+		value = get_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn);
+		if (value < 0) {
+			response = EINVAL;
+		}
+		data = &value;
+		len = sizeof(value);
+		break;
+	case SO_DISABLE_CIPHER:
+		response = -ENOPROTOOPT; /* set only */
+		break;
+	case SO_PEER_CERTIFICATE:
+		if (sock_ctx->tls_conn == NULL) {
+			response = -ENOTCONN;
+			break;
+		}
+		/* get_peer_certificate will register a callback 
+		 * that send the kernel notification on its success/failure*/
+		get_peer_certificate(ctx, id, sock_ctx->tls_conn);
+		return; /* return instead of break because callback will handle notify */
+	case SO_ID:
+		/* This case is handled directly by the kernel.
+		 * If we want to change that, uncomment the lines below */
+		/* data = &id;
+		len = sizeof(id);
+		break; */
+	default:
+		log_printf(LOG_ERROR, "Default case for getsockopt hit: should never happen\n");
+		response = -EBADF;
+		break;
 	}
+	if (response != 0) {
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+	netlink_send_and_notify_kernel(ctx, id, data, len);
 	return;
 }
 
@@ -650,7 +739,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 }
 
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
-	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen) {
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking) {
 	
 	int ret;
 	sock_ctx_t* sock_ctx;
@@ -692,10 +781,15 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			sock_ctx->rem_addr = *rem_addr;
 			sock_ctx->rem_addrlen = rem_addrlen;
 			sock_ctx->is_connected = 1;
-			sock_ctx->tls_ctx = tls_client_ctx_create();
+			tls_opts_client_setup(sock_ctx->tls_opts);
 		}
 	}
-	netlink_notify_kernel(ctx, id, response);
+	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
+	if (blocking == 0) {
+		netlink_notify_kernel(ctx, id, response);
+	}
 	return;
 }
 
@@ -738,7 +832,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 		return;
 	}
 
-	sock_ctx->tls_ctx = tls_server_ctx_create();
+	tls_opts_server_setup(sock_ctx->tls_opts);
 	sock_ctx->daemon = ctx; /* XXX I don't want this here */
 	sock_ctx->listener = evconnlistener_new(ctx->ev_base, listener_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
@@ -772,7 +866,8 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 	sock_ctx->is_connected = 1;
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 	
-	log_printf(LOG_INFO, "Socket %lu accepted\n", id);
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
+	//log_printf(LOG_INFO, "Socket %lu accepted\n", id);
 	netlink_notify_kernel(ctx, id, response);
 	return;
 }
@@ -792,7 +887,8 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * But we were given control of the remote peer
 		 * connection */
 		hashmap_del(ctx->sock_map, id);
-		SSL_CTX_free(sock_ctx->tls_ctx);
+		tls_opts_free(sock_ctx->tls_opts);
+		free_tls_conn_ctx(sock_ctx->tls_conn);
 		free(sock_ctx);
 		return;
 	}
@@ -803,14 +899,15 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * only need to clean up the sock_ctx */
 		//netlink_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
-		SSL_CTX_free(sock_ctx->tls_ctx);
+		tls_opts_free(sock_ctx->tls_opts);
+		free_tls_conn_ctx(sock_ctx->tls_conn);
 		free(sock_ctx);
 		return;
 	}
 	if (sock_ctx->listener != NULL) {
 		hashmap_del(ctx->sock_map, id);
 		evconnlistener_free(sock_ctx->listener);
-		SSL_CTX_free(sock_ctx->tls_ctx);
+		tls_opts_free(sock_ctx->tls_opts);
 		free(sock_ctx);
 		//netlink_notify_kernel(ctx, id, 0);
 		return;
@@ -824,17 +921,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, 
 		struct sockaddr* int_addr, int int_addrlen) {
-	int port;
-	int fd = (int)id; /* the ID is actually the new socket descriptor */
-	port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
-
-	/* XXX To make this function work we need:
-	 * 	1) daemon's fd for old existing socket connection
-	 * 	2) kernel socket pointer (ID) for new socket created for app
-	 * 	3) port to which new socket created for app is bound (and we need to bind it too)
-	 * 	4) information on whether or not this socket is passive or active (has listen() been called?)
-	 * 	5) if socket is active but NOT a server socket (SSL_accept case)...we need to know this
-	 */
+	/* This was implemented in the kernel directly. */
 	return;
 }
 
@@ -843,7 +930,6 @@ void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id,
 void free_sock_ctx(sock_ctx_t* sock_ctx) {
 	if (sock_ctx->listener != NULL) {
 		evconnlistener_free(sock_ctx->listener);
-		SSL_CTX_free(sock_ctx->tls_ctx);
 	}
 	else if (sock_ctx->is_connected == 1) {
 		/* connections under the control of the tls_wrapper code
@@ -853,6 +939,10 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 	}
 	else {
 		EVUTIL_CLOSESOCKET(sock_ctx->fd);
+	}
+	tls_opts_free(sock_ctx->tls_opts);
+	if (sock_ctx->tls_conn != NULL) {
+		free_tls_conn_ctx(sock_ctx->tls_conn);
 	}
 	free(sock_ctx);
 	return;
@@ -888,15 +978,20 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	sock_ctx->fd = new_fd;
 	sock_ctx->is_connected = 1;
+	sock_ctx->tls_opts = tls_opts_create(NULL); 
 
 	if (is_accepting == 1) {
-		sock_ctx->tls_ctx = tls_server_ctx_create();
+		tls_opts_server_setup(sock_ctx->tls_opts);
 		sock_ctx->is_accepting = 1;
 	}
 	else {
-		sock_ctx->tls_ctx = tls_client_ctx_create();
+		tls_opts_client_setup(sock_ctx->tls_opts);
 		sock_ctx->is_accepting = 0;
 	}
+
+	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
 
 	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {
 		perror("sendto");
