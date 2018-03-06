@@ -763,8 +763,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				unsigned long id;
 				id = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_ID);
 				daemon_ctx = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_CTX);
-				printf("hmmm %lu\n", id);
-				netlink_send_and_notify_kernel(daemon_ctx, id, "handshake", strlen("handshake"));
+				netlink_handshake_notify_kernel(daemon_ctx, id, 0, 1);
 			}
 			else {
 				bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);

@@ -38,6 +38,7 @@
 enum {
         SSA_NL_A_UNSPEC,
 	SSA_NL_A_ID,
+	SSA_NL_A_BLOCKING,
 	SSA_NL_A_COMM,
 	SSA_NL_A_SOCKADDR_INTERNAL,
 	SSA_NL_A_SOCKADDR_EXTERNAL,
@@ -65,7 +66,7 @@ enum {
 	SSA_NL_C_CLOSE_NOTIFY,
 	SSA_NL_C_RETURN,
 	SSA_NL_C_DATA_RETURN,
-	SSA_NL_C_UPGRADE_NOTIFY,
+	SSA_NL_C_HANDSHAKE_RETURN,
         __SSA_NL_C_MAX,
 };
 
@@ -79,6 +80,7 @@ enum ssa_nl_groups {
 static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
         [SSA_NL_A_UNSPEC] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_ID] = { .type = NLA_UNSPEC },
+	[SSA_NL_A_BLOCKING] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_COMM] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_INTERNAL] = { .type = NLA_UNSPEC },
         [SSA_NL_A_SOCKADDR_EXTERNAL] = { .type = NLA_UNSPEC },
@@ -151,6 +153,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 	struct sockaddr_in addr_remote;
 
 	int level;
+	int blocking;
 	int optname;
 	char* optval;
 	int commlen;
@@ -208,11 +211,12 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			addr_remote_len = nla_len(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
 			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
 			addr_remote = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
+			blocking = nla_get_u32(attrs[SSA_NL_A_BLOCKING]);
 			log_printf(LOG_INFO, "Received connect notification for socket ID %lu\n", id);
 			//log_printf_addr((struct sockaddr*)&addr_internal);
 			//log_printf_addr((struct sockaddr*)&addr_remote);
 			connect_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len,
-					    (struct sockaddr*)&addr_remote, addr_remote_len);
+					    (struct sockaddr*)&addr_remote, addr_remote_len, blocking);
 			break;
 		case SSA_NL_C_LISTEN_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
@@ -237,14 +241,6 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
 			log_printf(LOG_INFO, "Received close notification for socket ID %lu\n", id);	
 			close_cb(ctx, id);
-			break;
-		case SSA_NL_C_UPGRADE_NOTIFY:
-			id = nla_get_u64(attrs[SSA_NL_A_ID]);
-			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
-			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
-			log_printf(LOG_INFO, "Received upgrade notification for new sock fd %lu:\n", id);
-			log_printf_addr((struct sockaddr*)&addr_internal);
-			upgrade_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len);
 			break;
 		default:
 			log_printf(LOG_ERROR, "unrecognized command\n");
@@ -314,6 +310,45 @@ void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, cha
 	ret = nla_put(msg, SSA_NL_A_OPTVAL, len, data);
 	if (ret != 0) {
 		log_printf(LOG_ERROR, "Failed to insert data response in netlink msg\n");
+		return;
+	}
+	ret = nl_send_auto(ctx->netlink_sock, msg);
+	if (ret < 0) {
+		log_printf(LOG_ERROR, "Failed to send netlink msg\n");
+		return;
+	}
+	//log_printf(LOG_INFO, "Sent data msg to kernel\n");
+	nlmsg_free(msg);
+	return;
+}
+
+void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response, int blocking) {
+	int ret;
+	struct nl_msg* msg;
+	void* msg_head;
+	msg = nlmsg_alloc();
+	if (msg == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
+		return;
+	}
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, ctx->netlink_family, 0, 0, SSA_NL_C_HANDSHAKE_RETURN, 1);
+	if (msg_head == NULL) {
+		log_printf(LOG_ERROR, "Failed in genlmsg_put\n");
+		return;
+	}
+	ret = nla_put_u64(msg, SSA_NL_A_ID, id);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert ID in netlink msg\n");
+		return;
+	}
+	ret = nla_put_u32(msg, SSA_NL_A_RETURN, response);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert response in netlink msg\n");
+		return;
+	}
+	ret = nla_put_u32(msg, SSA_NL_A_BLOCKING, blocking);
+	if (ret != 0) {
+		log_printf(LOG_ERROR, "Failed to insert blocking value in netlink msg\n");
 		return;
 	}
 	ret = nl_send_auto(ctx->netlink_sock, msg);

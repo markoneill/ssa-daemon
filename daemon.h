@@ -67,7 +67,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
-	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen);
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking);
 void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,

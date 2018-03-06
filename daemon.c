@@ -739,7 +739,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 }
 
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
-	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen) {
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking) {
 	
 	int ret;
 	sock_ctx_t* sock_ctx;
@@ -787,7 +787,9 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
-	//netlink_notify_kernel(ctx, id, response);
+	if (blocking == 0) {
+		netlink_notify_kernel(ctx, id, response);
+	}
 	return;
 }
 
