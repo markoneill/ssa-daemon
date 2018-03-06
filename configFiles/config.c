@@ -1,5 +1,6 @@
 #include "config.h"
 #include "log.h"
+#include "hashmap_str.h"
 #include <libconfig.h>
 #include <string.h>
 #define MATCH(s, n) strcmp(s, n) == 0
@@ -83,31 +84,38 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
     }
 }
 
-void init_ssa_config(ssa_config_t def, ssa_config_t* cur) {
-    cur->options           = def.options;
-    cur->cipher_list       = strdup(def.cipher_list);
-    cur->validate          = def.validate;
-    cur->trust_store       = strdup(def.trust_store);
-    cur->custom_validation = def.custom_validation;
-    cur->cache_timeout     = def.cache_timeout;
-    cur->cache_path        = strdup(def.cache_path);
-    cur->extensions        = def.extensions;
-    cur->min_version       = def.min_version;
-    cur->max_version       = def.max_version;
+void init_ssa_config(ssa_config_t* def, ssa_config_t* cur) {
+    cur->options           = def->options;
+    cur->cipher_list       = strdup(def->cipher_list);
+    cur->validate          = def->validate;
+    cur->trust_store       = strdup(def->trust_store);
+    cur->custom_validation = def->custom_validation;
+    cur->cache_timeout     = def->cache_timeout;
+    cur->cache_path        = strdup(def->cache_path);
+    cur->extensions        = def->extensions;
+    cur->min_version       = def->min_version;
+    cur->max_version       = def->max_version;
 }
 
-void free_config() {
-    for (int i = 0; i < global_config_size; i++) {
-       if (global_config[i].profile != NULL)
-           free(global_config[i].profile);
-       if (global_config[i].cipher_list != NULL)
-           free(global_config[i].cipher_list);
-       if (global_config[i].trust_store != NULL)
-           free(global_config[i].trust_store);
-       if (global_config[i].cache_path != NULL)
-           free(global_config[i].cache_path);
-    }
-    free(global_config);
+void free_config_entry(void* config) {
+    ssa_config_t* conf = (ssa_config_t*) config;
+
+    // This is a little dirty becuase the profile is the key
+    // the default profile is set to null so we don't need to worry about it.
+    if ( (conf->profile != NULL) )
+        free(conf->profile);
+    if (conf->cipher_list != NULL)
+        free(conf->cipher_list);
+    if (conf->trust_store != NULL)
+        free(conf->trust_store);
+    if (conf->cache_path != NULL)
+        free(conf->cache_path);
+    free(conf);
+}
+
+void free_config()
+{
+    hashmap_deep_free(global_config,free_config_entry);
     global_config = NULL;
     global_config_size = 0;
 }
@@ -119,6 +127,9 @@ size_t parse_config(char* filename) {
     config_setting_t *cur_profile;
     config_setting_t *cur_setting;
     config_setting_t *profiles;
+    ssa_config_t* default_config;
+    ssa_config_t* cur_config;
+
     int num_profiles;
     const char* str;
     int myint;
@@ -133,15 +144,23 @@ size_t parse_config(char* filename) {
     profiles = config_lookup(&cfg, "Profiles");
     num_profiles = config_setting_length(profiles);
     
-    global_config = calloc(num_profiles + 1, sizeof(ssa_config_t));
+    // global_config = calloc(num_profiles + 1, sizeof(ssa_config_t));
+    global_config = hashmap_create(20);
+    default_config = calloc(1,sizeof(ssa_config_t));
     global_config_size = num_profiles + 1;
     
     // Parse default
     default_profile = config_lookup(&cfg, "Default");
     int default_i = config_setting_length(default_profile);
     for (int i = 0; i < default_i; i++) {
-        add_setting(&global_config[0], config_setting_get_elem(default_profile, i));
+        add_setting(default_config, config_setting_get_elem(default_profile, i));
     }
+    //Default profile does not need a name
+    default_config->profile = NULL;
+    hashmap_add(global_config,DEFAULT_CONF,default_config);
+
+
+
     /* //TODO check to make sure defaults are actually set
     if (config_lookup(&cfg, "Default.MinProtocol") == NULL) {
         //TODO error default not set
@@ -153,21 +172,77 @@ size_t parse_config(char* filename) {
     config_lookup(&cfg, "Default.AppCustomValidation", &str);
     */
     // Parse all the profiles
+
     for(int i = 0; i < num_profiles; i++) {
-        init_ssa_config(global_config[0], &global_config[i+1]);
+        cur_config = malloc(sizeof(ssa_config_t));
+        init_ssa_config(default_config, cur_config);
         cur_profile = config_setting_get_elem(profiles, i);
         int num_custom = config_setting_length(cur_profile);
         for (int j = 0; j < num_custom; j++) {
             cur_setting = config_setting_get_elem(cur_profile, j);
-            add_setting(&global_config[i+1], cur_setting);
+            add_setting(cur_config, cur_setting);
         }
+        hashmap_add(global_config,cur_config->profile,cur_config);
     }
+
+    hashmap_print(global_config);
+
     config_destroy(&cfg);
     return global_config_size;
 }
 
+void tests() {
+    hsmap_t* map;
+    char my_str[] = "This is a test string";
+    char str1[] = "1";
+    char str2[] = "2";
+    char str3[] = "34";
+    char str4[] = "35";
+    char str5[] = "26";
+    char str6[] = "17";
+    map = hashmap_create(20);
+    printf("Inserting test:%s\n", my_str);
+    hashmap_add(map,my_str,my_str);
+    printf("Inserting str1:%s\n", str1);
+    hashmap_add(map,str1,str1);
+    printf("Inserting str2:%s\n", str2);
+    hashmap_add(map,str2,str2);
+    printf("Inserting str3:%s\n", str3);
+    hashmap_add(map,str3,str3);
+    printf("Inserting str4:%s\n", str4);
+    hashmap_add(map,str4,str4);
+    printf("Inserting str5:%s\n", str5);
+    hashmap_add(map,str5,str5);
+    printf("Inserting str6:%s\n", str6);
+    hashmap_add(map,str6,str6);
+    hashmap_print(map);
+
+    printf("\n\nGET STRINGS\n");
+    printf("Get my_str:%s\n", (char*)hashmap_get(map,my_str));
+    printf("Get str1:%s\n", (char*)hashmap_get(map,str1));
+    printf("Get str2:%s\n", (char*)hashmap_get(map,str2));
+    printf("Get str3:%s\n", (char*)hashmap_get(map,str3));
+    printf("Get str4:%s\n", (char*)hashmap_get(map,str4));
+    printf("Get str5:%s\n", (char*)hashmap_get(map,str5));
+    printf("Get str6:%s\n", (char*)hashmap_get(map,str6));
+
+    printf("\n\nRemoving all\n");
+    hashmap_del(map,my_str);
+    hashmap_del(map,str1);
+    hashmap_del(map,str2);
+    hashmap_del(map,str3);
+    hashmap_del(map,str4);
+    hashmap_del(map,str5);
+    hashmap_del(map,str6);
+    hashmap_print(map);
+    hashmap_free(map);
+
+}
+
+
 void main()
 {
+    //tests();
     parse_config("ssa.cfg");
     free_config();
 }

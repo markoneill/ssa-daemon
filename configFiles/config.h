@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <openssl/ssl.h>
+#include "hashmap_str.h"
 enum validation { Normal, TrustBase };
 #define SSA_EXT_SNI    0x0001
 #define SSA_EXT_ALPN   0x0002
@@ -23,7 +24,10 @@ typedef struct {
     long extensions; //bitmask
 } ssa_config_t;
 
-ssa_config_t* global_config = NULL;
+char DEFAULT_CONF[] = "default";
+
+hsmap_t* global_config = NULL;
+
 size_t global_config_size = 0;
 size_t parse_config(char* filename);
 void free_config();
