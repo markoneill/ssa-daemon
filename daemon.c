@@ -82,6 +82,7 @@ typedef struct sock_ctx {
 	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
 
+
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
 /* SSA direct functions */
@@ -419,7 +420,6 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	//			sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 
 	associate_fd(sock_ctx->tls_conn, fd);
-	printf("associating an fd\n");
 	return;
 }
 

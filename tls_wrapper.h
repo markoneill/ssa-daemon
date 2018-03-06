@@ -57,6 +57,8 @@ typedef struct tls_conn_ctx {
 	channel_t plain;
 	channel_t secure;
 	SSL* tls;
+	unsigned long id;
+	tls_daemon_ctx_t* daemon;
 	struct sockaddr* addr;
 	int addrlen;
 } tls_conn_ctx_t;
@@ -71,8 +73,8 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx);
 int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id);
 tls_opts_t* tls_opts_create(char* path);
 void tls_opts_free(tls_opts_t*);
-int tls_ops_server_setup(tls_opts_t* ops);
-int tls_ops_client_setup(tls_opts_t* ops);
+int tls_opts_server_setup(tls_opts_t* ops);
+int tls_opts_client_setup(tls_opts_t* ops);
 
 
 /* Helper functions to separate daemon from security library */

@@ -36,8 +36,8 @@
 
 int netlink_disconnect(struct nl_sock* sock);
 void netlink_recv(evutil_socket_t fd, short events, void *arg);
-void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response, int blocking); 
 void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, char* data, unsigned int len);
+void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response); 
 struct nl_sock* netlink_connect(tls_daemon_ctx_t* ctx);
 
 #endif

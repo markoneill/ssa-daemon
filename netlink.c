@@ -322,7 +322,7 @@ void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, cha
 	return;
 }
 
-void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response, int blocking) {
+void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response) {
 	int ret;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -344,11 +344,6 @@ void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, in
 	ret = nla_put_u32(msg, SSA_NL_A_RETURN, response);
 	if (ret != 0) {
 		log_printf(LOG_ERROR, "Failed to insert response in netlink msg\n");
-		return;
-	}
-	ret = nla_put_u32(msg, SSA_NL_A_BLOCKING, blocking);
-	if (ret != 0) {
-		log_printf(LOG_ERROR, "Failed to insert blocking value in netlink msg\n");
 		return;
 	}
 	ret = nl_send_auto(ctx->netlink_sock, msg);

@@ -38,7 +38,7 @@
 #include "openssl_compat.h"
 #include "log.h"
 
-#define MAX_BUFFER		1024*1024*10
+#define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
 
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);
@@ -684,6 +684,8 @@ int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, un
 	if (conn->tls == NULL) {
 		return 1;
 	}
+	conn->daemon = daemon_ctx;
+	conn->id = id;
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_ID, (void*)id);
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_CTX, (void*)daemon_ctx);
 	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
@@ -759,11 +761,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			}*/
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
-				tls_daemon_ctx_t* daemon_ctx;
-				unsigned long id;
-				id = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_ID);
-				daemon_ctx = SSL_get_ex_data(ctx->tls, OPENSSL_EX_DATA_CTX);
-				netlink_handshake_notify_kernel(daemon_ctx, id, 0, 1);
+				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
 			else {
 				bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
