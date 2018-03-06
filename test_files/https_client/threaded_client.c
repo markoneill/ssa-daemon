@@ -250,7 +250,7 @@ void* thread_start(void* arg) {
 	for(i = 0; i < CALLS_PER_THREAD; i++) {
 		total_bytes_read = 0;
 		if(ssl){
-			SSL_connect(tls);
+			//SSL_connect(tls);
 			if(SSL_write(tls,req,strlen(req)) <= 0){
 				printf("SSL Send Error");
 				pthread_mutex_lock(&finished_lock);

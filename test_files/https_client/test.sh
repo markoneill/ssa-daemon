@@ -11,14 +11,14 @@ do
 	for i in {1..100}
 	do
 		echo "Iteration $i"
-		./threaded_https_client -b 1024 -c 1 -d 1000000 -f refactor_02.csv -h www.phoenixteam.net -t $i
+		./threaded_https_client -b 1024 -c 1 -d 1000000 -f refactor_03.csv -h www.phoenixteam.net -t $i 
 		#sleep 5
 	done
 
 	for i in {1..100}
 	do
 		echo "Iteration $i"
-		./threaded_https_client -b 1024 -c 1 -d 1000000 -f refactor_02.csv -h www.phoenixteam.net -t $i -s
+		./threaded_https_client -b 1024 -c 1 -d 1000000 -f refactor_03.csv -h www.phoenixteam.net -t $i -s
 		#sleep 5
 	done
 done
