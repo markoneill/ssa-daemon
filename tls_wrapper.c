@@ -72,7 +72,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 	/* socket set to -1 because we set it later */
 	ctx->plain.bev = bufferevent_socket_new(daemon_ctx->ev_base, -1,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	ctx->plain.connected = 1;
+	//ctx->plain.connected = 1;
 	if (ctx->plain.bev == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up client facing bufferevent [direct mode]\n");
 		/* Need to close socket because it won't be closed on free since bev creation failed */
@@ -106,6 +106,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 	bufferevent_setcb(ctx->secure.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
 	bufferevent_enable(ctx->secure.bev, EV_READ | EV_WRITE);
 	bufferevent_setcb(ctx->plain.bev, tls_bev_read_cb, tls_bev_write_cb, tls_bev_event_cb, ctx);
+	log_printf(LOG_INFO, "secure bev enabled\n");
 	//bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
 
 	/* Connect server facing socket */
@@ -121,6 +122,8 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 void associate_fd(tls_conn_ctx_t* conn, evutil_socket_t ifd) {
 	bufferevent_setfd(conn->plain.bev, ifd);
 	bufferevent_enable(conn->plain.bev, EV_READ | EV_WRITE);
+
+	log_printf(LOG_INFO, "plain bev enabled\n");
 	return;
 }
 
@@ -755,7 +758,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		log_printf(LOG_INFO, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		//if (startpoint->connected == 1) log_printf(LOG_ERROR, "Setting connected when we shouldn't\n");
 		startpoint->connected = 1;
-		if (bev == ctx->secure.bev) { /* This should only take place with SSA servers */
+		if (bev == ctx->secure.bev) {
 			/*if ((servername = SSL_get_servername(ctx->tls, TLSEXT_NAMETYPE_host_name)) != NULL) {
 				strcpy(ctx->servername, servername);
 			}*/
@@ -778,11 +781,16 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			}
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
+				startpoint->closed = 1;
 			}
 		}
-		while ((ssl_err = bufferevent_get_openssl_error(bev))) {
-			log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n", 
-					ERR_func_error_string(ssl_err), ERR_reason_error_string(ssl_err));
+		if (bev == ctx->secure.bev) {
+			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
+				log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n",
+					ERR_func_error_string(ssl_err),
+					 ERR_reason_error_string(ssl_err));
+			}
+			startpoint->closed = 1;
 		}
 		if (endpoint->closed == 0) {
 			struct evbuffer* out_buf;
@@ -792,9 +800,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				endpoint->closed = 1;
 			}
 		}
-		/* always close startpoint on unhandled error */
-		startpoint->closed = 1;
-
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
@@ -815,6 +820,9 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
+		if (bufferevent_getfd(ctx->plain.bev) == -1) {
+			netlink_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
+		}
 		shutdown_tls_conn_ctx(ctx);
 	}
 	return;

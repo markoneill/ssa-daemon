@@ -220,6 +220,7 @@ void run_test(FILE* fp){
 	gettimeofday(&tv_after, NULL);
 	for(i = 0; i < NUM_THREADS; i++) {
 		pthread_join(t[i],NULL);
+		close(t_params[i].sock);
 	}
 	if (timeval_subtract(&tv_elapsed, &tv_after, &tv_before) == 1) {
 		fprintf(stderr, "Oh no! Difference between after and before was negative!\n");
@@ -302,7 +303,6 @@ void* thread_start(void* arg) {
 		}
 	}
 	if(ssl) SSL_shutdown(tls);
-	close(sock_fd);
 	if(verbose) printf("Thread %d finished %d iterations\n", thread_id, i);
 	pthread_mutex_lock(&finished_lock);
 	threads_finished++;

@@ -788,6 +788,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
 	if (blocking == 0) {
+		log_printf(LOG_INFO, "Nonblocking connect requested\n");
 		netlink_notify_kernel(ctx, id, response);
 	}
 	return;
