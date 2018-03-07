@@ -5,6 +5,11 @@
 #include <string.h>
 #define MATCH(s, n) strcmp(s, n) == 0
 
+char DEFAULT_CONF[] = "default";
+hsmap_t* global_config = NULL;
+size_t global_config_size = 0;
+
+
 void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
     const char* name = config_setting_name(cur_setting);
     const char* value;
@@ -189,9 +194,33 @@ size_t parse_config(char* filename) {
     return global_config_size;
 }
 
-
-void main()
+/* return NULL if the config has not been parsed 
+ * If it has get the requested application
+ * If the requested application does not exist return
+ * the defualt configuration
+*/
+ssa_config_t* get_app_config(char* app_path)
 {
-    parse_config("ssa.cfg");
-    free_config();
+    ssa_config_t* config;
+
+    if (global_config == NULL)
+        return NULL;
+
+    config = hashmap_str_get(global_config,app_path);
+
+    if (!config) 
+        return hashmap_str_get(global_config,DEFAULT_CONF);
+    
+    return config;
 }
+
+ssa_config_t* get_default_config()
+{
+    return get_app_config(DEFAULT_CONF);
+}
+
+//void main()
+//{
+//    parse_config("ssa.cfg");
+//    free_config();
+//}

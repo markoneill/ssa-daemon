@@ -33,13 +33,12 @@ typedef struct hsmap {
 	int item_count;
 } hsmap_t;
 
-hsmap_t* hashmap_create(int num_buckets);
-int hash(hsmap_t* map, char* key);
-void hashmap_free(hsmap_t* map);
-void hashmap_deep_free(hsmap_t* map, void (*free_func)(void*));
-int hashmap_add(hsmap_t* map, char* key, void* value);
-int hashmap_del(hsmap_t* map, char* key);
-void* hashmap_get(hsmap_t* map, char* key);
-void hashmap_print(hsmap_t* map);
+hsmap_t* hashmap_str_create(int num_buckets);
+void hashmap_str_free(hsmap_t* map);
+void hashmap_str_deep_free(hsmap_t* map, void (*free_func)(void*));
+int hashmap_str_add(hsmap_t* map, char* key, void* value);
+int hashmap_str_del(hsmap_t* map, char* key);
+void* hashmap_str_get(hsmap_t* map, char* key);
+void hashmap_str_print(hsmap_t* map);
 
 #endif
