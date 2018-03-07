@@ -97,6 +97,7 @@ void hashmap_free(hsmap_t* map) {
 int hashmap_add(hsmap_t* map, char* key, void* value) {
 	int index;
 	hsnode_t* cur;
+	hsnode_t* next;
 	hsnode_t* new_node = (hsnode_t*)malloc(sizeof(hsnode_t));
 	new_node->key = key;
 	new_node->value = value;
@@ -108,21 +109,22 @@ int hashmap_add(hsmap_t* map, char* key, void* value) {
 	
 	index = hash(map, key);
 	cur = map->buckets[index];
-
+	next = cur;
 	if (cur == NULL) {
 		map->buckets[index] = new_node;
 		map->item_count++;
 		return 0;
 	}
-	do {
 
+	do {
+		cur = next;
 		if(STR_MATCH(cur->key,key)) {
 			/* Duplicate entry */
 
 			return 1;
 		}
-		cur = cur->next;
-	} while (cur->next != NULL);
+		next = cur->next;
+	} while (next != NULL);
 
 	cur->next = new_node;
 	map->item_count++;

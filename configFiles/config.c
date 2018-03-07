@@ -236,13 +236,12 @@ void tests() {
     hashmap_del(map,str6);
     hashmap_print(map);
     hashmap_free(map);
-
 }
 
 
 void main()
 {
-    //tests();
+//    tests();
     parse_config("ssa.cfg");
     free_config();
 }
