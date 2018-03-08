@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
 	sigact.sa_handler = sig_handler;
 	sigaction(SIGINT, &sigact, NULL);
 
-	worker_count = 2;
+	worker_count = 100;
 	workers = malloc(sizeof(pid_t) * worker_count);
 	if (workers == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");
