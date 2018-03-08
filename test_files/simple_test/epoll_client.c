@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
 	int i;
 	int n;
 	int nfds;
+	char host[] = "www.phoenixteam.net";
 
 	/* Set up polling */
 	struct epoll_event ev;
@@ -62,7 +63,7 @@ int main(int argc, char* argv[]) {
 	for (i = 0; i < num_connections; i++) {
 		connections[i].state = CONNECTING;
 		connections[i].id = i;
-		connections[i].fd = connect_to_host("localhost", "8080", SOCK_STREAM);
+		connections[i].fd = connect_to_host(host, "443", SOCK_STREAM);
 		ev.events = EPOLLOUT | EPOLLHUP | EPOLLET;
 		ev.data.ptr = (void*)&connections[i];
 		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connections[i].fd, &ev) == -1) {
@@ -70,7 +71,7 @@ int main(int argc, char* argv[]) {
 			exit(EXIT_FAILURE);
 		}
 		//sprintf(connections[i].w_buf, "Client %d says hello\n", connections[i].id);
-		sprintf(connections[i].w_buf, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+		sprintf(connections[i].w_buf, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", host);
 	}
 	
 
@@ -238,6 +239,7 @@ int connect_to_host(char* host, char* service, int prot) {
 			perror("socket");
 			continue;
 		}
+		setsockopt(sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1);
 		set_blocking(sock, 0);
 		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
 			if (errno == EINPROGRESS || errno == EALREADY) {
