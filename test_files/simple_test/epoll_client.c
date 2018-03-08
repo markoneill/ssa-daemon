@@ -15,6 +15,7 @@
 
 #define BUFFER_MAX	1024
 #define MAX_EVENTS	500
+#define REPEATS		0
 
 typedef enum state {
 	CONNECTING,
@@ -62,13 +63,14 @@ int main(int argc, char* argv[]) {
 		connections[i].state = CONNECTING;
 		connections[i].id = i;
 		connections[i].fd = connect_to_host("localhost", "8080", SOCK_STREAM);
-		ev.events = EPOLLOUT | EPOLLHUP;
+		ev.events = EPOLLOUT | EPOLLHUP | EPOLLET;
 		ev.data.ptr = (void*)&connections[i];
 		if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connections[i].fd, &ev) == -1) {
 			perror("epoll_ctl add");
 			exit(EXIT_FAILURE);
 		}
-		sprintf(connections[i].w_buf, "Client %d says hello\n", connections[i].id);
+		//sprintf(connections[i].w_buf, "Client %d says hello\n", connections[i].id);
+		sprintf(connections[i].w_buf, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
 	}
 	
 
@@ -99,14 +101,14 @@ int main(int argc, char* argv[]) {
 					}
 				}
 				if (send_data(conn) == 0) {
-					ev.events = EPOLLIN | EPOLLRDHUP;
+					ev.events = EPOLLIN | EPOLLRDHUP | EPOLLET;
 					ev.data.ptr = (void*)conn;
 					epoll_ctl(epoll_fd, EPOLL_CTL_MOD, conn->fd, &ev);
 				}
 			}
 			if (events[n].events & EPOLLIN) {
 				if (recv_data(conn) == 0) {
-					ev.events = EPOLLOUT | EPOLLRDHUP;
+					ev.events = EPOLLOUT | EPOLLRDHUP | EPOLLET;
 					ev.data.ptr = (void*)conn;
 					epoll_ctl(epoll_fd, EPOLL_CTL_MOD, conn->fd, &ev);
 				}
@@ -178,11 +180,11 @@ int recv_data(connection_t* conn) {
 	}
 	*newline_ptr = '\0';
 	printf("[recv completed] [client %d] %s\n", conn->id, conn->r_buf);
-	conn->state = SENDING;
+	//conn->state = SENDING;
 	memset(conn->r_buf, 0, BUFFER_MAX);
 	conn->r_buf_pos = 0;
 	sprintf(conn->w_buf, "Client %d says hello again (count = %d)\n", conn->id, conn->counter++);
-	if (conn->counter > 10) {
+	if (conn->counter > REPEATS) {
 		conn->state = DISCONNECTED;
 	}
 	return 0;
