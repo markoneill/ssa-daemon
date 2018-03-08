@@ -87,6 +87,7 @@ int upgrade_check(SSL *ssl)
     int fd = SSL_get_fd(ssl);
     int infoLen = sizeof(info);
     int is_accepting = SSL_in_accept_init(ssl) ? 1 : 0;
+    socklen_t optlen;
 
     if (connection_map) {
 
@@ -104,19 +105,16 @@ int upgrade_check(SSL *ssl)
 
             // What states do we want to upgrade and which ones do we want to leave alone?
             if (info.tcpi_state != 0) { //== TCP_ESTABLISHED) {
-                if (setsockopt(fd, IPPROTO_TCP, TCP_UPGRADE_TLS, &is_accepting, sizeof(int)) == -1){
+		if (is_accepting == 0 && hostname != NULL) {
+			optlen = strlen(hostname)+1;
+		}
+		else {
+			optlen = 0;
+		}
+                if (setsockopt(fd, IPPROTO_TCP, TCP_UPGRADE_TLS, hostname, optlen) == -1) {
                       perror("setsockopt: TCP_UPGRADE_TLS");
                       close(fd);
                }
-
-                if (hostname)
-                {
-                    // printf("HOSTNAME %s\n", hostname);
-                    if (setsockopt(fd, IPPROTO_TCP, SO_REMOTE_HOSTNAME, hostname, strlen(hostname)+1) == -1){
-                       perror("setsockopt: SO_REMOTE_HOSTNAME");
-                       close(fd);
-                    }
-                }
             }
 
             //Not connected duplicate connection
