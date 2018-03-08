@@ -134,9 +134,7 @@ int send_data(connection_t* conn) {
 	int bytes_to_write = strlen(&conn->w_buf[conn->w_buf_pos]);
 	int bytes_written;
 	while (bytes_to_write > 0) {
-	printf("Adfadsfddddddddddddd\n");
 		bytes_written = send(conn->fd, conn->w_buf + pos, bytes_to_write, 0);
-	printf("Adfadsf\n");
 		if (bytes_written == -1) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				conn->w_buf_pos = pos;
@@ -239,13 +237,11 @@ int connect_to_host(char* host, char* service, int prot) {
 			continue;
 		}
 		set_blocking(sock, 0);
-		printf("Before connect\n");
 		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
 			if (errno == EINPROGRESS || errno == EALREADY) {
 				printf("Couldn't connect immediately\n");
 			}
 		}
-		printf("After connect\n");
 		break;
 	}
 	freeaddrinfo(addr_list);
@@ -257,7 +253,7 @@ int connect_to_host(char* host, char* service, int prot) {
 }
 
 int is_connected(int fd) {
-	int connected;
+/*	int connected;
 	int error;
 	socklen_t errorlen = sizeof(error);
 	connected = 0;
@@ -271,5 +267,10 @@ int is_connected(int fd) {
 		connected = 1;
 	}
 	return connected;
+*/
+
+	struct sockaddr_in peer_addr;
+	socklen_t peer_addrlen = sizeof(peer_addr);
+	return (getpeername(fd, (struct sockaddr*)&peer_addr, &peer_addrlen) == 0);
 }
 
