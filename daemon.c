@@ -414,7 +414,6 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		EVUTIL_CLOSESOCKET(fd);
 		return;
 	}
-	log_printf(LOG_INFO, "Remote Hostname: %s (%p)\n", sock_ctx->rem_hostname, sock_ctx->rem_hostname);
 	hashmap_del(ctx->sock_map_port, port);
 	//sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
 	//			sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
@@ -990,9 +989,9 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 		sock_ctx->is_accepting = 0;
 	}
 
-	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
-				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
-	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
+	//sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+	//			sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+	//set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
 
 	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {
 		perror("sendto");
