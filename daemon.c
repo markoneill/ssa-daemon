@@ -789,7 +789,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
 	if (blocking == 0) {
 		log_printf(LOG_INFO, "Nonblocking connect requested\n");
-		netlink_handshake_notify_kernel(ctx, id, response);
+		netlink_notify_kernel(ctx, id, -EINPROGRESS);
 	}
 	return;
 }
