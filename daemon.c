@@ -151,12 +151,6 @@ int server_create(int port) {
 		.sock_map_port = hashmap_create(HASHMAP_NUM_BUCKETS),
 	};
 
-	/* Register index for SSL ex_data for id and daemon
-	 * We assume in certificate_handshake_cb index 1 and 2 are assigned */
-	assert(SSL_get_ex_new_index(0, "id", NULL, NULL, NULL) == OPENSSL_EX_DATA_ID);
-	assert(SSL_get_ex_new_index(0, "daemon_ctx", NULL, NULL, NULL) == OPENSSL_EX_DATA_CTX);
-	assert(SSL_get_ex_new_index(0, "want_send", NULL, NULL, NULL) == OPENSSL_EX_DATA_WANT_SEND);
-
 	/* Set up server socket with event base */
 	server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
 	listener = evconnlistener_new(ev_base, accept_cb, &daemon_ctx, 
@@ -609,6 +603,9 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 			response = -EINVAL;
 		}
 		break;
+	case SO_PEER_IDENTITY:
+		response = -ENOPROTOOPT; /* get only */
+		break;
 	case SO_PEER_CERTIFICATE:
 		response = -ENOPROTOOPT; /* get only */
 		break;
@@ -632,6 +629,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	int response = 0;
 	char* data = NULL;
 	unsigned int len = 0;
+	int need_free = 0;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
@@ -680,15 +678,18 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	case SO_DISABLE_CIPHER:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case SO_PEER_CERTIFICATE:
-		if (sock_ctx->tls_conn == NULL) {
+	case SO_PEER_IDENTITY:
+		if (get_peer_identity(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
-			break;
 		}
-		/* get_peer_certificate will register a callback 
-		 * that send the kernel notification on its success/failure*/
-		get_peer_certificate(ctx, id, sock_ctx->tls_conn);
-		return; /* return instead of break because callback will handle notify */
+		need_free = 1;
+		break;
+	case SO_PEER_CERTIFICATE:
+		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
+			response = -ENOTCONN;
+		}
+		need_free = 1;
+		break;
 	case SO_ID:
 		/* This case is handled directly by the kernel.
 		 * If we want to change that, uncomment the lines below */
@@ -705,6 +706,9 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	netlink_send_and_notify_kernel(ctx, id, data, len);
+	if (need_free == 1) {
+		free(data);
+	}
 	return;
 }
 

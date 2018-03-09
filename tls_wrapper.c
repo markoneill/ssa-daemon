@@ -457,103 +457,65 @@ int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ho
 	return 1;
 }
 
-
-int peer_certificate_cb(tls_daemon_ctx_t* ctx, unsigned long id, SSL* ssl) {
-	X509 * cert;
-	BIO * bio;
+int get_peer_certificate(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	X509* cert;
+	BIO* bio;
 	char* bio_data;
 	char* pem_data;
-	unsigned int len = 0;
+	unsigned int cert_len;
 
-	if (!SSL_is_init_finished(ssl)) {
-		log_printf(LOG_ERROR, "Requested certificate before handshake completed\n");
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
+	if (conn_ctx->tls == NULL) {
+		return 0;
 	}
-
-	cert = SSL_get_peer_certificate(ssl);
+	cert = SSL_get_peer_certificate(conn_ctx->tls);
 	if (cert == NULL) {
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
 		return 0;
 	}
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL) {
 		X509_free(cert);
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
 		return 0;
 	}
 	if (PEM_write_bio_X509(bio, cert) == 0) {
 		X509_free(cert);
 		BIO_free(bio);
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
 		return 0;
 	}
 
-	len = BIO_get_mem_data(bio, &bio_data);
-	pem_data = malloc((len) + 1); /* +1 for null terminator */
+	cert_len = BIO_get_mem_data(bio, &bio_data);
+	pem_data = malloc(cert_len + 1); /* +1 for null terminator */
 	if (pem_data == NULL) {
 		X509_free(cert);
 		BIO_free(bio);
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
 		return 0;
 	}
 
-	memcpy(pem_data, bio_data, len);
-	pem_data[len] = '\0';
+	memcpy(pem_data, bio_data, cert_len);
+	pem_data[cert_len] = '\0';
 	X509_free(cert);
 	BIO_free(bio);
 
-	if (pem_data == NULL) {
-		log_printf(LOG_DEBUG, "pem_data Call\n");
-		netlink_notify_kernel(ctx, id, -ENOTCONN);
-		return 0;
-	}
-	netlink_send_and_notify_kernel(ctx, id, pem_data, len);
-	free(pem_data);
+	*data = pem_data;
+	*len = cert_len;
 	return 1;
 }
 
-void certificate_handshake_cb(SSL *s, int where, int ret) {
-	unsigned long * id;
-	tls_daemon_ctx_t* ctx;
-	int id_len = sizeof(id);
-	int fd = SSL_get_wfd(s);
-
-	if (where == SSL_CB_HANDSHAKE_DONE) {
-		/* Get the id and daemon_ctx from the SSL object */
-		id = SSL_get_ex_data(s, OPENSSL_EX_DATA_ID);
-		ctx = SSL_get_ex_data(s, OPENSSL_EX_DATA_CTX);
-
-		peer_certificate_cb(ctx, *id, s);
-
-		/* free the id becuase we only use it for this function. */
-		free(id);
-		SSL_set_ex_data(s, 1, NULL);
+int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	X509* cert;
+	X509_NAME* subject_name;
+	char* identity;
+	if (conn_ctx->tls == NULL) {
+		return 0;
 	}
-	
-}
-
-void get_peer_certificate(tls_daemon_ctx_t* ctx, unsigned long id, tls_conn_ctx_t* tls_conn) {
-	unsigned long * idp;
-
-	/* Connect if we're not connected. 
-	 * This is only needed because we don't explicitly call it
-	 * during the connection, to support OpenSSL overriding */
-	if (SSL_in_init(tls_conn->tls)) {
-		idp = malloc(sizeof(id));
-		*idp = id;
-		SSL_set_ex_data(tls_conn->tls, OPENSSL_EX_DATA_ID, idp);
-		SSL_set_ex_data(tls_conn->tls, OPENSSL_EX_DATA_CTX, ctx);
-		SSL_set_info_callback(tls_conn->tls, certificate_handshake_cb);
-		SSL_do_handshake(tls_conn->tls);
-		return;
+	cert = SSL_get_peer_certificate(conn_ctx->tls);
+	if (cert == NULL) {
+		return 0;
 	}
-
-	/* If we have already completed the handshake we do not 
-	 * need to register a callback and can get the certificate
-	 * imediataly  */
-	peer_certificate_cb(ctx,id,tls_conn->tls);
-
-	return;
+	subject_name = X509_get_subject_name(cert);
+	identity = X509_NAME_oneline(subject_name, NULL, 0);
+	*data = identity;
+	*len = strlen(identity)+1;
+	return 1;
 }
 
 int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
@@ -689,9 +651,6 @@ int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, un
 	}
 	conn->daemon = daemon_ctx;
 	conn->id = id;
-	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_ID, (void*)id);
-	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_CTX, (void*)daemon_ctx);
-	SSL_set_ex_data(conn->tls, OPENSSL_EX_DATA_WANT_SEND, (void*)0);
 	return 1;
 }
 

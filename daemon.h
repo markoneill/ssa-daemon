@@ -40,16 +40,6 @@
 
 #define MAX_HOSTNAME		255
 
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-#define OPENSSL_EX_DATA_ID		1
-#define OPENSSL_EX_DATA_CTX		2
-#define OPENSSL_EX_DATA_WANT_SEND	3
-#else
-#define OPENSSL_EX_DATA_ID		0
-#define OPENSSL_EX_DATA_CTX		1
-#define OPENSSL_EX_DATA_WANT_SEND	2
-#endif
-
 typedef struct tls_daemon_ctx {
 	struct event_base* ev_base;
 	struct nl_sock* netlink_sock;

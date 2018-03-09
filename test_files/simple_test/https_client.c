@@ -9,6 +9,7 @@
 #include "../../in_tls.h"
 
 int connect_to_host(char* host, char* service);
+void print_identity(int fd);
 
 int main() {
 	int sock_fd = connect_to_host("www.google.com", "443");
@@ -55,6 +56,8 @@ int connect_to_host(char* host, char* service) {
 			close(sock);
 			continue;
 		}
+
+		print_identity(sock);
 		break;
 	}
 	freeaddrinfo(addr_list);
@@ -63,5 +66,15 @@ int connect_to_host(char* host, char* service) {
 		exit(EXIT_FAILURE);
 	}
 	return sock;
+}
+
+void print_identity(int fd) {
+	char data[128];
+	socklen_t data_len = sizeof(data);
+	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_IDENTITY, data, &data_len) == -1) {
+		perror("SO_PEER_IDENTITY");
+	}
+	printf("Peer identity:\n%s\n", data);
+	return;
 }
 
