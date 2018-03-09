@@ -230,8 +230,8 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
 	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)tls_opts);
 
-	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate.pem");
-	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key.pem", SSL_FILETYPE_PEM);
+	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate_a.pem");
+	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key_a.pem", SSL_FILETYPE_PEM);
 
 	return 1;
 }
