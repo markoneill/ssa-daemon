@@ -2,7 +2,6 @@
 #define CONFIG_H
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <openssl/ssl.h>
 #include "hashmap_str.h"
 enum validation { Normal, TrustBase };
@@ -18,10 +17,13 @@ typedef struct {
     char* cipher_list;
     enum validation validate;
     char* trust_store;
-    bool custom_validation;
+    int custom_validation;
     long cache_timeout;
     char* cache_path;
     long extensions; //bitmask
+    char* randseed_path;
+    int randseed_size;
+
 } ssa_config_t;
 
 extern char DEFAULT_CONF[];
