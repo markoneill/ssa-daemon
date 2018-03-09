@@ -66,7 +66,8 @@ int main(int argc, char* argv[]) {
 
 	parse_config("ssa.cfg");
 	
-	worker_count = 100;
+	worker_count = 1;
+
 	workers = malloc(sizeof(pid_t) * worker_count);
 	if (workers == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");

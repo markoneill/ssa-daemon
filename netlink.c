@@ -296,8 +296,8 @@ void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, cha
 	struct nl_msg* msg;
 	void* msg_head;
 	int msg_size = nla_total_size(sizeof(struct genlmsghdr)) +
-		nla_total_size(sizeof(id)) + nla_total_size(len);
-	msg_size = 128;
+		nla_total_size(sizeof(id)) + 2*nla_total_size(len);
+	//msg_size = 128;
 	msg = nlmsg_alloc_size(msg_size);
 	if (msg == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
