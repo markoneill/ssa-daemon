@@ -42,6 +42,8 @@ int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 
 typedef struct tls_opts {
 	SSL_CTX* tls_ctx;
+	char* app_path;
+	int custom_validation;
 	int is_server;
 	char alpn_string[256];
 	struct tls_ops* next;

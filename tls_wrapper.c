@@ -37,6 +37,7 @@
 #include "tls_wrapper.h"
 #include "openssl_compat.h"
 #include "log.h"
+#include "config.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
@@ -184,6 +185,8 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 tls_opts_t* tls_opts_create(char* path) {
 	tls_opts_t* opts;
 	SSL_CTX* tls_ctx;
+	ssa_config_t* ssa_config;
+
 	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
 	if (opts == NULL) {
 		return NULL;
@@ -193,7 +196,33 @@ tls_opts_t* tls_opts_create(char* path) {
 	 * admin preferences */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
 
+	ssa_config = get_app_config(path);
+
+	if (ssa_config) {
+		if (SSL_CTX_set_min_proto_version(tls_ctx, ssa_config->min_version) == 0) {
+			log_printf(LOG_ERROR, "Unable to set min protocol version for %s\n",path);
+		}
+		if (SSL_CTX_set_max_proto_version(tls_ctx, ssa_config->max_version) == 0) {
+			log_printf(LOG_ERROR, "Unable to set max protocol version for %s\n",path);
+		}
+		if (SSL_CTX_set_cipher_list(tls_ctx, ssa_config->cipher_list) == 0) {
+			log_printf(LOG_ERROR, "Unable to set cipher list for %s\n",path);
+		}
+		//TrustStoreLocation
+		//SessionCacheLocation
+		SSL_CTX_set_timeout(tls_ctx, ssa_config->cache_timeout);
+		opts->custom_validation = ssa_config->custom_validation;
+		
+	}
+	else {
+		log_printf(LOG_ERROR, "Unable to find ssa configuration\n");
+	}
+
 	opts->tls_ctx = tls_ctx;
+	opts->app_path = NULL;
+	if (path) {
+		opts->app_path = strdup(path);
+	}
 	return opts;
 }
 
@@ -207,6 +236,9 @@ void tls_opts_free(tls_opts_t* opts) {
 	while (cur_opts != NULL) {
 		tmp_opts = cur_opts->next;
 		SSL_CTX_free(cur_opts->tls_ctx);
+		if (cur_opts->app_path) {
+			free(cur_opts->app_path);
+		}
 		free(cur_opts);
 		cur_opts = tmp_opts;
 	}
@@ -260,6 +292,10 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	STACK_OF(X509_NAME)* cert_names;
+
+	if (tls_opts->custom_validation) {
+		return 1;
+	}
 
 	if (conn_ctx != NULL) {
 		/* These options not supported after connection (for now) */
