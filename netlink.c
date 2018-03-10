@@ -258,9 +258,8 @@ void netlink_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response
 	int ret;
 	struct nl_msg* msg;
 	void* msg_head;
-	int msg_size = nla_total_size(sizeof(struct genlmsghdr)) +
+	int msg_size = NLMSG_HDRLEN + GENL_HDRLEN +
 		nla_total_size(sizeof(id)) + nla_total_size(sizeof(response));
-	msg_size = 128;
 	msg = nlmsg_alloc_size(msg_size);
 	if (msg == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
@@ -295,9 +294,8 @@ void netlink_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, cha
 	int ret;
 	struct nl_msg* msg;
 	void* msg_head;
-	int msg_size = nla_total_size(sizeof(struct genlmsghdr)) +
-		nla_total_size(sizeof(id)) + 2*nla_total_size(len);
-	//msg_size = 128;
+	int msg_size = NLMSG_HDRLEN + GENL_HDRLEN +
+		nla_total_size(sizeof(id)) + nla_total_size(len);
 	msg = nlmsg_alloc_size(msg_size);
 	if (msg == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");
@@ -332,9 +330,8 @@ void netlink_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, in
 	int ret;
 	struct nl_msg* msg;
 	void* msg_head;
-	int msg_size = nla_total_size(sizeof(struct genlmsghdr)) +
+	int msg_size = NLMSG_HDRLEN + GENL_HDRLEN +
 		nla_total_size(sizeof(id)) + nla_total_size(sizeof(response));
-	msg_size = 128;
 	msg = nlmsg_alloc_size(msg_size);
 	if (msg == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate message buffer\n");

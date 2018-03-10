@@ -69,8 +69,12 @@ int connect_to_host(char* host, char* service) {
 }
 
 void print_identity(int fd) {
-	char data[128];
+	char data[2048];
 	socklen_t data_len = sizeof(data);
+	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, data, &data_len) == -1) {
+		perror("SO_PEER_CERTIFICATE");
+	}
+	printf("Peer certificate:\n%s\n", data);
 	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_IDENTITY, data, &data_len) == -1) {
 		perror("SO_PEER_IDENTITY");
 	}
