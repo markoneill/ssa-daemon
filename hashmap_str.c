@@ -52,7 +52,7 @@ int hash(hsmap_t* map, char* key)
 }
 
 
-hsmap_t* hashmap_str_create(int num_buckets) {
+hsmap_t* str_hashmap_create(int num_buckets) {
 	hsmap_t* map = (hsmap_t*)malloc(sizeof(hsmap_t));
 	if (map == NULL) {
 		return NULL;
@@ -66,7 +66,7 @@ hsmap_t* hashmap_str_create(int num_buckets) {
 	return map;
 }
 
-void hashmap_str_deep_free(hsmap_t* map, void (*free_func)(void*)) {
+void str_hashmap_deep_free(hsmap_t* map, void (*free_func)(void*)) {
 	hsnode_t* cur = NULL;
 	hsnode_t* tmp = NULL;
 	int i;
@@ -89,12 +89,12 @@ void hashmap_str_deep_free(hsmap_t* map, void (*free_func)(void*)) {
 	return;
 }
 
-void hashmap_str_free(hsmap_t* map) {
-	hashmap_str_deep_free(map, NULL);
+void str_hashmap_free(hsmap_t* map) {
+	str_hashmap_deep_free(map, NULL);
 	return;
 }
 
-int hashmap_str_add(hsmap_t* map, char* key, void* value) {
+int str_hashmap_add(hsmap_t* map, char* key, void* value) {
 	int index;
 	hsnode_t* cur;
 	hsnode_t* next;
@@ -131,7 +131,7 @@ int hashmap_str_add(hsmap_t* map, char* key, void* value) {
 	return 0;
 }
 
-int hashmap_str_del(hsmap_t* map, char* key) {
+int str_hashmap_del(hsmap_t* map, char* key) {
 	int index;
 	hsnode_t* cur;
 	hsnode_t* tmp;
@@ -161,7 +161,7 @@ int hashmap_str_del(hsmap_t* map, char* key) {
 	return 1;
 }
 
-void* hashmap_str_get(hsmap_t* map, char* key) {
+void* str_hashmap_get(hsmap_t* map, char* key) {
 	int index;
 	hsnode_t* cur;
 
@@ -189,7 +189,7 @@ void* hashmap_str_get(hsmap_t* map, char* key) {
 }
 
 
-void hashmap_str_print(hsmap_t* map) {
+void str_hashmap_print(hsmap_t* map) {
 	int i;
 	hsnode_t* cur;
 	printf("Hash map contents:\n");

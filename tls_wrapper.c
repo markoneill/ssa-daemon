@@ -371,6 +371,26 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 
 int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cipher) {
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+	ssa_config_t* ssa_config;
+	char* cipher_list;
+
+	ssa_config = get_app_config(tls_opts->app_path);
+
+	if (asprintf(&cipher_list, "%s!%s",ssa_config->cipher_list ,cipher) > 0) {
+		log_printf(LOG_ERROR, "Unable to disable cipher %s\n",cipher);
+		return 0;
+	}
+
+	if (SSL_CTX_set_cipher_list(tls_ctx, ssa_config->cipher_list) == 0) {
+		free(cipher_list);
+		log_printf(LOG_ERROR, "Unable to disable cipher %s\n",cipher);
+		return 0;
+	}
+
+	free(ssa_config->cipher_list);
+	ssa_config->cipher_list = cipher_list;
+
+
 	//char* cur_cipher;
 	// XXX to make this function less than 500 lines we need access to the
 	// config string for this app.

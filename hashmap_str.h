@@ -24,8 +24,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef HASHMAP_STR_H
-#define HASHMAP_STR_H
+#ifndef hashmap_str_H
+#define hashmap_str_H
 
 typedef struct hsmap {
 	struct hsnode** buckets;
@@ -33,12 +33,12 @@ typedef struct hsmap {
 	int item_count;
 } hsmap_t;
 
-hsmap_t* hashmap_str_create(int num_buckets);
-void hashmap_str_free(hsmap_t* map);
-void hashmap_str_deep_free(hsmap_t* map, void (*free_func)(void*));
-int hashmap_str_add(hsmap_t* map, char* key, void* value);
-int hashmap_str_del(hsmap_t* map, char* key);
-void* hashmap_str_get(hsmap_t* map, char* key);
-void hashmap_str_print(hsmap_t* map);
+hsmap_t* str_hashmap_create(int num_buckets);
+void str_hashmap_free(hsmap_t* map);
+void str_hashmap_deep_free(hsmap_t* map, void (*free_func)(void*));
+int str_hashmap_add(hsmap_t* map, char* key, void* value);
+int str_hashmap_del(hsmap_t* map, char* key);
+void* str_hashmap_get(hsmap_t* map, char* key);
+void str_hashmap_print(hsmap_t* map);
 
 #endif

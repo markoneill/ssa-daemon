@@ -146,7 +146,7 @@ void free_config_entry(void* config) {
 
 void free_config()
 {
-	hashmap_str_deep_free(global_config,free_config_entry);
+	str_hashmap_deep_free(global_config,free_config_entry);
 	global_config = NULL;
 	global_config_size = 0;
 }
@@ -176,7 +176,7 @@ size_t parse_config(char* filename) {
 	num_profiles = config_setting_length(profiles);
 	
 	// global_config = calloc(num_profiles + 1, sizeof(ssa_config_t));
-	global_config = hashmap_str_create(HASHMAP_SIZE);
+	global_config = str_hashmap_create(HASHMAP_SIZE);
 	default_config = calloc(1,sizeof(ssa_config_t));
 	global_config_size = num_profiles + 1;
 	
@@ -188,7 +188,7 @@ size_t parse_config(char* filename) {
 	}
 	//Default profile does not need a name
 	default_config->profile = NULL;
-	hashmap_str_add(global_config,DEFAULT_CONF,default_config);
+	str_hashmap_add(global_config,DEFAULT_CONF,default_config);
 
 
 
@@ -229,7 +229,7 @@ size_t parse_config(char* filename) {
 			cur_setting = config_setting_get_elem(cur_profile, j);
 			add_setting(cur_config, cur_setting);
 		}
-		hashmap_str_add(global_config,cur_config->profile,cur_config);
+		str_hashmap_add(global_config,cur_config->profile,cur_config);
 	}
 
 	config_destroy(&cfg);
@@ -248,10 +248,10 @@ ssa_config_t* get_app_config(char* app_path)
 	if (global_config == NULL)
 		return NULL;
 
-	config = hashmap_str_get(global_config,app_path);
+	config = str_hashmap_get(global_config,app_path);
 
 	if (config == NULL) 
-		return hashmap_str_get(global_config,DEFAULT_CONF);
+		return str_hashmap_get(global_config,DEFAULT_CONF);
 	
 	return config;
 }
@@ -260,9 +260,3 @@ ssa_config_t* get_default_config()
 {
 	return get_app_config(DEFAULT_CONF);
 }
-
-//void main()
-//{
-//    parse_config("ssa.cfg");
-//    free_config();
-//}
