@@ -32,6 +32,7 @@
 #include <signal.h>
 #include "daemon.h"
 #include "log.h"
+#include "config.h"
 
 void sig_handler(int signum);
 pid_t* workers;
@@ -63,7 +64,10 @@ int main(int argc, char* argv[]) {
 	sigact.sa_handler = sig_handler;
 	sigaction(SIGINT, &sigact, NULL);
 
+	parse_config("ssa.cfg");
+	
 	worker_count = 1;
+
 	workers = malloc(sizeof(pid_t) * worker_count);
 	if (workers == NULL) {
 		log_printf(LOG_ERROR, "Failed to malloc space for workers\n");
@@ -105,6 +109,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	log_close();
+	free_config();
 	free(workers);
 	return 0;
 }
