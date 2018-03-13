@@ -25,6 +25,8 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
@@ -33,6 +35,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
+#include <openssl/rand.h>
 
 #include "tls_wrapper.h"
 #include "openssl_compat.h"
@@ -54,6 +57,8 @@ static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
+static int read_rand_seed(char **buf, char* seed_path, int size);
+
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
@@ -182,10 +187,50 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	return ctx;
 }
 
+static int read_rand_seed(char **buf, char* seed_path, int size) {
+	int fd;
+	int data_len = 0;
+	int ret;
+
+	if ((seed_path == NULL) || ( size < 0)) {
+		return 0;
+	}
+
+	fd = open(seed_path,O_RDONLY);
+	if (fd == -1) {
+		return 0;
+	}
+
+	*buf = malloc(size);
+	if (*buf == NULL) {
+		return 0;
+	}
+
+	while (data_len < size)
+    {
+    	ret = read(fd, *buf + data_len, size-data_len);
+        if (ret < 0)
+        {
+            free(*buf);
+            close(fd);
+			*buf = NULL;
+			return 0;
+        }
+        data_len += ret;
+    }
+
+    close(fd);
+	return 1;
+}
+
 tls_opts_t* tls_opts_create(char* path) {
 	tls_opts_t* opts;
 	SSL_CTX* tls_ctx;
 	ssa_config_t* ssa_config;
+	struct stat stat_store;
+	char* store_dir = NULL;
+	char* store_file = NULL;
+	unsigned char* rand_buf;
 
 	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
 	if (opts == NULL) {
@@ -208,7 +253,28 @@ tls_opts_t* tls_opts_create(char* path) {
 		if (SSL_CTX_set_cipher_list(tls_ctx, ssa_config->cipher_list) == 0) {
 			log_printf(LOG_ERROR, "Unable to set cipher list for %s\n",path);
 		}
-		//TrustStoreLocation
+
+		stat(ssa_config->trust_store, &stat_store);
+		if (S_ISDIR(stat_store.st_mode)) {
+			store_dir = ssa_config->trust_store;
+		}
+		else {
+			store_file = ssa_config->trust_store;
+		}
+
+		if (SSL_CTX_load_verify_locations(tls_ctx, store_file, store_file) == 0) {
+			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
+		}
+
+		if ( read_rand_seed(&rand_buf,ssa_config->randseed_path,ssa_config->randseed_size) == 1 )
+		{
+			RAND_seed(rand_buf,ssa_config->randseed_size);
+			free(rand_buf);
+		}
+		else {
+			log_printf(LOG_ERROR, "Unable to read set random seed from %s\n",ssa_config->randseed_path);
+		}
+
 		//SessionCacheLocation
 		SSL_CTX_set_timeout(tls_ctx, ssa_config->cache_timeout);
 		opts->custom_validation = ssa_config->custom_validation;
@@ -376,7 +442,7 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 
 	ssa_config = get_app_config(tls_opts->app_path);
 
-	if (asprintf(&cipher_list, "%s!%s",ssa_config->cipher_list ,cipher) > 0) {
+	if (asprintf(&cipher_list, "%s:!%s",ssa_config->cipher_list ,cipher) > 0) {
 		log_printf(LOG_ERROR, "Unable to disable cipher %s\n",cipher);
 		return 0;
 	}

@@ -24,8 +24,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef hashmap_str_H
-#define hashmap_str_H
+#ifndef HASHMAP_STR_H
+#define HASHMAP_STR_H
 
 typedef struct hsmap {
 	struct hsnode** buckets;
