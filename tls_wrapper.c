@@ -244,12 +244,12 @@ tls_opts_t* tls_opts_create(char* path) {
 	ssa_config = get_app_config(path);
 
 	if (ssa_config) {
-		if (SSL_CTX_set_min_proto_version(tls_ctx, ssa_config->min_version) == 0) {
+		/*if (SSL_CTX_set_min_proto_version(tls_ctx, ssa_config->min_version) == 0) {
 			log_printf(LOG_ERROR, "Unable to set min protocol version for %s\n",path);
 		}
 		if (SSL_CTX_set_max_proto_version(tls_ctx, ssa_config->max_version) == 0) {
 			log_printf(LOG_ERROR, "Unable to set max protocol version for %s\n",path);
-		}
+		}*/
 		if (SSL_CTX_set_cipher_list(tls_ctx, ssa_config->cipher_list) == 0) {
 			log_printf(LOG_ERROR, "Unable to set cipher list for %s\n",path);
 		}
@@ -782,11 +782,11 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
 	struct evbuffer* out_buf;
 
-	if (endpoint->closed) {
+	if (endpoint->closed == 1) {
 		out_buf = bufferevent_get_output(bev);
 		if (evbuffer_get_length(out_buf) == 0) {
 			bufferevent_free(bev);
-			/* Should we free anything else here? */
+			shutdown_tls_conn_ctx(ctx);
 		}
 		return;
 	}
@@ -809,7 +809,7 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 	in_buf = bufferevent_get_input(bev);
 	in_len = evbuffer_get_length(in_buf);
 	
-	if (endpoint->closed) {
+	if (endpoint->closed == 1) {
 		evbuffer_drain(in_buf, in_len);
 		return;
 	}
@@ -837,7 +837,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
 	if (events & BEV_EVENT_CONNECTED) {
 		log_printf(LOG_DEBUG, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
-		startpoint->connected = 1;
+		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
@@ -854,7 +854,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");
-				startpoint->closed = 1;
 			}
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
@@ -867,7 +866,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 					 ERR_reason_error_string(ssl_err));
 			}
 		}
-		if (startpoint->closed == 1 && endpoint->closed == 0) {
+		if (endpoint->closed == 0) {
 			struct evbuffer* out_buf;
 			out_buf = bufferevent_get_output(endpoint->bev);
 			/* close other buffer if we're closing and it has no data left */
@@ -875,22 +874,22 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 				endpoint->closed = 1;
 			}
 		}
+		startpoint->closed = 1;
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_DEBUG, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
-		startpoint->closed = 1;
-		if (endpoint->closed == 0) {
-			struct evbuffer* in_buf;
-			struct evbuffer* out_buf;
-			out_buf = bufferevent_get_output(endpoint->bev);
-			in_buf = bufferevent_get_input(bev);
-			if (evbuffer_get_length(in_buf) > 0) {
-				evbuffer_add_buffer(out_buf, in_buf);
+		if (bufferevent_getfd(endpoint->bev) == -1) {
+			endpoint->closed = 1;
+		}
+		else if (endpoint->closed == 0) {
+			if (evbuffer_get_length(bufferevent_get_input(startpoint->bev)) > 0) {
+				tls_bev_read_cb(endpoint->bev, ctx);
 			}
-			if (evbuffer_get_length(out_buf) == 0) {
+			if (evbuffer_get_length(bufferevent_get_output(endpoint->bev)) == 0) {
 				endpoint->closed = 1;
 			}
 		}
+		startpoint->closed = 1;
 	}
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
