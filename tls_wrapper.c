@@ -231,6 +231,7 @@ tls_opts_t* tls_opts_create(char* path) {
 	char* store_dir = NULL;
 	char* store_file = NULL;
 	unsigned char* rand_buf;
+	int unverified_context_id = 1;
 
 	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
 	if (opts == NULL) {
@@ -240,7 +241,7 @@ tls_opts_t* tls_opts_create(char* path) {
 	/* Configure default settings for connections based on
 	 * admin preferences */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
-
+	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(int));
 	ssa_config = get_app_config(path);
 
 	if (ssa_config) {
@@ -261,7 +262,7 @@ tls_opts_t* tls_opts_create(char* path) {
 		else {
 			store_file = ssa_config->trust_store;
 		}
-
+		printf("store file is %s\n", store_file);
 		if (SSL_CTX_load_verify_locations(tls_ctx, store_file, store_file) == 0) {
 			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
 		}
@@ -355,32 +356,37 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 
 
 int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
+	int verified_context_id = 2;
+	SSL_CTX* tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	STACK_OF(X509_NAME)* cert_names;
 
-	if (tls_opts->custom_validation) {
+	/*if (tls_opts->custom_validation == 0) {
 		return 1;
-	}
+	}*/
 
 	if (conn_ctx != NULL) {
 		/* These options not supported after connection (for now) */
 		return 0;
 	}
-	if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
-		return 0;
+	while (tls_opts != NULL) {
+       		tls_ctx = tls_opts->tls_ctx;
+		if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
+			return 0;
+		}
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(int));
+
+		/* Really we should only do this if we're the server */
+		cert_names = SSL_load_client_CA_file(value);
+		if (cert_names == NULL) {
+			return 0;
+		}
+
+		SSL_CTX_set_client_CA_list(tls_ctx, cert_names);
+		tls_opts = tls_opts->next;
+
 	}
-	
-	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
-
-
-	/* Really we should only do this if we're the server */
-	cert_names = SSL_load_client_CA_file(value);
-	if (cert_names == NULL) {
-		return 0;
-	}
-
-	SSL_CTX_set_client_CA_list(tls_ctx, cert_names);
 	return 1;
 }
 

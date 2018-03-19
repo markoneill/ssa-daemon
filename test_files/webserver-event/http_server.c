@@ -33,6 +33,7 @@
 #define KEY_FILE_A      "../key_a.pem"
 #define CERT_FILE_B     "../certificate_b.pem"
 #define KEY_FILE_B      "../key_b.pem"
+#define CA_FILE   	"../certificate_ca.pem"
 
 char http_version[] = "HTTP/1.1";
 char default_path[] = "/index.html";
@@ -833,6 +834,9 @@ int create_server_socket(char* port, int protocol) {
         if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
+	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+		perror("ca cert");
+	}
 	set_alpn(sock);
 
 

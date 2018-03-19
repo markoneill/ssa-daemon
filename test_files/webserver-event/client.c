@@ -22,6 +22,7 @@ int timeval_cmp(struct timeval* x, struct timeval* y);
 
 void get_alpn(client_t* client);
 void get_hostname(client_t* client);
+void get_identity(client_t* client);
 void get_session_ttl(client_t* client);
 void set_session_ttl(client_t* client);
 
@@ -42,6 +43,7 @@ client_t* create_client(int server_sock) {
 
 	get_alpn(client);
 	get_hostname(client);
+	get_identity(client);
 	set_session_ttl(client);
 	get_session_ttl(client);
 
@@ -212,6 +214,21 @@ void get_hostname(client_t* client) {
 	}
 	else {
 		printf("Client did not use SNI\n");
+	}
+	return;
+}
+
+void get_identity(client_t* client) {
+	char id[255];
+	socklen_t id_len = sizeof(id);
+	if (getsockopt(client->fd, IPPROTO_TLS, SO_PEER_IDENTITY, id, &id_len) == -1) {
+		perror("getsockopt: SO_PEER_IDENTITY");
+	}
+	if (id_len > 0) {
+		printf("Client ID is %s\n", id);
+	}
+	else {
+		printf("Client did not use client auth\n");
 	}
 	return;
 }
