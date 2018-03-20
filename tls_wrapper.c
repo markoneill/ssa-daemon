@@ -262,7 +262,6 @@ tls_opts_t* tls_opts_create(char* path) {
 		else {
 			store_file = ssa_config->trust_store;
 		}
-		printf("store file is %s\n", store_file);
 		if (SSL_CTX_load_verify_locations(tls_ctx, store_file, store_file) == 0) {
 			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
 		}
@@ -374,7 +373,7 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 		if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
 			return 0;
 		}
-		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
 		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(int));
 
 		/* Really we should only do this if we're the server */
