@@ -682,7 +682,9 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		if (get_peer_identity(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
 		}
-		need_free = 1;
+		else {
+			need_free = 1;
+		}
 		break;
 	case SO_PEER_CERTIFICATE:
 		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
