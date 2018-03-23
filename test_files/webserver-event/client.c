@@ -43,7 +43,7 @@ client_t* create_client(int server_sock) {
 
 	get_alpn(client);
 	get_hostname(client);
-	get_identity(client);
+	//get_identity(client);
 	set_session_ttl(client);
 	get_session_ttl(client);
 

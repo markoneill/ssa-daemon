@@ -789,6 +789,11 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			tls_opts_client_setup(sock_ctx->tls_opts);
 		}
 	}
+	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+	}
 	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
