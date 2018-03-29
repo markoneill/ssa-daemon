@@ -36,8 +36,10 @@
 
 void sig_handler(int signum);
 pid_t* workers;
+pid_t csr_daemon;
 int worker_count;
 int is_parent;
+int is_csr_daemon;
 
 int main(int argc, char* argv[]) {
 	long cpus_on;
@@ -48,6 +50,7 @@ int main(int argc, char* argv[]) {
 	int status;
 	int ret;
 	int starting_port = 8443;
+	int csr_daemon_port = 8040;
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -89,6 +92,22 @@ int main(int argc, char* argv[]) {
 			is_parent = 1;
 		}
 	}
+
+	/* Create CSR daemon */
+	pid = fork();
+	if (pid == -1) {
+		log_printf(LOG_ERROR, "%s", strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+	if (pid == 0) {
+		is_csr_daemon = 1;
+		csr_server_create(csr_daemon_port);
+		return 0;
+	}
+	else {
+		csr_daemon = pid;
+	}
+
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
 			log_printf(LOG_ERROR, "Failed in waitpid %s\n", strerror(errno));
@@ -118,9 +137,13 @@ void sig_handler(int signum) {
 	int i;
 	if (signum == SIGINT) {
 		if (is_parent == 1) {
+			kill(csr_daemon, SIGINT);
 			for (i = 0; i < worker_count; i++) {
 				kill(workers[i], SIGINT);
 			}
+		}
+		else if (is_csr_daemon == 1) {
+			_exit(0);
 		}
 		else {
 			free(workers);
