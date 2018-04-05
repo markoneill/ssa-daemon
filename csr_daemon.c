@@ -28,8 +28,8 @@
 // #include <openssl/rand.h>
 
 #define CERT_START "-----BEGIN CERTIFICATE-----"
+#define FAIL_MSG "SIGNING REQUEST FAILED"
 
-static void run_singing(char* buff);
 static void csr_read_cb(struct bufferevent *bev, void *ctx);
 static void csr_accept_error_cb(struct evconnlistener *listener, void *arg);
 static void csr_event_cb(struct bufferevent *bev, short events, void *ctx);
@@ -100,21 +100,14 @@ int csr_server_create(int port) {
 	return 0;
 }
 
-
-void run_singing(char* buff) {
-	return;
-}
-
 // This is not written correctly and needs to not have to read all at once.
 void csr_read_cb(struct bufferevent *bev, void *ctx) {
 
 	int cert_len;
 	char* csr;
 	char* signed_cert;
-	char sorry[] = "Unable to sign cert";
 
 	struct evbuffer *input = bufferevent_get_input(bev);
-	// struct evbuffer *output = bufferevent_get_output(bev);
 	size_t recv_len = evbuffer_get_length(input);
 	size_t message_len;
 
@@ -122,11 +115,13 @@ void csr_read_cb(struct bufferevent *bev, void *ctx) {
 
 	bufferevent_read(bev, csr, recv_len);
 
+	// This call blocks on waitpid for openssl to sign the cert
 	cert_len = sign_cert(csr, &signed_cert);
 
 	if(cert_len == -1) {
 		log_printf(LOG_ERROR, "Unable to sign csr reqeust\n");
-		bufferevent_write(bev, sorry, sizeof(sorry));
+		bufferevent_write(bev, FAIL_MSG, sizeof(FAIL_MSG));
+		free(csr);
 		return;
 	}
 
@@ -210,7 +205,7 @@ int read_cert(char* cert_file, char** cert) {
 				return 0;
 			}
 
-			*cert = malloc(sizeof(char) * (file_size + 50));
+			*cert = malloc(sizeof(char) * (file_size + 1));
 
 			if (fseek(fp, 0L, SEEK_SET) != 0) {
 				free(*cert);
@@ -299,11 +294,15 @@ int sign_cert(char* csr, char** signed_cert) {
 				return -1;
 			}
 			else {
-				log_printf(LOG_INFO,"Openssl csr signing terminated normally, but returned a non-zero status\n");
+				log_printf(LOG_ERROR,"Openssl csr signing terminated normally, but returned a non-zero status\n");
+				*signed_cert = NULL;
+				return -1;
 			}
 		}
 		else {
-			log_printf(LOG_INFO,"Openssl csr signing didn't terminate normally\n");
+			log_printf(LOG_ERROR,"Openssl csr signing didn't terminate normally\n");
+			*signed_cert = NULL;
+			return -1;
 		}
 	} 
 	else {

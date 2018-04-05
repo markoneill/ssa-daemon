@@ -10,6 +10,7 @@
 
 #define DEFAULT_ADDR    "localhost"
 #define DEFAULT_PORT    "8040"
+#define FAIL_MSG "SIGNING REQUEST FAILED"
 
 char example_csr[] = "-----BEGIN CERTIFICATE REQUEST-----\n"
 					"MIIDMzCCAhsCAQAwfDELMAkGA1UEBhMCVVMxDTALBgNVBAgMBFV0YWgxDjAMBgNV\n"
@@ -33,10 +34,13 @@ char example_csr[] = "-----BEGIN CERTIFICATE REQUEST-----\n"
 					"-----END CERTIFICATE REQUEST-----\n";
 
 
-int connect_to_host(char* host, char* service);
-int send_request(int sock_fd, char * csr, int csr_len);
-int read_csr(char* csr_path, char** csr);
 void usage(char* name);
+int write_cert(char* cert_path, char* cert);
+int read_csr(char* csr_path, char** csr);
+int validate_request(char* cert);
+int send_request(int sock_fd, char* csr, int csr_len, char** cert);
+int connect_to_host(char* host, char* service);
+
 
 
 int main(int argc, char* argv[]) {
@@ -46,6 +50,8 @@ int main(int argc, char* argv[]) {
 	char* host = NULL;
 	char* csr = NULL;
 	char* csr_path = NULL;
+	char* cert = NULL;
+	char* cert_path = NULL;
 	int READ_CSR = 0;
 	int WRITE_CERT = 0;
 
@@ -55,7 +61,7 @@ int main(int argc, char* argv[]) {
 	csr_len = sizeof(example_csr);
 
 	int c;
-	while ((c = getopt(argc, argv, "np:h:c:k:")) != -1) {
+	while ((c = getopt(argc, argv, "np:h:c:o:")) != -1) {
 		switch (c) {
 			case 'p':
 				port = optarg;
@@ -67,16 +73,18 @@ int main(int argc, char* argv[]) {
 				csr_path = optarg;
 				READ_CSR = 1;
 				break;
-			case 'w' :
+			case 'o' :
+				cert_path = optarg;
 				WRITE_CERT = 1;
+				break;
 			case '?':
-				if (optopt == 'p' || optopt == 'h' || optopt == 'c' ) {
+				if (optopt == 'p' || optopt == 'h' || optopt == 'c' || optopt == 'o' ) {
 					fprintf(stderr, "Option -%c requires an argument\n", optopt);
 					usage(argv[0]);
 					exit(EXIT_FAILURE);
 				}
 			default:
-				fprintf(stderr, "Unknown option encountered\n");
+				fprintf(stderr, "Unknown option encountered %c\n",c);
 				usage(argv[0]);
 				exit(EXIT_FAILURE);
 		}
@@ -85,31 +93,60 @@ int main(int argc, char* argv[]) {
 	if (READ_CSR) {
 		csr_len = read_csr(csr_path,&csr);
 		if(csr_len < 0) {
-			printf("Unable to read csr file\n");
+			fprintf(stderr, "Unable to read csr file\n");
 			return -1;
 		}
 	}
 
 	sock_fd = connect_to_host(host, port);
-	send_request(sock_fd,csr,csr_len);
+	
+	if(!send_request(sock_fd,csr,csr_len,&cert)) {
+		free(csr);
+	}
 	close(sock_fd);
+
+	if(!validate_request(cert)) {
+		fprintf(stderr, "Server unable to validate certificate\n");
+		free(csr);
+		free(cert);
+		exit(-1);
+	}
+
+	if (WRITE_CERT && cert) {
+		write_cert(cert_path, cert);
+	}
 
 	if (READ_CSR) {
 		free(csr);
 	}
 
-	if (WRITE_CERT) {
-		printf("Write the code to do this...\n");
+	if (cert) {
+		printf("%s\n",cert);
+		free(cert);
 	}
-
+	
 	return 0;
 }
 
 void usage(char* name) {
-	printf("Usage: %s [-p port] [-h host] [-c csr_path] -w Write signed cert to disk\n", name);
+	printf("Usage: %s [-p port] [-h host] [-c csr_file] [-o out_file]\n", name);
 	printf("Example:\n");
-        printf("\t%s -h localhost -p 8040 -c my.csr \n", name);
+        printf("\t%s -h localhost -p 8040 -c my.csr -o my.crt \n", name);
 	return;
+}
+
+int write_cert(char* cert_path, char* cert) {
+	FILE* fp = fopen(cert_path,"wb");
+
+	if (fp){
+		fwrite(cert, sizeof(char), strlen(cert), fp);
+	}
+	else{
+		return 0;
+	}
+
+	fclose(fp);
+	return 1;
 }
 
 int read_csr(char* csr_path, char** csr) {
@@ -154,23 +191,41 @@ int read_csr(char* csr_path, char** csr) {
 	return cert_size;
 }
 
+int validate_request(char* cert) {
+	//
+	if(strcmp(cert,FAIL_MSG) == 0) {
+		return 0;
+	}
+	// Other validations?
 
-int send_request(int sock_fd, char* csr, int csr_len) {
+	return 1;
+}
+
+int send_request(int sock_fd, char* csr, int csr_len, char** cert) {
 	
 	// I should make this more dynamic
 	char response[12288];
+	size_t size = 0 ;
 
 	if (send(sock_fd, csr, csr_len, 0) < 0) {
+		*cert = NULL;
 		perror("send");
-		return -1;
+		return 0;
 	}
-	if (recv(sock_fd, response, sizeof(response), 0) < 0) {
-		perror("recv");
-		return -1;
-	}
-	printf("Received:\n%s", response);
-}
 
+	size = recv(sock_fd, response, sizeof(response), 0);
+	if (size < 0) {
+		*cert = NULL;
+		perror("recv");
+		return 0;
+	}
+
+	*cert = malloc(size);
+	strncpy(*cert,response,size);
+
+	return 1;
+	// printf("Received:\n%s", response);
+}
 
 int connect_to_host(char* host, char* service) {
 	int sock;
