@@ -7,6 +7,12 @@
 #include <errno.h>
 #include <netdb.h>
 
+#include <openssl/crypto.h>
+#include <openssl/pem.h>
+#include <openssl/conf.h>
+#include <openssl/x509v3.h>
+#include <openssl/engine.h>
+#include <openssl/bio.h>
 
 #define DEFAULT_ADDR    "localhost"
 #define DEFAULT_PORT    "8040"
@@ -35,22 +41,24 @@ char example_csr[] = "-----BEGIN CERTIFICATE REQUEST-----\n"
 
 
 void usage(char* name);
-int write_cert(char* cert_path, char* cert);
+int write_cert(char* cert_path, X509* cert);
 int read_csr(char* csr_path, char** csr);
 int validate_request(char* cert);
-int send_request(int sock_fd, char* csr, int csr_len, char** cert);
+int send_request(int sock_fd, char* csr, int csr_len, unsigned char** cert);
 int connect_to_host(char* host, char* service);
-
+X509* net_decode_cert(unsigned char* cert_buf,int len);
 
 
 int main(int argc, char* argv[]) {
 	int sock_fd;
 	int csr_len;
+	int ret_size;
+	unsigned char* cert = NULL;
+	X509* decoded_cert;
 	char* port = NULL;
 	char* host = NULL;
 	char* csr = NULL;
 	char* csr_path = NULL;
-	char* cert = NULL;
 	char* cert_path = NULL;
 	int READ_CSR = 0;
 	int WRITE_CERT = 0;
@@ -99,30 +107,37 @@ int main(int argc, char* argv[]) {
 	}
 
 	sock_fd = connect_to_host(host, port);
-	
-	if(!send_request(sock_fd,csr,csr_len,&cert)) {
-		free(csr);
-	}
+
+	ret_size = send_request(sock_fd,csr,csr_len,&cert);
+
 	close(sock_fd);
 
-	if(!validate_request(cert)) {
+	if(ret_size > 0 && !validate_request(cert)) {
 		fprintf(stderr, "Server unable to validate certificate\n");
 		free(csr);
 		free(cert);
 		exit(-1);
 	}
 
-	if (WRITE_CERT && cert) {
-		write_cert(cert_path, cert);
+	if (ret_size > 0) {
+		decoded_cert = net_decode_cert(cert,ret_size);
+		if (decoded_cert == NULL) {
+			fprintf(stderr, "Unable unserialize cert\n");
+			return -1;
+		}
+
+		if (WRITE_CERT && cert) {
+			write_cert(cert_path, decoded_cert);
+		}
+
+		PEM_write_X509(stdout, decoded_cert);
+		free(decoded_cert);
+		free(cert);
 	}
+
 
 	if (READ_CSR) {
 		free(csr);
-	}
-
-	if (cert) {
-		printf("%s\n",cert);
-		free(cert);
 	}
 	
 	return 0;
@@ -135,11 +150,11 @@ void usage(char* name) {
 	return;
 }
 
-int write_cert(char* cert_path, char* cert) {
+int write_cert(char* cert_path, X509* cert) {
 	FILE* fp = fopen(cert_path,"wb");
 
 	if (fp){
-		fwrite(cert, sizeof(char), strlen(cert), fp);
+		PEM_write_X509(fp,cert);
 	}
 	else{
 		return 0;
@@ -201,7 +216,7 @@ int validate_request(char* cert) {
 	return 1;
 }
 
-int send_request(int sock_fd, char* csr, int csr_len, char** cert) {
+int send_request(int sock_fd, char* csr, int csr_len, unsigned char** cert) {
 	
 	// I should make this more dynamic
 	char response[12288];
@@ -210,21 +225,20 @@ int send_request(int sock_fd, char* csr, int csr_len, char** cert) {
 	if (send(sock_fd, csr, csr_len, 0) < 0) {
 		*cert = NULL;
 		perror("send");
-		return 0;
+		return -1;
 	}
 
 	size = recv(sock_fd, response, sizeof(response), 0);
-	if (size < 0) {
+	if (size == -1) {
 		*cert = NULL;
 		perror("recv");
-		return 0;
+		return -1;
 	}
 
 	*cert = malloc(size);
-	strncpy(*cert,response,size);
+	memcpy(*cert,response,size);
 
-	return 1;
-	// printf("Received:\n%s", response);
+	return size;
 }
 
 int connect_to_host(char* host, char* service) {
@@ -265,4 +279,9 @@ int connect_to_host(char* host, char* service) {
 		exit(EXIT_FAILURE);
 	}
 	return sock;
+}
+
+X509* net_decode_cert(unsigned char* cert_buf,int len){
+	unsigned char *p = cert_buf;
+	return d2i_X509(NULL, (const unsigned char **)&p, len);
 }
