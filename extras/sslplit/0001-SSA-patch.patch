@@ -1,0 +1,146 @@
+From 2079040004140341c2bf3399ac72940c7b94b38f Mon Sep 17 00:00:00 2001
+From: tannerlp <tannerperdue2011@gmail.com>
+Date: Thu, 19 Apr 2018 15:32:51 -0600
+Subject: [PATCH] SSA patch
+
+---
+ pxyconn.c | 55 ++++++++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 48 insertions(+), 7 deletions(-)
+
+diff --git a/pxyconn.c b/pxyconn.c
+index c9540a2..7468de4 100644
+--- a/pxyconn.c
++++ b/pxyconn.c
+@@ -39,6 +39,7 @@
+ #include "log.h"
+ #include "attrib.h"
+ #include "proc.h"
++#include "../in_tls.h"
+ 
+ #include <netinet/in.h>
+ #include <stdlib.h>
+@@ -320,6 +321,7 @@ static SSL_SESSION * pxy_ossl_sessget_cb(SSL *, const unsigned char *, int,
+                                          int *);
+ #endif /* OPENSSL_VERSION_NUMBER >= 0x10100000L */
+ 
++static X509* PEM_str_to_X509(char* pem_str);
+ /*
+  * Dump information on a certificate to the debug log.
+  */
+@@ -936,15 +938,25 @@ pxy_srccert_create(pxy_conn_ctx_t *ctx)
+  * Returns NULL if no suitable certificate could be found.
+  */
+ static SSL *
+-pxy_srcssl_create(pxy_conn_ctx_t *ctx, SSL *origssl)
++pxy_srcssl_create(pxy_conn_ctx_t *ctx, SSL *origssl, evutil_socket_t fd)
+ {
+ 	cert_t *cert;
++	int tmp_cert_len = 1024*10;
++	char tmp_cert[1024*10];
+ 
+ 	cachemgr_dsess_set((struct sockaddr*)&ctx->addr,
+ 	                   ctx->addrlen, ctx->sni,
+ 	                   SSL_get0_session(origssl));
+ 
+-	ctx->origcrt = SSL_get_peer_certificate(origssl);
++	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, tmp_cert, &tmp_cert_len) == -1) {
++		perror("getsockopt: SO_PEER_CERTIFICATE:");
++	}
++
++	// log_dbg_printf("Peer Cert [%s]",tmp_cert);
++
++	ctx->origcrt = PEM_str_to_X509(tmp_cert);
++	//PEM_write_X509(stdout, ctx->origcrt);
++	// ctx->origcrt = SSL_get_peer_certificate(origssl);
+ 
+ 	if (OPTS_DEBUG(ctx->opts)) {
+ 		if (ctx->origcrt) {
+@@ -1871,7 +1883,7 @@ pxy_bev_eventcb(struct bufferevent *bev, short events, void *arg)
+ 		/* wrap client-side socket in an eventbuffer */
+ 		if ((ctx->spec->ssl || ctx->clienthello_found) &&
+ 		    !ctx->passthrough) {
+-			ctx->src.ssl = pxy_srcssl_create(ctx, this->ssl);
++			ctx->src.ssl = pxy_srcssl_create(ctx, this->ssl,bufferevent_getfd(bev));
+ 			if (!ctx->src.ssl) {
+ 				bufferevent_free_and_close_fd(bev, ctx);
+ 				ctx->dst.bev = NULL;
+@@ -2022,7 +2034,8 @@ connected:
+ 				               ctx->srcport_str,
+ 				               SSL_get_version(this->ssl),
+ 				               SSL_get_cipher(this->ssl));
+-				keystr = ssl_ssl_masterkey_to_str(this->ssl);
++				//keystr = ssl_ssl_masterkey_to_str(this->ssl);
++				keystr = NULL;
+ 				if (keystr) {
+ 					log_dbg_print_free(keystr);
+ 				}
+@@ -2040,7 +2053,6 @@ connected:
+ 				               ctx->srcport_str);
+ 			}
+ 		}
+-
+ 		return;
+ 	}
+ 
+@@ -2231,6 +2243,8 @@ leave:
+ static void
+ pxy_conn_connect(pxy_conn_ctx_t *ctx)
+ {
++	int ssa_socket;
++
+ 	if (!ctx->addrlen) {
+ 		log_err_printf("No target address; aborting connection\n");
+ 		evutil_closesocket(ctx->fd);
+@@ -2248,7 +2262,13 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
+ 			return;
+ 		}
+ 	}
+-	ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
++
++	ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
++	setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
++	//evutil_make_socket_nonblocking(ssa_socket);
++
++	ctx->dst.bev = pxy_bufferevent_setup(ctx, ssa_socket, NULL);
++	// ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
+ 	if (!ctx->dst.bev) {
+ 		if (ctx->dst.ssl) {
+ 			SSL_free(ctx->dst.ssl);
+@@ -2270,7 +2290,6 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
+ 			free(port);
+ 		}
+ 	}
+-
+ 	/* initiate connection */
+ 	bufferevent_socket_connect(ctx->dst.bev,
+ 	                           (struct sockaddr *)&ctx->addr,
+@@ -2496,4 +2515,26 @@ memout:
+ 	return;
+ }
+ 
++X509* PEM_str_to_X509(char* pem_str) {
++    X509* cert;
++    BIO* bio;
++
++    if (pem_str == NULL) {
++        return NULL;
++    }
++
++    bio = BIO_new_mem_buf(pem_str, strlen(pem_str));
++    if (bio == NULL) {
++        return NULL;
++    }
++    
++    cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
++    if (cert == NULL) {
++        return NULL;
++    }
++
++    BIO_free(bio);
++    return cert;
++}
++
+ /* vim: set noet ft=c: */
+-- 
+2.13.6
+
