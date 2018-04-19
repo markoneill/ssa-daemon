@@ -7,7 +7,7 @@ EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 INCLUDES = -I/usr/include/libnl3
-LIBS = -lnl-3 -lnl-genl-3 -levent_openssl -levent -lcrypto -lssl -lconfig
+LIBS = -lnl-3 -lnl-genl-3 -levent_openssl -levent -lcrypto -lssl -lconfig -lavahi-client -lavahi-common
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: $(EXEC)

@@ -38,6 +38,7 @@
 #include <openssl/rand.h>
 
 #include "tls_wrapper.h"
+#include "tb_connector.h"
 #include "openssl_compat.h"
 #include "log.h"
 #include "config.h"
@@ -58,6 +59,8 @@ static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
 static int read_rand_seed(char **buf, char* seed_path, int size);
+int trustbase_verify(X509_STORE_CTX* store, void* arg);
+int verify_dummy(int preverify, X509_STORE_CTX* store);
 
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
@@ -262,6 +265,7 @@ tls_opts_t* tls_opts_create(char* path) {
 		else {
 			store_file = ssa_config->trust_store;
 		}
+		log_printf(LOG_INFO, "Setting cert root store to %s\n", store_file);
 		if (SSL_CTX_load_verify_locations(tls_ctx, store_file, store_file) == 0) {
 			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
 		}
@@ -328,8 +332,8 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);
 	SSL_CTX_set_tlsext_servername_arg(tls_ctx, (void*)tls_opts);
 
-	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/certificate_a.pem");
-	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/key_a.pem", SSL_FILETYPE_PEM);
+	SSL_CTX_use_certificate_chain_file(tls_ctx, "test_files/localhost_cert.pem");
+	SSL_CTX_use_PrivateKey_file(tls_ctx, "test_files/localhost_key.pem", SSL_FILETYPE_PEM);
 
 	return 1;
 }
@@ -341,8 +345,9 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 
 	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
 
-	/* We're going to commit the cardinal sin for a bit. Hook up TrustBase here XXX */
-	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
+	/* Temporarily disable validation */
+	//SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, verify_dummy);
+	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, verify_dummy);
 
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
@@ -353,6 +358,50 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 	return 1;
 }
 
+int verify_dummy(int preverify, X509_STORE_CTX* store) {
+	return 1;
+}
+
+int trustbase_verify(X509_STORE_CTX* store, void* arg) {
+	uint64_t query_id;
+	STACK_OF(X509)* chain;
+	int response;
+	char* hostname = arg;
+
+	int ok_so_far = X509_verify_cert(store);
+
+	query_id = 1;
+	chain = X509_STORE_CTX_get1_chain(store);
+	if (chain == NULL) {
+		log_printf(LOG_ERROR, "Certificate chain unavailable\n");
+		return 0;
+	}
+
+	if (trustbase_connect()) {
+		log_printf(LOG_ERROR, "unable to connect to trustbase\n");
+		sk_X509_pop_free(chain, X509_free);
+		return 0;
+	}
+	log_printf(LOG_INFO, "Querying TrustBase with chain supposedly from %s\n", hostname);
+	send_query_openssl(query_id, hostname, 443, chain);
+	response = recv_response();
+	trustbase_disconnect();
+
+	sk_X509_pop_free(chain, X509_free);
+	// Response checking
+	if (response < 0) {
+		log_printf(LOG_ERROR, "Did not hear back from TrustBase\n");
+		return 0;
+	}
+
+	if (response == 0) {
+		log_printf(LOG_INFO, "TrustBase indicates certificate was invalid!\n");
+		return 0;
+	}
+	
+	log_printf(LOG_INFO, "TrustBase indicates Certificate was valid!\n");
+	return 1;
+}
 
 int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
 	int verified_context_id = 2;
@@ -704,7 +753,7 @@ SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
 			break;
 		}
 		#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-		if (X509_check_host(hostname, 0, 0, NULL) == 1) {
+		if (X509_check_host(cert, hostname, 0, 0, NULL) == 1) {
 		#else
 		if (validate_hostname(hostname, cert) == MatchFound) {
 		#endif
@@ -760,6 +809,7 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	if (hostname != NULL) {
 		SSL_set_tlsext_host_name(tls, hostname);
 	}
+	SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
 
 	return tls;
 }

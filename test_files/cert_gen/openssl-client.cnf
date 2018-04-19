@@ -36,4 +36,8 @@ subjectKeyIdentifier        = hash
 basicConstraints        = CA:FALSE
 keyUsage            = digitalSignature, keyEncipherment
 nsComment           = "SSA Generated Certificate"
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = openrebellion.com
 

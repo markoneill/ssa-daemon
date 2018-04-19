@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <netinet/in.h>
 #include <stdarg.h>
+#include <arpa/inet.h>
+#include <string.h>
 #include "log.h"
 
 #ifndef NO_LOG
