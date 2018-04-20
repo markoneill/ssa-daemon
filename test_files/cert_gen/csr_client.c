@@ -14,6 +14,8 @@
 #include <openssl/engine.h>
 #include <openssl/bio.h>
 
+#include "../../in_tls.h"
+
 #define DEFAULT_ADDR    "localhost"
 #define DEFAULT_PORT    "8040"
 #define FAIL_MSG "SIGNING REQUEST FAILED"
@@ -259,7 +261,7 @@ int connect_to_host(char* host, char* service) {
 
 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
 
-		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, IPPROTO_TCP);
+		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, IPPROTO_TLS);
 		if (sock == -1) {
 			perror("socket");
 			continue;

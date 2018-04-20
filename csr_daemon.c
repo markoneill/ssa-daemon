@@ -1,38 +1,21 @@
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
 #include <signal.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <sys/un.h>
-#include <netdb.h>
-#include <assert.h>
-
-#include <sys/stat.h>
-#include <fcntl.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
 #include <event2/util.h>
-#include <event2/bufferevent.h>
-#include <event2/buffer.h>
+#include <event2/bufferevent_ssl.h>
 
-#include <openssl/crypto.h>
-#include <openssl/pem.h>
-#include <openssl/conf.h>
-#include <openssl/x509v3.h>
+#include <openssl/ssl.h>
 #include <openssl/engine.h>
-#include <openssl/bio.h>
 
 #include "log.h"
 #include "issue_cert.h"
 
-#define CERT_START "-----BEGIN CERTIFICATE-----"
 #define FAIL_MSG "SIGNING REQUEST FAILED"
 #define CERT_DAYS 365
+#define CERT_PATH "test_files/certificate_a.pem"
+#define KEY_PATH "test_files/key_a.pem"
 
 
 typedef struct csr_ctx {
@@ -41,11 +24,12 @@ typedef struct csr_ctx {
 	EVP_PKEY* ca_key;
 	int days;
 	int serial;
+	SSL_CTX* tls_ctx;
 } csr_ctx_t;
-
 
 static csr_ctx_t* create_csr_ctx(struct event_base* ev_base);
 void free_csr_ctx(csr_ctx_t* ctx);
+static SSL_CTX * ssl_ctx_init(void);
 static void csr_read_cb(struct bufferevent *bev, void *ctx);
 static void csr_accept_error_cb(struct evconnlistener *listener, void *arg);
 static void csr_event_cb(struct bufferevent *bev, short events, void *ctx);
@@ -64,7 +48,7 @@ int csr_server_create(int port) {
 	csr_ctx_t* ctx;
 
 
-	log_printf(LOG_INFO, "Ran CSR server! port %d\n",port);
+	log_printf(LOG_INFO, "Started CSR server. port %d\n",port);
 
 		/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, csr_signal_cb, NULL);
@@ -80,10 +64,6 @@ int csr_server_create(int port) {
 	evsignal_add(sev_pipe, NULL);
 	evsignal_add(sev_int, NULL);
 
-
-	// server_sock = create_server_socket(port, PF_INET, SOCK_STREAM);
-	// listener = evconnlistener_new(ev_base, csr_accept_cb, NULL, 
-	// 	LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, 0, server_sock);
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = htonl(0);
@@ -134,6 +114,15 @@ csr_ctx_t* create_csr_ctx(struct event_base* ev_base) {
 		log_printf(LOG_ERROR,"Error loading CA key\n");
 		return NULL;
 	}
+	ctx->tls_ctx = ssl_ctx_init();
+	if (ctx->tls_ctx == NULL)
+	{
+		free(ctx->ca_cert);
+		free(ctx);
+		log_printf(LOG_ERROR,"Error creating SSL CTX\n");
+		return NULL;
+	}
+
 	return ctx;
 }
 
@@ -144,6 +133,25 @@ void free_csr_ctx(csr_ctx_t* ctx) {
 	ENGINE_cleanup();
 	free(ctx);
 }
+
+static SSL_CTX * ssl_ctx_init(void) {
+	SSL_CTX  *tls_ctx;
+
+	SSL_load_error_strings();
+	SSL_library_init();
+
+	tls_ctx = SSL_CTX_new(SSLv23_server_method());
+
+	if (! SSL_CTX_use_certificate_chain_file(tls_ctx, CERT_PATH) ||
+	! SSL_CTX_use_PrivateKey_file(tls_ctx, KEY_PATH, SSL_FILETYPE_PEM)) {
+		log_printf(LOG_ERROR,"Error reading csr certificate and key files\n");
+		return NULL;
+	}
+	SSL_CTX_set_options(tls_ctx, SSL_OP_NO_SSLv2);
+
+	return tls_ctx;
+}
+
 
 // This is not written correctly and needs to not have to read all at once.
 void csr_read_cb(struct bufferevent *bev, void *ctx) {
@@ -190,8 +198,6 @@ void csr_read_cb(struct bufferevent *bev, void *ctx) {
 	free(encoded_cert);
 	X509_REQ_free(cert_req);
 	X509_free(new_cert);
-
-	
 }
 
 void csr_accept_error_cb(struct evconnlistener *listener, void *arg) {
@@ -215,11 +221,13 @@ void csr_event_cb(struct bufferevent *bev, short events, void *ctx) {
 void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
 
-	struct event_base *ev_base = evconnlistener_get_base(listener);
-	struct bufferevent *bev = bufferevent_socket_new(ev_base, fd, BEV_OPT_CLOSE_ON_FREE);
-	// csr_ctx_t* ctx = (csr_ctx_t*)arg;
+	csr_ctx_t* ctx = (csr_ctx_t*)arg;
+	SSL* ssl = SSL_new(ctx->tls_ctx);
 
-	log_printf(LOG_INFO, "Received CSR connection!\n");
+	struct event_base *ev_base = evconnlistener_get_base(listener);
+	struct bufferevent *bev = bufferevent_openssl_socket_new(ev_base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
+	log_printf(LOG_INFO, "Received CSR connection.\n");
+
 
 	// if (evutil_make_socket_nonblocking(fd) == -1) {
 	// 	log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
@@ -228,7 +236,6 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// 	return;
 	// }
 
-	/* We got a new connection! Set up a bufferevent for it. */
 	bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, arg);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
 
