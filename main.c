@@ -30,16 +30,19 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
+#include <pthread.h>
 #include "daemon.h"
 #include "log.h"
 #include "config.h"
+#include "nsd.h"
 
 void sig_handler(int signum);
+void* create_nsd_daemon(void* arg);
+void* create_csr_daemon(void* arg);
+	
 pid_t* workers;
-pid_t csr_daemon;
 int worker_count;
 int is_parent;
-int is_csr_daemon;
 
 int main(int argc, char* argv[]) {
 	long cpus_on;
@@ -51,6 +54,8 @@ int main(int argc, char* argv[]) {
 	int ret;
 	int starting_port = 8443;
 	int csr_daemon_port = 8040;
+	pthread_t csr_daemon;
+	pthread_t nsd_daemon;
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -93,20 +98,8 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	/* Create CSR daemon */
-	pid = fork();
-	if (pid == -1) {
-		log_printf(LOG_ERROR, "%s", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	if (pid == 0) {
-		is_csr_daemon = 1;
-		csr_server_create(csr_daemon_port);
-		return 0;
-	}
-	else {
-		csr_daemon = pid;
-	}
+	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
+	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, NULL);
 
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
@@ -137,13 +130,9 @@ void sig_handler(int signum) {
 	int i;
 	if (signum == SIGINT) {
 		if (is_parent == 1) {
-			kill(csr_daemon, SIGINT);
 			for (i = 0; i < worker_count; i++) {
 				kill(workers[i], SIGINT);
 			}
-		}
-		else if (is_csr_daemon == 1) {
-			_exit(0);
 		}
 		else {
 			free(workers);
@@ -152,3 +141,15 @@ void sig_handler(int signum) {
 	}
 	return;
 }
+
+void* create_nsd_daemon(void* arg) {
+	register_auth_service();
+	return NULL;
+}
+
+void* create_csr_daemon(void* arg) {
+	int csr_daemon_port = (int)arg;
+	csr_server_create(csr_daemon_port);
+	return NULL;
+}
+
