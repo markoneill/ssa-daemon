@@ -24,9 +24,11 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef NSD_H
-#define NSD_H
+#include "nsd.h"
+#include "auth_daemon.h"
 
-int register_auth_service(int port);
+void auth_server_create(int port) {
+		
+	return;
+}
 
-#endif

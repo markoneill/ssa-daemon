@@ -40,6 +40,7 @@ typedef struct service_ctx {
 	AvahiClient* client;
 	AvahiEntryGroup* group;
 	AvahiSimplePoll* poller;
+	int port;
 } service_ctx_t;
 
 static int publish_service(service_ctx_t* ctx);
@@ -56,13 +57,14 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 	return 0;
 }*/
 
-int register_auth_service() {
+int register_auth_service(int port) {
 	int err;
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
 
 	ctx = calloc(1, sizeof(service_ctx_t));
 
+	ctx->port = port;
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
@@ -100,11 +102,11 @@ int publish_service(service_ctx_t* ctx) {
 			AVAHI_IF_UNSPEC, /* announce on all interfaces */
 			AVAHI_PROTO_UNSPEC, /* announce on all protocols */
 			0,
-			"SSA Client Auth",
-			"_http._tcp",
+			"SSA Auth",
+			"_auth._tcp",
 			NULL, /* daemon will decide domain */
 			NULL, /* daemon will decide hostname */
-			6666, /* service port */
+			ctx->port, /* service port */
 			NULL /* Null-terminated list of additional TXT records */
 		);
 		if (err < 0) {
