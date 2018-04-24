@@ -34,11 +34,13 @@
 #include "daemon.h"
 #include "log.h"
 #include "config.h"
+#include "auth_daemon.h"
 #include "nsd.h"
 
 void sig_handler(int signum);
 void* create_nsd_daemon(void* arg);
 void* create_csr_daemon(void* arg);
+void* create_auth_daemon(void* arg);
 	
 pid_t* workers;
 int worker_count;
@@ -54,8 +56,10 @@ int main(int argc, char* argv[]) {
 	int ret;
 	int starting_port = 8443;
 	int csr_daemon_port = 8040;
+	int auth_port = 6666;
 	pthread_t csr_daemon;
 	pthread_t nsd_daemon;
+	pthread_t auth_daemon;
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -99,7 +103,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
-	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, NULL);
+	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, auth_port);
+	pthread_create(&auth_daemon, NULL, create_auth_daemon, auth_port);
 
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
@@ -143,7 +148,8 @@ void sig_handler(int signum) {
 }
 
 void* create_nsd_daemon(void* arg) {
-	register_auth_service();
+	int port = (int)arg;
+	register_auth_service(port);
 	return NULL;
 }
 
@@ -153,3 +159,8 @@ void* create_csr_daemon(void* arg) {
 	return NULL;
 }
 
+void* create_auth_daemon(void* arg) {
+	int port = (int)arg;
+	auth_server_create(port);
+	return NULL;
+}
