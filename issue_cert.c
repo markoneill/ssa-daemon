@@ -44,6 +44,62 @@ X509_REQ* get_csr_from_buf(char* buffer) {
 	return cert_req;
 }
 
+char *X509_to_PEM(X509 *cert, int* bio_len) {
+
+	BIO* bio = NULL;
+	char* pem = NULL;
+	char* tmp_pem = NULL;
+	*bio_len = 0;
+
+	if (NULL == cert) {
+		return NULL;
+	}
+
+	bio = BIO_new(BIO_s_mem());
+	if (NULL == bio) {
+		return NULL;
+	}
+
+	if (0 == PEM_write_bio_X509(bio, cert)) {
+		BIO_free(bio);
+		return NULL;
+	}
+
+	BIO_get_mem_data(bio, &tmp_pem);
+	*bio_len = strlen(tmp_pem);
+
+	pem = (char *) malloc(*bio_len + 1);
+	if (NULL == pem) {
+		BIO_free(bio);
+		return NULL;    
+	}
+
+	memset(pem, 0, *bio_len + 1);
+	BIO_read(bio, pem, *bio_len);
+	BIO_free(bio);
+	return pem;
+}
+
+X509 *PEM_to_X509(char *pem) {
+
+	X509 *cert = NULL;
+	BIO *bio = NULL;
+
+	if (NULL == pem) {
+		return NULL;
+	}
+
+	bio = BIO_new_mem_buf(pem, strlen(pem));
+	if (NULL == bio) {
+		return NULL;
+	}
+
+	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+	BIO_free(bio);
+	return cert;
+}
+
+
 X509* get_cert_from_file(char* filename) {
 	X509* cert;
 	FILE* cert_file;

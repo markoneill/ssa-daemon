@@ -22,6 +22,8 @@ jWmfDNEvebB5wl6eytDDEv41nD4gJ/7qKNltIbVbAtk0J5x94tM7ulBOl+FQxPW3\n\
 
 unsigned char* net_encode_cert(X509* cert, int* len);
 X509* net_decode_cert(unsigned char* cert_buf,int len);
+char *X509_to_PEM(X509 *cert, int* bio_len);
+X509 *PEM_to_X509(char *pem);
 X509_REQ* get_csr_from_buf(char* buffer);
 X509* get_cert_from_file(char* filename);
 EVP_PKEY* get_private_key_from_file(char* filename);

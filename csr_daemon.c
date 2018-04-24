@@ -8,6 +8,8 @@
 
 #include <openssl/ssl.h>
 #include <openssl/engine.h>
+#include <openssl/bio.h>
+
 
 #include "log.h"
 #include "issue_cert.h"
@@ -161,7 +163,7 @@ void csr_read_cb(struct bufferevent *bev, void *ctx) {
 	// char* signed_cert;
 	X509* new_cert;
 	X509_REQ* cert_req;
-	unsigned char *encoded_cert;
+	char *encoded_cert;
 	csr_ctx_t* csr_ctx = (csr_ctx_t*)ctx;
 
 	struct evbuffer *input = bufferevent_get_input(bev);
@@ -184,7 +186,8 @@ void csr_read_cb(struct bufferevent *bev, void *ctx) {
 		return;
 	}
 
-	encoded_cert = net_encode_cert(new_cert,&cert_len);
+	encoded_cert = X509_to_PEM(new_cert,&cert_len);
+
 	if (encoded_cert == NULL) {
 		log_printf(LOG_ERROR,"Certificate unable to be serialized\n");
 		bufferevent_write(bev, FAIL_MSG, sizeof(FAIL_MSG));

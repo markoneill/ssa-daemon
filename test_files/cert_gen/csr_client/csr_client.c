@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <netdb.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 #include <openssl/crypto.h>
 #include <openssl/pem.h>
 #include <openssl/conf.h>
@@ -14,13 +16,23 @@
 #include <openssl/engine.h>
 #include <openssl/bio.h>
 
-#include "../../in_tls.h"
+#include "../../../in_tls.h"
 
-#define DEFAULT_ADDR    "localhost"
+#define DEFAULT_ADDR    "127.0.0.1"
 #define DEFAULT_PORT    "8040"
 #define FAIL_MSG "SIGNING REQUEST FAILED"
 
-char example_csr[] = "-----BEGIN CERTIFICATE REQUEST-----\n"
+typedef enum {
+        MatchFound,
+        MatchNotFound,
+        NoSANPresent,
+        MalformedCertificate,
+        Error
+} HostnameValidationResult;
+
+static char root_store_filename_redhat[] = "/etc/pki/tls/certs/ca-bundle.crt";
+
+static char example_csr[] = "-----BEGIN CERTIFICATE REQUEST-----\n"
 					"MIIDMzCCAhsCAQAwfDELMAkGA1UEBhMCVVMxDTALBgNVBAgMBFV0YWgxDjAMBgNV\n"
 					"BAcMBVByb3ZvMRQwEgYDVQQKDAtVUyBDaXRpemVuczEWMBQGA1UEAwwNVGFubmVy\n"
 					"IFBlcmR1ZTEgMB4GCSqGSIb3DQEJARYRdGFubmVyQHRhbm5lci5jb20wggEiMA0G\n"
@@ -48,7 +60,13 @@ int read_csr(char* csr_path, char** csr);
 int validate_request(char* cert);
 int send_request(int sock_fd, char* csr, int csr_len, unsigned char** cert);
 int connect_to_host(char* host, char* service);
+X509 *PEM_to_X509(char *pem);
 X509* net_decode_cert(unsigned char* cert_buf,int len);
+
+
+// int connect_to_host(char* host, char* service, int protocol);
+SSL* openssl_connect_to_host(int sock, char* hostname, int validate_host);
+
 
 
 int main(int argc, char* argv[]) {
@@ -56,6 +74,7 @@ int main(int argc, char* argv[]) {
 	int csr_len;
 	int ret_size;
 	unsigned char* cert = NULL;
+	SSL* ssl;
 	X509* decoded_cert;
 	char* port = NULL;
 	char* host = NULL;
@@ -109,6 +128,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	sock_fd = connect_to_host(host, port);
+	//sock_fd = connect_to_host(host, port, SOCK_STREAM);
+	// ssl = openssl_connect_to_host(sock_fd, NULL, 0);
 
 	ret_size = send_request(sock_fd,csr,csr_len,&cert);
 
@@ -122,12 +143,13 @@ int main(int argc, char* argv[]) {
 	}
 
 	if (ret_size > 0) {
-		decoded_cert = net_decode_cert(cert,ret_size);
-		if (decoded_cert == NULL) {
-			fprintf(stderr, "Unable unserialize cert\n");
-			return -1;
-		}
+		// decoded_cert = net_decode_cert(cert,ret_size);
+		// if (decoded_cert == NULL) {
+		// 	fprintf(stderr, "Unable unserialize cert\n");
+		// 	return -1;
+		// }
 
+		decoded_cert = PEM_to_X509(cert);
 		if (WRITE_CERT && cert) {
 			write_cert(cert_path, decoded_cert);
 		}
@@ -243,6 +265,130 @@ int send_request(int sock_fd, char* csr, int csr_len, unsigned char** cert) {
 	return size;
 }
 
+X509 *PEM_to_X509(char *pem) {
+
+	X509 *cert = NULL;
+	BIO *bio = NULL;
+
+	if (NULL == pem) {
+		return NULL;
+	}
+
+	bio = BIO_new_mem_buf(pem, strlen(pem));
+	if (NULL == bio) {
+		return NULL;
+	}
+
+	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+	BIO_free(bio);
+	return cert;
+}
+
+X509* net_decode_cert(unsigned char* cert_buf,int len){
+	unsigned char *p = cert_buf;
+	return d2i_X509(NULL, (const unsigned char **)&p, len);
+}
+
+
+// int connect_to_host(char* host, char* service, int protocol) {
+// 	int sock;
+// 	int ret;
+// 	struct addrinfo hints;
+// 	struct addrinfo* addr_ptr;
+// 	struct addrinfo* addr_list;
+
+// 	memset(&hints, 0, sizeof(hints));
+// 	hints.ai_socktype = protocol;
+// 	hints.ai_family = AF_UNSPEC; // IP4 or IP6, we don't care
+// 	ret = getaddrinfo(host, service, &hints, &addr_list);
+// 	if (ret != 0) {
+// 		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
+// 		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, addr_ptr->ai_protocol);
+// 		if (sock == -1) {
+// 			perror("socket");
+// 			continue;
+// 		}
+// 		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
+// 			perror("connect");
+// 			close(sock);
+// 			continue;
+// 		}
+// 		break;
+// 	}
+// 	freeaddrinfo(addr_list);
+// 	if (addr_ptr == NULL) {
+// 		fprintf(stderr, "Failed to find a suitable address for connection\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+// 	return sock;
+// }
+
+// // validate_host set to false only for testing.
+// SSL* openssl_connect_to_host(int sock, char* hostname, int validate_host) {
+// 	X509* cert;
+// 	SSL_CTX* tls_ctx;
+// 	SSL* tls;
+// 	int ret;
+
+// 	SSL_library_init();
+// 	OpenSSL_add_all_algorithms();
+// 	ERR_load_BIO_strings();
+// 	ERR_load_crypto_strings();
+// 	SSL_load_error_strings();
+
+// 	tls_ctx = SSL_CTX_new(TLS_client_method());
+// 	if (tls_ctx == NULL) {
+// 		fprintf(stderr, "Could not create SSL_CTX\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+// 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+// 	if (SSL_CTX_load_verify_locations(tls_ctx, root_store_filename_redhat, NULL) != 1) {
+// 		fprintf(stderr, "SSL_CTX_load_verify_locations failed\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	tls = SSL_new(tls_ctx);
+// 	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
+// 	if (tls == NULL) {
+// 		fprintf(stderr, "SSL_new from tls_ctx failed\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	/* set server name indication for client hello */
+// 	if (validate_host)
+// 	{
+// 		SSL_set_tlsext_host_name(tls, hostname);
+// 	}
+
+// 	/* Associate socket with TLS context */
+// 	SSL_set_fd(tls, sock);
+
+// 	ret = SSL_connect(tls);
+// 	if (ret != 1) {
+// 		fprintf(stderr, "Failed in SSL_connect %d:%d\n",SSL_get_error(tls,ret),ret);
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	cert = SSL_get_peer_certificate(tls);
+// 	if (cert == NULL) {
+// 		fprintf(stderr, "Failed to get peer certificate\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	// Need to validate hostname
+// 	if (validate_host && (validate_hostname(hostname, cert) != MatchFound) ) {
+// 		fprintf(stderr, "Failed to validate hostname in certificate\n");
+// 		exit(EXIT_FAILURE);
+// 	}
+
+// 	return tls;
+// }
+
+
 int connect_to_host(char* host, char* service) {
 	int sock;
 	int ret;
@@ -281,9 +427,4 @@ int connect_to_host(char* host, char* service) {
 		exit(EXIT_FAILURE);
 	}
 	return sock;
-}
-
-X509* net_decode_cert(unsigned char* cert_buf,int len){
-	unsigned char *p = cert_buf;
-	return d2i_X509(NULL, (const unsigned char **)&p, len);
 }

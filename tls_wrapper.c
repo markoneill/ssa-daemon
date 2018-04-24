@@ -809,7 +809,7 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	if (hostname != NULL) {
 		SSL_set_tlsext_host_name(tls, hostname);
 	}
-	SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
+	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
 
 	return tls;
 }
