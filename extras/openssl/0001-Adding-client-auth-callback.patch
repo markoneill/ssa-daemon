@@ -1,0 +1,290 @@
+From 97c2690fb4d54aa0bfead7d33d2e735cf197cef7 Mon Sep 17 00:00:00 2001
+From: Mark O'Neill <mto@byu.edu>
+Date: Thu, 26 Apr 2018 17:20:24 -0600
+Subject: [PATCH] Adding client auth callback
+
+---
+ include/openssl/ssl.h    |   1 +
+ ssl/ssl_lib.c            |   8 +++
+ ssl/ssl_locl.h           |   3 +
+ ssl/statem/statem_clnt.c |   5 ++
+ ssl/statem/statem_lib.c  | 139 +++++++++++++++++++++++++++++++----------------
+ util/libssl.num          |   1 +
+ 6 files changed, 109 insertions(+), 48 deletions(-)
+
+diff --git a/include/openssl/ssl.h b/include/openssl/ssl.h
+index bb64fe0..3ff0be2 100644
+--- a/include/openssl/ssl.h
++++ b/include/openssl/ssl.h
+@@ -1678,6 +1678,7 @@ __owur int SSL_CTX_set_session_id_context(SSL_CTX *ctx, const unsigned char *sid
+                                    unsigned int sid_ctx_len);
+ 
+ SSL *SSL_new(SSL_CTX *ctx);
++int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, unsigned char**, size_t*));
+ int SSL_up_ref(SSL *s);
+ int SSL_is_dtls(const SSL *s);
+ __owur int SSL_set_session_id_context(SSL *ssl, const unsigned char *sid_ctx,
+diff --git a/ssl/ssl_lib.c b/ssl/ssl_lib.c
+index 062f5ce..2de4786 100644
+--- a/ssl/ssl_lib.c
++++ b/ssl/ssl_lib.c
+@@ -829,6 +829,9 @@ SSL *SSL_new(SSL_CTX *ctx)
+         goto err;
+ #endif
+ 
++    // initialize client auth callback as null
++    s->client_auth_cb = NULL;
++
+     return s;
+  err:
+     SSL_free(s);
+@@ -836,6 +839,11 @@ SSL *SSL_new(SSL_CTX *ctx)
+     return NULL;
+ }
+ 
++int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, unsigned char**, size_t*)) {
++	s->client_auth_cb = cb;
++	return 1;
++}
++
+ int SSL_is_dtls(const SSL *s)
+ {
+     return SSL_IS_DTLS(s) ? 1 : 0;
+diff --git a/ssl/ssl_locl.h b/ssl/ssl_locl.h
+index a28facd..0c1ff4a 100644
+--- a/ssl/ssl_locl.h
++++ b/ssl/ssl_locl.h
+@@ -1412,6 +1412,9 @@ struct ssl_st {
+     size_t block_padding;
+ 
+     CRYPTO_RWLOCK *lock;
++    
++    /* Custom Callback for client auth */
++    int (*client_auth_cb)(SSL *s, void* hdata, size_t hdata_len, int, unsigned char** sig, size_t* sig_len);
+ };
+ 
+ /*
+diff --git a/ssl/statem/statem_clnt.c b/ssl/statem/statem_clnt.c
+index 86cf5b6..4fa66c6 100644
+--- a/ssl/statem/statem_clnt.c
++++ b/ssl/statem/statem_clnt.c
+@@ -3360,6 +3360,11 @@ int tls_client_key_exchange_post_work(SSL *s)
+  */
+ static int ssl3_check_client_certificate(SSL *s)
+ {
++    /* First check for a callback for our private key */
++    if (s->client_auth_cb != NULL) {
++        return 1;
++    }
++
+     /* If no suitable signature algorithm can't use certificate */
+     if (!tls_choose_sigalg(s, 0) || s->s3->tmp.sigalg == NULL)
+         return 0;
+diff --git a/ssl/statem/statem_lib.c b/ssl/statem/statem_lib.c
+index a82079c..4183d8c 100644
+--- a/ssl/statem/statem_lib.c
++++ b/ssl/statem/statem_lib.c
+@@ -18,6 +18,7 @@
+ #include <openssl/objects.h>
+ #include <openssl/evp.h>
+ #include <openssl/x509.h>
++#include <stdlib.h>
+ 
+ /* Fixed value used in the ServerHello random field to identify an HRR */
+ const unsigned char hrrrandom[] = {
+@@ -225,23 +226,23 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
+     unsigned char tls13tbs[TLS13_TBS_PREAMBLE_SIZE + EVP_MAX_MD_SIZE];
+     const SIGALG_LOOKUP *lu = s->s3->tmp.sigalg;
+ 
+-    if (lu == NULL || s->s3->tmp.cert == NULL) {
+-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+-                 ERR_R_INTERNAL_ERROR);
+-        goto err;
++    /* XXX lu should be chosen according to some rules rather
++     * than statically assigned to the very first shared sigalg.
++     * We're doing this for now to get it working with minimal
++     * invasion to OpenSSL */
++    if (s->client_auth_cb != NULL) {
++        lu = s->cert->shared_sigalgs[0];
+     }
+-    pkey = s->s3->tmp.cert->privatekey;
+ 
+-    if (pkey == NULL || !tls1_lookup_md(lu, &md)) {
++    if (lu == NULL) {
+         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+                  ERR_R_INTERNAL_ERROR);
+         goto err;
+     }
+ 
+-    mctx = EVP_MD_CTX_new();
+-    if (mctx == NULL) {
++    if (!tls1_lookup_md(lu, &md)) {
+         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+-                 ERR_R_MALLOC_FAILURE);
++                  ERR_R_INTERNAL_ERROR);
+         goto err;
+     }
+ 
+@@ -256,56 +257,89 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
+                  ERR_R_INTERNAL_ERROR);
+         goto err;
+     }
+-    siglen = EVP_PKEY_size(pkey);
+-    sig = OPENSSL_malloc(siglen);
+-    if (sig == NULL) {
+-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+-                 ERR_R_MALLOC_FAILURE);
+-        goto err;
+-    }
+ 
+-    if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
+-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+-                 ERR_R_EVP_LIB);
+-        goto err;
+-    }
++    /* Check if we can use a callback here to sign for us */
++    if (s->client_auth_cb != NULL) {
++	if (s->version == SSL3_VERSION) {
++            /* We don't support SSLv3 with client auth */
++            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                 ERR_R_INTERNAL_ERROR);
++	    goto err;
++	}
++        s->client_auth_cb(s, hdata, hdatalen, EVP_MD_type(md), &sig, &siglen);
++    } else {
++        /* Otherwise do it the normal way */
++        if (s->s3->tmp.cert == NULL) {
++            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                  ERR_R_INTERNAL_ERROR);
++            goto err;
++        }
+ 
+-    if (lu->sig == EVP_PKEY_RSA_PSS) {
+-        if (EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PSS_PADDING) <= 0
+-            || EVP_PKEY_CTX_set_rsa_pss_saltlen(pctx,
+-                                                RSA_PSS_SALTLEN_DIGEST) <= 0) {
++        pkey = s->s3->tmp.cert->privatekey;
++        if (pkey == NULL) {
++            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                  ERR_R_INTERNAL_ERROR);
++            goto err;
++        }
++
++        mctx = EVP_MD_CTX_new();
++        if (mctx == NULL) {
++            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                     ERR_R_MALLOC_FAILURE);
++            goto err;
++        }
++
++        siglen = EVP_PKEY_size(pkey);
++        sig = OPENSSL_malloc(siglen);
++        if (sig == NULL) {
++            SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                     ERR_R_MALLOC_FAILURE);
++            goto err;
++        }
++
++        if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
+             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+                      ERR_R_EVP_LIB);
+             goto err;
+         }
+-    }
+-    if (s->version == SSL3_VERSION) {
+-        if (EVP_DigestSignUpdate(mctx, hdata, hdatalen) <= 0
+-            || !EVP_MD_CTX_ctrl(mctx, EVP_CTRL_SSL3_MASTER_SECRET,
+-                                (int)s->session->master_key_length,
+-                                s->session->master_key)
+-            || EVP_DigestSignFinal(mctx, sig, &siglen) <= 0) {
+ 
++        if (lu->sig == EVP_PKEY_RSA_PSS) {
++            if (EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PSS_PADDING) <= 0
++                || EVP_PKEY_CTX_set_rsa_pss_saltlen(pctx,
++                                                    RSA_PSS_SALTLEN_DIGEST) <= 0) {
++                SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                         ERR_R_EVP_LIB);
++                goto err;
++            }
++        }
++        if (s->version == SSL3_VERSION) {
++            if (EVP_DigestSignUpdate(mctx, hdata, hdatalen) <= 0
++                || !EVP_MD_CTX_ctrl(mctx, EVP_CTRL_SSL3_MASTER_SECRET,
++                                    (int)s->session->master_key_length,
++                                    s->session->master_key)
++                || EVP_DigestSignFinal(mctx, sig, &siglen) <= 0) {
++
++                SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
++                         ERR_R_EVP_LIB);
++                goto err;
++            }
++        } else if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdatalen) <= 0) {
+             SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+                      ERR_R_EVP_LIB);
+             goto err;
+         }
+-    } else if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdatalen) <= 0) {
+-        SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+-                 ERR_R_EVP_LIB);
+-        goto err;
+-    }
+ 
+ #ifndef OPENSSL_NO_GOST
+-    {
+-        int pktype = lu->sig;
++        {
++            int pktype = lu->sig;
+ 
+-        if (pktype == NID_id_GostR3410_2001
+-            || pktype == NID_id_GostR3410_2012_256
+-            || pktype == NID_id_GostR3410_2012_512)
+-            BUF_reverse(sig, NULL, siglen);
+-    }
++            if (pktype == NID_id_GostR3410_2001
++                || pktype == NID_id_GostR3410_2012_256
++                || pktype == NID_id_GostR3410_2012_512)
++                BUF_reverse(sig, NULL, siglen);
++        }
+ #endif
++    }
+ 
+     if (!WPACKET_sub_memcpy_u16(pkt, sig, siglen)) {
+         SSLfatal(s, SSL_AD_INTERNAL_ERROR, SSL_F_TLS_CONSTRUCT_CERT_VERIFY,
+@@ -319,12 +353,21 @@ int tls_construct_cert_verify(SSL *s, WPACKET *pkt)
+         goto err;
+     }
+ 
+-    OPENSSL_free(sig);
+-    EVP_MD_CTX_free(mctx);
++
++    if (s->client_auth_cb == NULL) {
++        OPENSSL_free(sig);
++        EVP_MD_CTX_free(mctx);
++    } else {
++        free(sig);
++    }
+     return 1;
+  err:
+-    OPENSSL_free(sig);
+-    EVP_MD_CTX_free(mctx);
++    if (s->client_auth_cb == NULL) {
++        OPENSSL_free(sig);
++        EVP_MD_CTX_free(mctx);
++    } else {
++        free(sig);
++    }
+     return 0;
+ }
+ 
+diff --git a/util/libssl.num b/util/libssl.num
+index 344d684..aaf05d3 100644
+--- a/util/libssl.num
++++ b/util/libssl.num
+@@ -486,3 +486,4 @@ SSL_CTX_set_stateless_cookie_generate_cb 486	1_1_1	EXIST::FUNCTION:
+ SSL_CTX_set_stateless_cookie_verify_cb  487	1_1_1	EXIST::FUNCTION:
+ SSL_CTX_set_ciphersuites                488	1_1_1	EXIST::FUNCTION:
+ SSL_set_ciphersuites                    489	1_1_1	EXIST::FUNCTION:
++SSL_set_client_auth_cb                  490     1_1_1	EXIST::FUNCTION:
+-- 
+2.9.3
+
