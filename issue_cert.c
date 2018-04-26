@@ -65,7 +65,11 @@ char *X509_to_PEM(X509 *cert, int* bio_len) {
 		return NULL;
 	}
 
+	// Get length of the bio data
 	BIO_get_mem_data(bio, &tmp_pem);
+	if (NULL == tmp_pem) {
+		return NULL;
+	}
 	*bio_len = strlen(tmp_pem);
 
 	pem = (char *) malloc(*bio_len + 1);

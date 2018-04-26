@@ -29,6 +29,14 @@ typedef struct csr_ctx {
 	SSL_CTX* tls_ctx;
 } csr_ctx_t;
 
+typedef struct con_ctx {
+	csr_ctx_t* ctx;
+	char* cert;
+	int length;
+	int max_length;
+} con_ctx_t;
+
+
 static csr_ctx_t* create_csr_ctx(struct event_base* ev_base);
 void free_csr_ctx(csr_ctx_t* ctx);
 static SSL_CTX * ssl_ctx_init(void);
@@ -86,9 +94,15 @@ int csr_server_create(int port) {
 	event_base_dispatch(ev_base);
 
 	log_printf(LOG_INFO, "CSR Daemon event loop terminated\n");
-
-	free_csr_ctx(ctx);
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
+	event_free(sev_pipe);
+	event_free(sev_int);
+	free_csr_ctx(ctx);
+	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
+		libevent_global_shutdown();
+	#endif
+	OPENSSL_cleanup();
+	
 
 	return 0;
 }
@@ -130,9 +144,11 @@ csr_ctx_t* create_csr_ctx(struct event_base* ev_base) {
 
 void free_csr_ctx(csr_ctx_t* ctx) {
 	// What do you do with the base?
+	event_base_free(ctx->ev_base);
 	X509_free(ctx->ca_cert);
 	EVP_PKEY_free(ctx->ca_key);
 	ENGINE_cleanup();
+	SSL_CTX_free(ctx->tls_ctx);
 	free(ctx);
 }
 
@@ -156,24 +172,38 @@ static SSL_CTX * ssl_ctx_init(void) {
 
 
 // This is not written correctly and needs to not have to read all at once.
-void csr_read_cb(struct bufferevent *bev, void *ctx) {
+void csr_read_cb(struct bufferevent *bev, void *con) {
 
-	int cert_len;
-	char* csr;
-	// char* signed_cert;
+	int cert_len = 0;
 	X509* new_cert;
 	X509_REQ* cert_req;
 	char *encoded_cert;
-	csr_ctx_t* csr_ctx = (csr_ctx_t*)ctx;
+	con_ctx_t* con_ctx = (con_ctx_t*)con;
+	csr_ctx_t* csr_ctx = con_ctx->ctx;
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
 	size_t message_len;
 
+	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
+		if (con_ctx->max_length < recv_len*2) {
+			con_ctx->max_length = recv_len*2;
+		}
+		else {
+			con_ctx->max_length = con_ctx->max_length*2;
+		}
+		
+		con_ctx->cert = realloc(con_ctx->cert,con_ctx->max_length);
+	}
+	bufferevent_read(bev, con_ctx->cert+con_ctx->length, recv_len);
+	con_ctx->length += recv_len;
 
-	csr = malloc(recv_len);
-	bufferevent_read(bev, csr, recv_len);
-	cert_req = get_csr_from_buf(csr);
+	// Check if last byte is null byte and we are done receiving
+	if (con_ctx->cert[con_ctx->length-1] != '\x00' ) {
+		return;
+	}
+
+	cert_req = get_csr_from_buf(con_ctx->cert);
 
 	new_cert = issue_certificate(cert_req, csr_ctx->ca_cert, csr_ctx->ca_key,
 		csr_ctx->serial, csr_ctx->days);
@@ -191,13 +221,14 @@ void csr_read_cb(struct bufferevent *bev, void *ctx) {
 	if (encoded_cert == NULL) {
 		log_printf(LOG_ERROR,"Certificate unable to be serialized\n");
 		bufferevent_write(bev, FAIL_MSG, sizeof(FAIL_MSG));
-		free(csr);
+		free(con_ctx->cert);
+		con_ctx->cert = NULL;
+		//free(csr);
 		return;
 	}
 
 	bufferevent_write(bev, encoded_cert, cert_len);
 
-	free(csr);
 	free(encoded_cert);
 	X509_REQ_free(cert_req);
 	X509_free(new_cert);
@@ -212,10 +243,20 @@ void csr_accept_error_cb(struct evconnlistener *listener, void *arg) {
 	return;
 }
 
-void csr_event_cb(struct bufferevent *bev, short events, void *ctx) {
+void csr_event_cb(struct bufferevent *bev, short events, void *con) {
+	con_ctx_t* con_ctx = (con_ctx_t*)con;
+
 	if (events & BEV_EVENT_ERROR)
+		// Do I need to free here?
 		perror("Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+		// Free ctx pntr
+		if (con_ctx != NULL) {
+			if (con_ctx->cert != NULL) {
+				free(con_ctx->cert);
+			}
+			free(con_ctx);
+		}
 		log_printf(LOG_INFO,"Free connection\n");
 		bufferevent_free(bev);
 	}
@@ -226,11 +267,15 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 	csr_ctx_t* ctx = (csr_ctx_t*)arg;
 	SSL* ssl = SSL_new(ctx->tls_ctx);
+	con_ctx_t* con = NULL;
 
 	struct event_base *ev_base = evconnlistener_get_base(listener);
 	struct bufferevent *bev = bufferevent_openssl_socket_new(ev_base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
 	log_printf(LOG_INFO, "Received CSR connection.\n");
 
+	con = malloc(sizeof(con_ctx_t));
+	memset(con, 0, sizeof(con_ctx_t));
+	con->ctx = ctx;
 
 	// if (evutil_make_socket_nonblocking(fd) == -1) {
 	// 	log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
@@ -239,7 +284,7 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// 	return;
 	// }
 
-	bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, arg);
+	bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, con);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
 
 	return;
