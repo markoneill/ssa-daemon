@@ -62,6 +62,10 @@ static int read_rand_seed(char **buf, char* seed_path, int size);
 int trustbase_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
 
+#ifdef CLIENTAUTH
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+#endif
+
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
@@ -810,6 +814,10 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 		SSL_set_tlsext_host_name(tls, hostname);
 	}
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
+	
+	#ifdef CLIENTAUTH
+	SSL_set_client_auth_cb(tls, client_auth_callback);
+	#endif
 
 	return tls;
 }
@@ -980,4 +988,65 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	free(ctx);
 	return;
 }
+
+#ifdef CLIENTAUTH
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+	EVP_PKEY* pkey = NULL;
+	const EVP_MD *md = NULL;
+	EVP_MD_CTX *mctx = NULL;
+	EVP_PKEY_CTX *pctx = NULL;
+	size_t siglen;
+	unsigned char* sig;
+
+	printf("GOT THE CALLBACK! YAY\n");
+	pkey = get_private_key_from_file("d");
+	if (pkey == NULL) {
+		return 0;
+	}
+	mctx = EVP_MD_CTX_new();
+	if (mctx == NULL) {
+		EVP_PKEY_free(pkey);
+		return 0;
+	}
+
+	siglen = EVP_PKEY_size(pkey);
+	sig = (unsigned char*)malloc(siglen);
+	if (sig == NULL) {
+		EVP_PKEY_free(pkey);
+		EVP_MD_CTX_free(mctx);
+		return 0;
+	}
+	
+	md = EVP_get_digestbynid(sigalg_nid);
+	if (md == NULL) {
+		EVP_PKEY_free(pkey);
+		EVP_MD_CTX_free(mctx);
+		free(sig);
+		return 0;
+	}
+
+	if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
+		EVP_PKEY_free(pkey);
+		EVP_MD_CTX_free(mctx);
+		free(sig);
+		return 0;
+	}
+
+	if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
+		EVP_PKEY_free(pkey);
+		EVP_MD_CTX_free(mctx);
+		free(sig);
+		return 0;
+	}
+
+	*o_sig = sig;
+	*o_siglen = siglen;
+
+	EVP_PKEY_free(pkey);
+	EVP_MD_CTX_free(mctx);
+	/* sig is freed by caller */
+	
+	return 1;
+}
+#endif
 

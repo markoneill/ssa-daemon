@@ -175,10 +175,11 @@ X509* issue_certificate(X509_REQ* cert_req, X509* ca_cert, EVP_PKEY* ca_key,
 	}
 
 	/* Public key */
-	req_pub_key = X509_REQ_get0_pubkey(cert_req);
+	req_pub_key = X509_REQ_get_pubkey(cert_req);
 	if (req_pub_key == NULL) {
 		return NULL;
 	}
+	EVP_PKEY_free(req_pub_key);
 	if (X509_REQ_verify(cert_req, req_pub_key) != 1) {
 		return NULL;
 	}

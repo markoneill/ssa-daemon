@@ -101,7 +101,18 @@ int csr_server_create(int port) {
 	#if LIBEVENT_VERSION_NUMBER >= 0x02010000
 		libevent_global_shutdown();
 	#endif
+	#if OPENSSL_VERSION_NUMBER >= 0x10100000L
 	OPENSSL_cleanup();
+	#else
+	FIPS_mode_set(0);
+	ENGINE_cleanup();
+	CONF_modules_unload(1);
+	EVP_cleanup();
+	CRYPTO_cleanup_all_ex_data();
+	ERR_remove_state(0);
+	ERR_free_strings();
+	SSL_COMP_free_compression_methods();
+	#endif
 	
 
 	return 0;

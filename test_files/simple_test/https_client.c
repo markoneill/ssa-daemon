@@ -12,8 +12,8 @@ int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
 int main() {
-	int sock_fd = connect_to_host("localhost", "8080");
-	char http_request[] = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+	int sock_fd = connect_to_host("www.google.com", "443");
+	char http_request[] = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n";
 	char http_response[2048];
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, sizeof(http_request)-1, 0);
