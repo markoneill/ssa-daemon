@@ -8,9 +8,9 @@ EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 STD_INCLUDES = -I/usr/include/libnl3
-NEW_INCLUDES = -I/usr/include/libnl3 -I../openssl/include
+NEW_INCLUDES = -I/usr/include/libnl3 -Iopenssl/include -Ilibevent/include
 LIBS = -lnl-3 -lnl-genl-3 -levent_openssl -levent -lcrypto -lssl -lconfig -lavahi-client -lavahi-common -lpthread
-LIBS_EX = -L../openssl/ -lnl-3 -lnl-genl-3 -levent_openssl -levent -lconfig -lavahi-client -lavahi-common -lpthread -l:libssl.so -l:libcrypto.so -Wl,-rpath=../openssl
+LIBS_EX = -Lopenssl/lib -Llibevent/lib -lnl-3 -lnl-genl-3 -levent_openssl -levent -lcrypto -lssl -lconfig -lavahi-client -lavahi-common -lpthread -Wl,-rpath -Wl,libevent/lib -Wl,-rpath -Wl,openssl/lib
 INCLUDES= 
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
