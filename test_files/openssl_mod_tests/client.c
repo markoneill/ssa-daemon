@@ -21,7 +21,9 @@
 int connect_to_host(char* host, char* port, int protocol);
 SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file);
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 EVP_PKEY* get_private_key_from_file(char* filename);
+X509* get_cert_from_file(char* filename);
 
 int main() {
 	int sock;
@@ -64,14 +66,15 @@ SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file) {
 		exit(EXIT_FAILURE);
 	}
 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, NULL);
+	SSL_CTX_set_client_cert_cb(tls_ctx, client_cert_callback);
 
 	if (client_pub_file != NULL) {
-		printf("Using client certificate chain at %s\n", client_pub_file);
+		/*printf("Using client certificate chain at %s\n", client_pub_file);
 		if (SSL_CTX_use_certificate_chain_file(tls_ctx, client_pub_file) != 1) {
 			fprintf(stderr, "Could not use file at %s\n", client_pub_file);
 			ERR_print_errors_fp(stderr);
 			exit(EXIT_FAILURE);
-		}
+		}*/
 
 		// For Sanity check, uncomment below to add the private key to the ctx
 		/*if (SSL_CTX_use_PrivateKey_file(tls_ctx, CLIENT_KEY, SSL_FILETYPE_PEM) != 1) {
@@ -85,7 +88,7 @@ SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file) {
 
 	if (client_pub_file != NULL) {
 		// set the client auth callback
-		SSL_set_client_auth_cb(tls, client_auth_callback);
+		//SSL_set_client_auth_cb(tls, client_auth_callback);
 	}
 
 	SSL_CTX_free(tls_ctx); /* lower reference count now in case we need to early return */
@@ -117,7 +120,7 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
         size_t siglen;
         unsigned char* sig;
 
-        printf("GOT THE CALLBACK! YAY\n");
+        printf("Signing hash\n");
         pkey = get_private_key_from_file(CLIENT_KEY);
         if (pkey == NULL) {
                 return 0;
@@ -235,4 +238,30 @@ EVP_PKEY* get_private_key_from_file(char* filename) {
 	}
 	fclose(key_file);
 	return key;
+}
+
+X509* get_cert_from_file(char* filename) {
+	X509* cert;
+	FILE* cert_file;
+	cert_file = fopen(filename, "r");
+	if (cert_file == NULL) {
+		return NULL;
+	}
+
+	cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
+	if (cert == NULL) {
+		fclose(cert_file);
+		return NULL;
+	}
+	fclose(cert_file);
+	return cert;
+}
+
+int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key) {
+	printf("Setting certificate\n");
+	*cert = get_cert_from_file(CLIENT_CERT);
+	*key = NULL;
+	//*key = get_private_key_from_file(CLIENT_KEY);
+	SSL_set_client_auth_cb(s, client_auth_callback);
+	return 1;
 }

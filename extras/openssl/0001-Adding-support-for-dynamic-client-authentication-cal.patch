@@ -1,19 +1,20 @@
-From 97c2690fb4d54aa0bfead7d33d2e735cf197cef7 Mon Sep 17 00:00:00 2001
+From 5f2be716644f9df5013f173c17b997c57c1056be Mon Sep 17 00:00:00 2001
 From: Mark O'Neill <mto@byu.edu>
-Date: Thu, 26 Apr 2018 17:20:24 -0600
-Subject: [PATCH] Adding client auth callback
+Date: Fri, 27 Apr 2018 16:03:57 -0600
+Subject: [PATCH] Adding support for dynamic client authentication callbacks
+ without direct primary key access
 
 ---
  include/openssl/ssl.h    |   1 +
  ssl/ssl_lib.c            |   8 +++
  ssl/ssl_locl.h           |   3 +
- ssl/statem/statem_clnt.c |   5 ++
+ ssl/statem/statem_clnt.c |  16 ++++--
  ssl/statem/statem_lib.c  | 139 +++++++++++++++++++++++++++++++----------------
  util/libssl.num          |   1 +
- 6 files changed, 109 insertions(+), 48 deletions(-)
+ 6 files changed, 116 insertions(+), 52 deletions(-)
 
 diff --git a/include/openssl/ssl.h b/include/openssl/ssl.h
-index bb64fe0..3ff0be2 100644
+index bb64fe04e8..3ff0be211b 100644
 --- a/include/openssl/ssl.h
 +++ b/include/openssl/ssl.h
 @@ -1678,6 +1678,7 @@ __owur int SSL_CTX_set_session_id_context(SSL_CTX *ctx, const unsigned char *sid
@@ -25,7 +26,7 @@ index bb64fe0..3ff0be2 100644
  int SSL_is_dtls(const SSL *s);
  __owur int SSL_set_session_id_context(SSL *ssl, const unsigned char *sid_ctx,
 diff --git a/ssl/ssl_lib.c b/ssl/ssl_lib.c
-index 062f5ce..2de4786 100644
+index 062f5cef3f..2de4786284 100644
 --- a/ssl/ssl_lib.c
 +++ b/ssl/ssl_lib.c
 @@ -829,6 +829,9 @@ SSL *SSL_new(SSL_CTX *ctx)
@@ -51,7 +52,7 @@ index 062f5ce..2de4786 100644
  {
      return SSL_IS_DTLS(s) ? 1 : 0;
 diff --git a/ssl/ssl_locl.h b/ssl/ssl_locl.h
-index a28facd..0c1ff4a 100644
+index a28facdcc6..fff5ae1675 100644
 --- a/ssl/ssl_locl.h
 +++ b/ssl/ssl_locl.h
 @@ -1412,6 +1412,9 @@ struct ssl_st {
@@ -65,7 +66,7 @@ index a28facd..0c1ff4a 100644
  
  /*
 diff --git a/ssl/statem/statem_clnt.c b/ssl/statem/statem_clnt.c
-index 86cf5b6..4fa66c6 100644
+index 86cf5b6ab2..f8ba8a1883 100644
 --- a/ssl/statem/statem_clnt.c
 +++ b/ssl/statem/statem_clnt.c
 @@ -3360,6 +3360,11 @@ int tls_client_key_exchange_post_work(SSL *s)
@@ -80,8 +81,33 @@ index 86cf5b6..4fa66c6 100644
      /* If no suitable signature algorithm can't use certificate */
      if (!tls_choose_sigalg(s, 0) || s->s3->tmp.sigalg == NULL)
          return 0;
+@@ -3418,17 +3423,20 @@ WORK_STATE tls_prepare_client_certificate(SSL *s, WORK_STATE wst)
+             return WORK_MORE_B;
+         }
+         s->rwstate = SSL_NOTHING;
+-        if ((i == 1) && (pkey != NULL) && (x509 != NULL)) {
+-            if (!SSL_use_certificate(s, x509) || !SSL_use_PrivateKey(s, pkey))
++        if ((i == 1) && (x509 != NULL)) {
++            if (!SSL_use_certificate(s, x509))
+                 i = 0;
++	    if (pkey != NULL && !SSL_use_PrivateKey(s, pkey))
++		i = 0;
+         } else if (i == 1) {
+             i = 0;
+             SSLerr(SSL_F_TLS_PREPARE_CLIENT_CERTIFICATE,
+                    SSL_R_BAD_DATA_RETURNED_BY_CALLBACK);
+         }
+ 
+-        X509_free(x509);
+-        EVP_PKEY_free(pkey);
++	X509_free(x509);
++	if (pkey != NULL)
++            EVP_PKEY_free(pkey);
+         if (i && !ssl3_check_client_certificate(s))
+             i = 0;
+         if (i == 0) {
 diff --git a/ssl/statem/statem_lib.c b/ssl/statem/statem_lib.c
-index a82079c..4183d8c 100644
+index a82079c2ee..4183d8ca80 100644
 --- a/ssl/statem/statem_lib.c
 +++ b/ssl/statem/statem_lib.c
 @@ -18,6 +18,7 @@
@@ -277,7 +303,7 @@ index a82079c..4183d8c 100644
  }
  
 diff --git a/util/libssl.num b/util/libssl.num
-index 344d684..aaf05d3 100644
+index 344d684a94..aaf05d38a2 100644
 --- a/util/libssl.num
 +++ b/util/libssl.num
 @@ -486,3 +486,4 @@ SSL_CTX_set_stateless_cookie_generate_cb 486	1_1_1	EXIST::FUNCTION:
@@ -286,5 +312,5 @@ index 344d684..aaf05d3 100644
  SSL_set_ciphersuites                    489	1_1_1	EXIST::FUNCTION:
 +SSL_set_client_auth_cb                  490     1_1_1	EXIST::FUNCTION:
 -- 
-2.9.3
+2.13.5
 
