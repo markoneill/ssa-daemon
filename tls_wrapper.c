@@ -40,6 +40,7 @@
 #include "tls_wrapper.h"
 #include "tb_connector.h"
 #include "openssl_compat.h"
+#include "issue_cert.h"
 #include "log.h"
 #include "config.h"
 
@@ -62,8 +63,11 @@ static int read_rand_seed(char **buf, char* seed_path, int size);
 int trustbase_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
 
-#ifdef CLIENTAUTH
+#ifdef CLIENT_AUTH
+#define CLIENT_AUTH_KEY "test_files/openssl_mod_tests/client_key.key"
+#define CLIENT_AUTH_CERT "test_files/openssl_mod_tests/client_pub.pem"
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 #endif
 
 
@@ -805,6 +809,10 @@ int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, con
 
 SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	SSL* tls;
+	#ifdef CLIENT_AUTH
+	SSL_CTX_set_client_cert_cb(tls_ctx, client_cert_callback);
+	log_printf(LOG_INFO, "Client cert callback set\n");
+	#endif
 	tls = SSL_new(tls_ctx);
 	if (tls == NULL) {
 		return NULL;
@@ -814,10 +822,6 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 		SSL_set_tlsext_host_name(tls, hostname);
 	}
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
-	
-	#ifdef CLIENTAUTH
-	SSL_set_client_auth_cb(tls, client_auth_callback);
-	#endif
 
 	return tls;
 }
@@ -989,63 +993,72 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	return;
 }
 
-#ifdef CLIENTAUTH
+#ifdef CLIENT_AUTH
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
-	EVP_PKEY* pkey = NULL;
-	const EVP_MD *md = NULL;
-	EVP_MD_CTX *mctx = NULL;
-	EVP_PKEY_CTX *pctx = NULL;
-	size_t siglen;
-	unsigned char* sig;
+        EVP_PKEY* pkey = NULL;
+        const EVP_MD *md = NULL;
+        EVP_MD_CTX *mctx = NULL;
+        EVP_PKEY_CTX *pctx = NULL;
+        size_t siglen;
+        unsigned char* sig;
 
-	printf("GOT THE CALLBACK! YAY\n");
-	pkey = get_private_key_from_file("d");
-	if (pkey == NULL) {
-		return 0;
-	}
-	mctx = EVP_MD_CTX_new();
-	if (mctx == NULL) {
-		EVP_PKEY_free(pkey);
-		return 0;
-	}
+        printf("Signing hash\n");
+        pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
+        if (pkey == NULL) {
+                return 0;
+        }
+        mctx = EVP_MD_CTX_new();
+        if (mctx == NULL) {
+                EVP_PKEY_free(pkey);
+                return 0;
+        }
 
-	siglen = EVP_PKEY_size(pkey);
-	sig = (unsigned char*)malloc(siglen);
-	if (sig == NULL) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		return 0;
-	}
-	
-	md = EVP_get_digestbynid(sigalg_nid);
-	if (md == NULL) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
+        siglen = EVP_PKEY_size(pkey);
+        sig = (unsigned char*)malloc(siglen);
+        if (sig == NULL) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                return 0;
+        }
+        
+        md = EVP_get_digestbynid(sigalg_nid);
+        if (md == NULL) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
 
-	if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
+        if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
 
-	if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
+        if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
 
-	*o_sig = sig;
-	*o_siglen = siglen;
+        *o_sig = sig;
+        *o_siglen = siglen;
 
-	EVP_PKEY_free(pkey);
-	EVP_MD_CTX_free(mctx);
-	/* sig is freed by caller */
-	
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(mctx);
+        /* sig is freed by caller */
+        
+        return 1;
+}
+
+int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key) {
+	printf("Setting certificate\n");
+	*cert = get_cert_from_file(CLIENT_AUTH_CERT);
+	*key = NULL;
+	//*key = get_private_key_from_file(CLIENT_KEY);
+	SSL_set_client_auth_cb(s, client_auth_callback);
 	return 1;
 }
 #endif

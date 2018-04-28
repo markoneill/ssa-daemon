@@ -112,6 +112,58 @@ SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file) {
 	return tls;
 }
 
+int connect_to_host(char* host, char* service, int protocol) {
+	int sock;
+	int ret;
+	struct addrinfo hints;
+	struct addrinfo* addr_ptr;
+	struct addrinfo* addr_list;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_socktype = protocol;
+	hints.ai_family = AF_UNSPEC; // IP4 or IP6, we don't care
+	ret = getaddrinfo(host, service, &hints, &addr_list);
+	if (ret != 0) {
+		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
+		exit(EXIT_FAILURE);
+	}
+
+	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
+		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, addr_ptr->ai_protocol);
+		if (sock == -1) {
+			perror("socket");
+			continue;
+		}
+		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
+			perror("connect");
+			close(sock);
+			continue;
+		}
+		break;
+	}
+	freeaddrinfo(addr_list);
+	if (addr_ptr == NULL) {
+		fprintf(stderr, "Failed to find a suitable address for connection\n");
+		exit(EXIT_FAILURE);
+	}
+
+	struct timeval timeout;      
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+
+	if (setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+		printf("setsockopt failed\n");
+		exit(EXIT_FAILURE);
+	}
+	
+	if (setsockopt (sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
+		printf("setsockopt failed\n");
+		exit(EXIT_FAILURE);
+	}
+
+	return sock;
+}
+
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
         EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
@@ -171,57 +223,6 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
         return 1;
 }
 
-int connect_to_host(char* host, char* service, int protocol) {
-	int sock;
-	int ret;
-	struct addrinfo hints;
-	struct addrinfo* addr_ptr;
-	struct addrinfo* addr_list;
-
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_socktype = protocol;
-	hints.ai_family = AF_UNSPEC; // IP4 or IP6, we don't care
-	ret = getaddrinfo(host, service, &hints, &addr_list);
-	if (ret != 0) {
-		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
-		exit(EXIT_FAILURE);
-	}
-
-	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
-		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, addr_ptr->ai_protocol);
-		if (sock == -1) {
-			perror("socket");
-			continue;
-		}
-		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
-			perror("connect");
-			close(sock);
-			continue;
-		}
-		break;
-	}
-	freeaddrinfo(addr_list);
-	if (addr_ptr == NULL) {
-		fprintf(stderr, "Failed to find a suitable address for connection\n");
-		exit(EXIT_FAILURE);
-	}
-
-	struct timeval timeout;      
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 0;
-
-	if (setsockopt (sock, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
-		printf("setsockopt failed\n");
-		exit(EXIT_FAILURE);
-	}
-	
-	if (setsockopt (sock, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) < 0) {
-		printf("setsockopt failed\n");
-		exit(EXIT_FAILURE);
-	}
-
-	return sock;
-}
 
 EVP_PKEY* get_private_key_from_file(char* filename) {
 	EVP_PKEY* key;
