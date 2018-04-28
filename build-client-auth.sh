@@ -56,6 +56,19 @@ echo "Building Encryption Daemon"
 make clientauth
 echo "Done"
 
+echo "Building custom sslsplit"
+git clone https://github.com/droe/sslsplit
+cd sslsplit
+cp ../extras/sslplit/0001-SSA-patch.patch .
+cp ../extras/sslplit/ca.crt .
+cp ../extras/sslplit/ca.key .
+cp ../extras/sslplit/start.sh .
+cp ../extras/sslplit/firewallOn.sh .
+git apply 0001-SSA-patch.patch
+make
+cd ..
+echo "Done"
+
 echo "Cleaning up"
 #rm -rf tmp
 echo "Done"
