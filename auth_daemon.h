@@ -28,6 +28,13 @@
 #ifndef AUTH_DAEMON_H
 #define AUTH_DAEMON_H
 
+#define AUTH_REQ_HEADER_SIZE	5
+
+#define CERTIFICATE_REQUEST	0
+#define CERTIFICATE_RESPONSE	1
+#define SIGNATURE_REQUEST	2
+#define SIGNATURE_RESPONSE	3
+
 void auth_server_create(int port);
 
 #endif

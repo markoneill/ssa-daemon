@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/un.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
@@ -41,11 +42,13 @@
 #include "tb_connector.h"
 #include "openssl_compat.h"
 #include "issue_cert.h"
+#include "auth_daemon.h"
 #include "log.h"
 #include "config.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
+
 
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);
 static SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname);
@@ -64,10 +67,19 @@ int trustbase_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
 
 #ifdef CLIENT_AUTH
+typedef struct auth_info {
+	int fd;
+	char* hostname;
+} auth_info_t;
+
+extern int auth_info_index;
+char auth_daemon_name[] = "\0auth_req";
 #define CLIENT_AUTH_KEY "test_files/openssl_mod_tests/client_key.key"
 #define CLIENT_AUTH_CERT "test_files/openssl_mod_tests/client_pub.pem"
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
+void send_cert_request(int fd, char* hostname);
+void send_all(int fd, char* msg, int bytes_to_send);
 #endif
 
 
@@ -812,6 +824,12 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	#ifdef CLIENT_AUTH
 	SSL_CTX_set_client_cert_cb(tls_ctx, client_cert_callback);
 	log_printf(LOG_INFO, "Client cert callback set\n");
+	auth_info_t* ai = (auth_info_t*)calloc(1, sizeof(auth_info_t));
+	if (ai == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate auth info\n");
+		return NULL;
+	}
+	ai->hostname = hostname;
 	#endif
 	tls = SSL_new(tls_ctx);
 	if (tls == NULL) {
@@ -823,6 +841,9 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	}
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
 
+	#ifdef CLIENT_AUTH
+	SSL_set_ex_data(tls, auth_info_index, (void*)ai);
+	#endif
 	return tls;
 }
 
@@ -994,13 +1015,18 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 }
 
 #ifdef CLIENT_AUTH
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+	auth_info_t* ai;
         EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
         EVP_MD_CTX *mctx = NULL;
         EVP_PKEY_CTX *pctx = NULL;
         size_t siglen;
         unsigned char* sig;
+
+	ai = SSL_get_ex_data(tls, auth_info_index);
+	close(ai->fd);
+	/* XXX free ai somewhere */
 
         printf("Signing hash\n");
         pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
@@ -1053,13 +1079,75 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
         return 1;
 }
 
-int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key) {
+int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
+	auth_info_t* ai;
+	int fd;
 	printf("Setting certificate\n");
 	*cert = get_cert_from_file(CLIENT_AUTH_CERT);
+	ai = SSL_get_ex_data(tls, auth_info_index);
+	/* XXX improve this later to not block. This
+	 * blocking POC is...well, just for POC */
+	fd = auth_daemon_connect();
+	if (fd == -1) {
+		log_printf(LOG_ERROR, "Failed to connect to auth daemon\n");
+		return 0;
+	}
+	ai->fd = fd;
+	send_cert_request(ai->fd, ai->hostname);
 	*key = NULL;
 	//*key = get_private_key_from_file(CLIENT_KEY);
-	SSL_set_client_auth_cb(s, client_auth_callback);
+	SSL_set_client_auth_cb(tls, client_auth_callback);
 	return 1;
 }
+
+int auth_daemon_connect() {
+	int fd;
+	struct sockaddr_un addr;
+	int addr_len;
+	fd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (fd == -1) {
+		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
+		return -1;
+	}
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	memcpy(addr.sun_path, auth_daemon_name, sizeof(auth_daemon_name));
+	addr_len = sizeof(auth_daemon_name)-1 + sizeof(sa_family_t);
+
+	if (connect(fd, (struct sockaddr*)&addr, addr_len) == -1) {
+		log_printf(LOG_ERROR, "connect: %s\n", strerror(errno));
+		return -1;
+	}
+	return fd;
+}
+
+void send_cert_request(int fd, char* hostname) {
+	int msg_size;
+	char msg_type;
+	int hostname_len;
+	hostname_len = strlen(hostname)+1;
+	msg_size = htonl(hostname_len);
+	msg_type = CERTIFICATE_REQUEST;
+	send_all(fd, &msg_type, 1);
+	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
+	send_all(fd, hostname, hostname_len);
+	return;
+}
+
+void send_all(int fd, char* msg, int bytes_to_send) {
+	int total_bytes_sent;
+	int bytes_sent;
+	total_bytes_sent = 0;
+	while (total_bytes_sent < bytes_to_send) {
+		bytes_sent = send(fd, msg + total_bytes_sent, bytes_to_send - total_bytes_sent, 0);
+		if (bytes_sent == -1) {
+			log_printf(LOG_ERROR, "Could not send data to auth daemon\n");
+			return;
+		}
+		total_bytes_sent += bytes_sent;
+	}
+	return;
+}
+
 #endif
 

@@ -59,6 +59,10 @@
 #define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
 
+#ifdef CLIENT_AUTH
+int auth_info_index;
+#endif
+
 typedef struct sock_ctx {
 	unsigned long id;
 	evutil_socket_t fd;
@@ -126,6 +130,9 @@ int server_create(int port) {
 	ERR_load_crypto_strings();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
+	#ifdef CLIENT_AUTH
+	auth_info_index = SSL_get_ex_new_index(0, NULL, NULL, NULL, NULL);
+	#endif
 
 	/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, signal_cb, NULL);
