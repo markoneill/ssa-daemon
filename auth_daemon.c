@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <assert.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
@@ -43,7 +44,10 @@
 
 typedef struct auth_daemon_ctx {
 	struct event_base* ev_base;
-	evutil_socket_t auth_device;
+	struct evconnlistener* device_listener;
+	struct bufferevent* device_bev;
+	struct evconnlistener* worker_listener;
+	struct bufferevent* worker_bev;
 } auth_daemon_ctx_t;
 
 enum state {
@@ -60,72 +64,74 @@ typedef struct request_info {
 void new_requester_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 void new_requester_error_cb(struct evconnlistener *listener, void *ctx);
-evutil_socket_t create_unix_sock(char* id);
-static void auth_write_cb(struct bufferevent *bev, void *arg);
-static void auth_read_cb(struct bufferevent *bev, void *arg);
-static void auth_event_cb(struct bufferevent *bev, short events, void *arg);
+static void requester_write_cb(struct bufferevent *bev, void *arg);
+static void requester_read_cb(struct bufferevent *bev, void *arg);
+static void requester_event_cb(struct bufferevent *bev, short events, void *arg);
+
+void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
+	struct sockaddr *address, int socklen, void *arg);
+void new_device_error_cb(struct evconnlistener *listener, void *ctx);
+static void device_write_cb(struct bufferevent *bev, void *arg);
+static void device_read_cb(struct bufferevent *bev, void *arg);
+static void device_event_cb(struct bufferevent *bev, short events, void *arg);
 
 void auth_server_create(int port) {
-	struct event* auth_req_ev;
-	evutil_socket_t auth_req_sock;
+	auth_daemon_ctx_t daemon_ctx;
 	struct event_base* ev_base;
-	struct evconnlistener* listener;
+
+	char unix_id[] = "\0auth_req";
+	struct evconnlistener* ipc_listener;
+	struct sockaddr_un ipc_addr;
+	int ipc_addrlen;
+
+	struct evconnlistener* ext_listener;
+	struct sockaddr_in ext_addr;
+	int ext_addrlen;
 
 	ev_base = event_base_new();
 
-	auth_daemon_ctx_t daemon_ctx = {
-		.ev_base = ev_base,
-		.auth_device = 0
-	};
-
-	auth_req_sock = create_unix_sock("auth_req");
-	listener = evconnlistener_new(ev_base, new_requester_cb, &daemon_ctx, 
-		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, SOMAXCONN, auth_req_sock);
-	if (listener == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create evconnlistener\n");
+	/* Set up listener for IPC from SSA workers */
+	memset(&ipc_addr, 0, sizeof(struct sockaddr_un));
+	ipc_addr.sun_family = AF_UNIX;
+	memcpy(ipc_addr.sun_path, unix_id, sizeof(unix_id));
+	ipc_addrlen = sizeof(sa_family_t) + sizeof(unix_id);
+	ipc_listener = evconnlistener_new_bind(ev_base, new_requester_cb, &daemon_ctx, 
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE, SOMAXCONN,
+		(struct sockaddr*)&ipc_addr, ipc_addrlen);
+	if (ipc_listener == NULL) {
+		log_printf(LOG_ERROR, "Couldn't create ipc listener\n");
 		return 1;
 	}
-	evconnlistener_set_error_cb(listener, new_requester_error_cb);
+	evconnlistener_set_error_cb(ipc_listener, new_requester_error_cb);
+
+	/* Set up listener for external authentication devices */
+	memset(&ext_addr, 0, sizeof(struct sockaddr_in));
+	ext_addr.sin_family = AF_INET;
+	ext_addr.sin_port = htons(port);
+	ext_addr.sin_addr.s_addr = htonl(0);
+	ext_addrlen = sizeof(ext_addr);
+	ext_listener = evconnlistener_new_bind(ev_base, new_device_cb, &daemon_ctx, 
+		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE, SOMAXCONN,
+		(struct sockaddr*)&ext_addr, ext_addrlen);
+	if (ext_listener == NULL) {
+		log_printf(LOG_ERROR, "Couldn't create auth device listener\n");
+		return 1;
+	}
+	evconnlistener_set_error_cb(ext_listener, new_device_error_cb);
+
+	daemon_ctx.ev_base = ev_base;
+	daemon_ctx.worker_listener = ipc_listener;
+	daemon_ctx.worker_bev = NULL;
+	daemon_ctx.device_listener = ext_listener;
+	daemon_ctx.device_bev = NULL;
 
 	log_printf(LOG_INFO, "Starting auth daemon\n");
 	event_base_dispatch(ev_base);
 
-	evconnlistener_free(listener); 
+	evconnlistener_free(ipc_listener); 
+	evconnlistener_free(ext_listener); 
         event_base_free(ev_base);
 	return;
-}
-
-evutil_socket_t create_unix_sock(char* id) {
-	evutil_socket_t sock;
-	int ret;
-	struct sockaddr_un addr;
-	int addrlen;
-	char name[MAX_UNIX_NAME];
-	int namelen = snprintf(name, MAX_UNIX_NAME, "%c%s", '\0', id);
-	addr.sun_family = AF_UNIX;
-	memcpy(addr.sun_path, name, namelen);
-	addrlen = namelen + sizeof(sa_family_t);
-
-	sock = socket(PF_UNIX, SOCK_STREAM, 0);
-	if (sock == -1) {
-		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-	ret = evutil_make_socket_nonblocking(sock);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(sock);
-		exit(EXIT_FAILURE);
-	}
-
-	ret = bind(sock, (struct sockaddr*)&addr, addrlen);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "bind: %s\n", strerror(errno));
-		EVUTIL_CLOSESOCKET(sock);
-		exit(EXIT_FAILURE);
-	}
-	return sock;
 }
 
 void new_requester_cb(struct evconnlistener *listener, evutil_socket_t fd,
@@ -133,18 +139,11 @@ void new_requester_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	log_printf(LOG_INFO, "Worker requesting auth services\n");
 	
 	auth_daemon_ctx_t* ctx = arg;
-	request_info_t* ri;
-	ri = (request_info_t*)calloc(1, sizeof(request_info_t));
-	if (ri == NULL) {
-		log_printf(LOG_ERROR, "Could not create request info\n");
-		return;
-	}
-	ri->state = UNREAD;
-
+	evconnlistener_disable(listener);
 	struct bufferevent* bev = bufferevent_socket_new(ctx->ev_base, fd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	bufferevent_setwatermark(bev, EV_READ, AUTH_REQ_HEADER_SIZE, 0);
-	bufferevent_setcb(bev, auth_read_cb, auth_write_cb, auth_event_cb, ri);
+	ctx->worker_bev = bev;
+	bufferevent_setcb(bev, requester_read_cb, requester_write_cb, requester_event_cb, ctx);
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
 	return;
 }
@@ -158,12 +157,17 @@ void new_requester_error_cb(struct evconnlistener *listener, void *ctx) {
 	return;
 }
 
-void auth_write_cb(struct bufferevent *bev, void *arg) {
-
+void requester_write_cb(struct bufferevent *bev, void *arg) {
+	return;
 }
 
-void auth_read_cb(struct bufferevent *bev, void *arg) {
-	request_info_t* ri = (request_info_t*)arg;
+void requester_read_cb(struct bufferevent *bev, void *arg) {
+	auth_daemon_ctx_t* ctx = arg;
+	assert(ctx->device_bev);
+	bufferevent_read_buffer(bev, 
+			bufferevent_get_output(ctx->device_bev));
+	return;
+	/*request_info_t* ri = (request_info_t*)arg;
 	int bytes_wanted;
 	switch (ri->state) {
 		case UNREAD:
@@ -175,20 +179,78 @@ void auth_read_cb(struct bufferevent *bev, void *arg) {
 			break;
 		case HEADER_READ:
 			break;
-	}
+	}*/
 	return;
 }
 
-void auth_event_cb(struct bufferevent *bev, short events, void *arg) {
-	request_info_t* ri = (request_info_t*)arg;
+void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
+	auth_daemon_ctx_t* ctx = arg;
 	if (events & BEV_EVENT_CONNECTED) {
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "Worker disconnecting\n");
-		free(ri);
+		evconnlistener_enable(ctx->worker_listener);
+		ctx->worker_bev = NULL;
 		bufferevent_free(bev);
 	}
 	if (events & BEV_EVENT_ERROR) {
+		evconnlistener_enable(ctx->worker_listener);
+		ctx->worker_bev = NULL;
+		bufferevent_free(bev);
+	}
+	return;
+}
+
+void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
+	struct sockaddr *address, int socklen, void *arg) {
+	log_printf(LOG_INFO, "A new authentication device has registered\n");
+	
+	auth_daemon_ctx_t* ctx = arg;
+	evconnlistener_disable(listener);
+	struct bufferevent* bev = bufferevent_socket_new(ctx->ev_base, fd,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	ctx->device_bev = bev;
+	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+	return;
+}
+
+void new_device_error_cb(struct evconnlistener *listener, void *ctx) {
+        struct event_base *base = evconnlistener_get_base(listener);
+        int err = EVUTIL_SOCKET_ERROR();
+        log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n", 
+				err, evutil_socket_error_to_string(err));
+        event_base_loopexit(base, NULL);
+	return;
+}
+
+void device_write_cb(struct bufferevent *bev, void *arg) {
+	return;
+}
+
+void device_read_cb(struct bufferevent *bev, void *arg) {
+	auth_daemon_ctx_t* ctx = arg;
+	assert(ctx->worker_bev);
+	bufferevent_read_buffer(bev, 
+			bufferevent_get_output(ctx->worker_bev));
+	return;
+}
+
+void device_event_cb(struct bufferevent *bev, short events, void *arg) {
+	auth_daemon_ctx_t* ctx = arg;
+	if (events & BEV_EVENT_CONNECTED) {
+	}
+	if (events & BEV_EVENT_EOF) {
+		log_printf(LOG_INFO, "Authentication device disconnecting\n");
+		evconnlistener_enable(ctx->device_listener);
+		ctx->device_bev = NULL;
+		bufferevent_free(bev);
+	}
+	if (events & BEV_EVENT_ERROR) {
+		log_printf(LOG_INFO, "Authentication device error\n");
+		evconnlistener_enable(ctx->device_listener);
+		ctx->device_bev = NULL;
+		bufferevent_free(bev);
 	}
 	return;
 }

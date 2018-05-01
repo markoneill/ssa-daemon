@@ -79,6 +79,7 @@ char auth_daemon_name[] = "\0auth_req";
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 void send_cert_request(int fd, char* hostname);
+int recv_cert_response(int fd, X509** o_cert);
 void send_all(int fd, char* msg, int bytes_to_send);
 #endif
 
@@ -1083,7 +1084,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	auth_info_t* ai;
 	int fd;
 	printf("Setting certificate\n");
-	*cert = get_cert_from_file(CLIENT_AUTH_CERT);
+	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
 	ai = SSL_get_ex_data(tls, auth_info_index);
 	/* XXX improve this later to not block. This
 	 * blocking POC is...well, just for POC */
@@ -1094,6 +1095,10 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	}
 	ai->fd = fd;
 	send_cert_request(ai->fd, ai->hostname);
+	if (recv_cert_response(ai->fd, cert) == 0) {
+		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
+		return 0;
+	}
 	*key = NULL;
 	//*key = get_private_key_from_file(CLIENT_KEY);
 	SSL_set_client_auth_cb(tls, client_auth_callback);
@@ -1112,7 +1117,7 @@ int auth_daemon_connect() {
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 	memcpy(addr.sun_path, auth_daemon_name, sizeof(auth_daemon_name));
-	addr_len = sizeof(auth_daemon_name)-1 + sizeof(sa_family_t);
+	addr_len = sizeof(auth_daemon_name) + sizeof(sa_family_t);
 
 	if (connect(fd, (struct sockaddr*)&addr, addr_len) == -1) {
 		log_printf(LOG_ERROR, "connect: %s\n", strerror(errno));
@@ -1132,6 +1137,41 @@ void send_cert_request(int fd, char* hostname) {
 	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
 	send_all(fd, hostname, hostname_len);
 	return;
+}
+
+int recv_cert_response(int fd, X509** o_cert) {
+	int bytes_read;
+	char msg_type;
+	int cert_len;
+	char* cert_mem;
+	X509* cert;
+	BIO* bio;
+	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
+	if (bytes_read == -1) return 0;
+	printf("type is %c\n", msg_type);
+	bytes_read = recv(fd, &cert_len, sizeof(uint32_t), MSG_WAITALL);
+	if (bytes_read == -1) return 0;
+	cert_len = ntohl(cert_len);
+	printf("len is %d\n", cert_len);
+	cert_mem = malloc(cert_len);
+	if (cert_mem == NULL) {
+		return 0;
+	}
+	bytes_read = recv(fd, cert_mem, cert_len, MSG_WAITALL);
+	if (bytes_read == -1) {
+		return 0;
+	}
+	bio = BIO_new(BIO_s_mem());
+	BIO_write(bio, cert_mem, cert_len);
+	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+	if (cert == NULL) {
+		log_printf(LOG_ERROR, "Failed to parse auth certificate\n");
+		return 0;
+	}
+	*o_cert = cert;
+	BIO_free(bio);
+	free(cert_mem);
+	return 1;
 }
 
 void send_all(int fd, char* msg, int bytes_to_send) {
