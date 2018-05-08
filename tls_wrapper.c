@@ -1139,6 +1139,18 @@ void send_cert_request(int fd, char* hostname) {
 	return;
 }
 
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid) {
+	int msg_size;
+	char msg_type;
+	msg_size = htonl(hdata_len + sizeof(sigalg_nid));
+	msg_type = SIGNATURE_REQUEST;
+	send_all(fd, &msg_type, 1);
+	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
+	send_all(fd, (char*)&sigalg_nid, sizeof(sigalg_nid));
+	send_all(fd, hdata, hdata_len);
+	return;
+}
+
 int recv_cert_response(int fd, X509** o_cert) {
 	int bytes_read;
 	char msg_type;
