@@ -7,6 +7,7 @@ char *X509_to_PEM(X509 *cert, int* bio_len);
 X509 *PEM_to_X509(char *pem);
 X509_REQ* get_csr_from_buf(char* buffer);
 X509* get_cert_from_file(char* filename);
+EVP_PKEY* get_private_key_from_buf(char* buffer);
 EVP_PKEY* get_private_key_from_file(char* filename);
 X509* issue_certificate(X509_REQ* cert_req, X509* ca_cert, EVP_PKEY* ca_key,
 		int serial, int days);

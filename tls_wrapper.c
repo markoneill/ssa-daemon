@@ -1034,7 +1034,8 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
 	/* XXX free ai somewhere */
 
         /*printf("Signing hash\n");
-        pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
+        //pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
+	pkey = get_private_key_from_buf(char* buffer);
         if (pkey == NULL) {
                 return 0;
         }

@@ -45,6 +45,21 @@ X509* net_decode_cert(unsigned char* cert_buf,int len){
 	return d2i_X509(NULL, (const unsigned char **)&p, len);
 }
 
+EVP_PKEY* get_private_key_from_buf(char* buffer) {
+	BIO* key_bio;
+	EVP_PKEY* key;
+	key_bio = BIO_new_mem_buf(buffer, -1);
+	if (key_bio == NULL) {
+		return NULL;
+	}
+	key = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+	if (key == NULL) {
+		BIO_free_all(key_bio);
+		return NULL;
+	}
+	BIO_free_all(key_bio);
+	return key;
+}
 
 /* buffer must be null-terminated */
 X509_REQ* get_csr_from_buf(char* buffer) {
