@@ -80,6 +80,8 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 void send_cert_request(int fd, char* hostname);
 int recv_cert_response(int fd, X509** o_cert);
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid);
+int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen);
 void send_all(int fd, char* msg, int bytes_to_send);
 #endif
 
@@ -1026,10 +1028,12 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
         unsigned char* sig;
 
 	ai = SSL_get_ex_data(tls, auth_info_index);
+	send_sign_request(ai->fd, hdata, hdata_len, sigalg_nid);
+	recv_sign_response(ai->fd, o_sig, o_siglen);
 	close(ai->fd);
 	/* XXX free ai somewhere */
 
-        printf("Signing hash\n");
+        /*printf("Signing hash\n");
         pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
         if (pkey == NULL) {
                 return 0;
@@ -1070,13 +1074,13 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
                 return 0;
         }
 
-        *o_sig = sig;
-        *o_siglen = siglen;
-
         EVP_PKEY_free(pkey);
-        EVP_MD_CTX_free(mctx);
-        /* sig is freed by caller */
+        EVP_MD_CTX_free(mctx);*/
         
+	/*
+        *o_sig = sig;
+        *o_siglen = siglen; */
+        /* sig is freed by caller */
         return 1;
 }
 
@@ -1183,6 +1187,26 @@ int recv_cert_response(int fd, X509** o_cert) {
 	*o_cert = cert;
 	BIO_free(bio);
 	free(cert_mem);
+	return 1;
+}
+
+int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen) {
+	unsigned char* sig;
+	int siglen;
+	int bytes_read;
+	char msg_type;
+	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
+	if (bytes_read == -1) return 0;
+	bytes_read = recv(fd, &siglen, sizeof(uint32_t), MSG_WAITALL);
+	if (bytes_read == -1) return 0;
+	siglen = ntohl(siglen);
+	sig = malloc(siglen);
+	bytes_read = recv(fd, sig, siglen, MSG_WAITALL);
+	if (bytes_read == -1) {
+		return 0;
+	}
+	*o_sig = sig;
+	*o_siglen = siglen;
 	return 1;
 }
 

@@ -59,11 +59,11 @@ echo "Done"
 echo "Building custom sslsplit"
 git clone https://github.com/droe/sslsplit
 cd sslsplit
-cp ../extras/sslplit/0001-SSA-patch.patch .
-cp ../extras/sslplit/ca.crt .
-cp ../extras/sslplit/ca.key .
-cp ../extras/sslplit/start.sh .
-cp ../extras/sslplit/firewallOn.sh .
+cp ../extras/sslsplit/0001-SSA-patch.patch .
+cp ../extras/sslsplit/ca.crt .
+cp ../extras/sslsplit/ca.key .
+cp ../extras/sslsplit/start.sh .
+cp ../extras/sslsplit/firewallOn.sh .
 git apply 0001-SSA-patch.patch
 make
 cd ..
