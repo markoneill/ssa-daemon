@@ -1094,7 +1094,6 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	auth_info_t* ai;
 	int fd;
-	printf("Setting certificate\n");
 	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
 	ai = SSL_get_ex_data(tls, auth_info_index);
 	/* XXX improve this later to not block. This
@@ -1141,7 +1140,7 @@ void send_cert_request(int fd, char* hostname) {
 	int msg_size;
 	char msg_type;
 	int hostname_len;
-	hostname_len = strlen(hostname)+1;
+	hostname_len = strlen(hostname);
 	msg_size = htonl(hostname_len);
 	msg_type = CERTIFICATE_REQUEST;
 	send_all(fd, &msg_type, 1);

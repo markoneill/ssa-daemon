@@ -125,6 +125,10 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
+	/*pthread_join(csr_daemon, NULL);
+	pthread_join(auth_daemon, NULL);
+	pthread_join(nsd_daemon, NULL);*/
+
 	log_close();
 	free_config();
 	free(workers);

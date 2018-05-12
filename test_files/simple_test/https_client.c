@@ -17,7 +17,7 @@ int main() {
 	int sock_fd = connect_to_host(HOST, "443");
 	char http_request[2048];
 	char http_response[2048];
-	sprintf(http_request,"GET / HTTP/1.1\r\n%s\r\n\r\n", HOST);
+	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", HOST);
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, sizeof(http_request)-1, 0);
 	recv(sock_fd, http_response, 750, 0);
@@ -72,7 +72,7 @@ int connect_to_host(char* host, char* service) {
 }
 
 void print_identity(int fd) {
-	char data[2048];
+	char data[4096];
 	socklen_t data_len = sizeof(data);
 	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, data, &data_len) == -1) {
 		perror("SO_PEER_CERTIFICATE");
