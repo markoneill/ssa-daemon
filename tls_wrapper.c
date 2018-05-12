@@ -998,9 +998,15 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	auth_info_t* ai;
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL) {
+		ai = SSL_get_ex_data(ctx->tls, auth_info_index);
+		if (ai != NULL) {
+			/* free client auth data */
+			free(ai);
+		}
 		SSL_shutdown(ctx->tls);
 	}
 	return;
@@ -1141,6 +1147,7 @@ void send_cert_request(int fd, char* hostname) {
 	send_all(fd, &msg_type, 1);
 	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
 	send_all(fd, hostname, hostname_len);
+	log_printf(LOG_DEBUG, "Sent a cert request of length %u\n", hostname_len);
 	return;
 }
 
@@ -1153,6 +1160,7 @@ void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid) {
 	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
 	send_all(fd, (char*)&sigalg_nid, sizeof(sigalg_nid));
 	send_all(fd, hdata, hdata_len);
+	log_printf(LOG_DEBUG, "Sent a sign request of length %u\n", hdata_len);
 	return;
 }
 
@@ -1165,11 +1173,9 @@ int recv_cert_response(int fd, X509** o_cert) {
 	BIO* bio;
 	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
 	if (bytes_read == -1) return 0;
-	printf("type is %c\n", msg_type);
 	bytes_read = recv(fd, &cert_len, sizeof(uint32_t), MSG_WAITALL);
 	if (bytes_read == -1) return 0;
 	cert_len = ntohl(cert_len);
-	printf("len is %d\n", cert_len);
 	cert_mem = malloc(cert_len);
 	if (cert_mem == NULL) {
 		return 0;
@@ -1178,6 +1184,7 @@ int recv_cert_response(int fd, X509** o_cert) {
 	if (bytes_read == -1) {
 		return 0;
 	}
+	log_printf(LOG_DEBUG, "Received a responses of type %c and length %d\n", msg_type, cert_len);
 	bio = BIO_new(BIO_s_mem());
 	BIO_write(bio, cert_mem, cert_len);
 	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
@@ -1202,12 +1209,18 @@ int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen) {
 	if (bytes_read == -1) return 0;
 	siglen = ntohl(siglen);
 	sig = malloc(siglen);
+	if (sig == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate signature response message\n");
+		return 0;
+	}
 	bytes_read = recv(fd, sig, siglen, MSG_WAITALL);
 	if (bytes_read == -1) {
+		free(sig);
 		return 0;
 	}
 	*o_sig = sig;
 	*o_siglen = siglen;
+	log_printf(LOG_DEBUG, "Received a responses of type %c and length %d\n", msg_type, siglen);
 	return 1;
 }
 
