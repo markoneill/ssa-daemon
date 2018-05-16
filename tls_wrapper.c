@@ -998,15 +998,19 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	#ifdef CLIENT_AUTH
 	auth_info_t* ai;
+	#endif
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL) {
+		#ifdef CLIENT_AUTH
 		ai = SSL_get_ex_data(ctx->tls, auth_info_index);
 		if (ai != NULL) {
 			/* free client auth data */
 			free(ai);
 		}
+		#endif
 		SSL_shutdown(ctx->tls);
 	}
 	return;

@@ -103,7 +103,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
+	#ifdef CLIENT_AUTH
 	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, auth_port);
+	#endif
 	pthread_create(&auth_daemon, NULL, create_auth_daemon, auth_port);
 
 	while ((ret = wait(&status)) > 0) {
@@ -151,13 +153,11 @@ void sig_handler(int signum) {
 	return;
 }
 
-#ifdef CLIENT_AUTH
 void* create_nsd_daemon(void* arg) {
 	int port = (int)arg;
 	register_auth_service(port);
 	return NULL;
 }
-#endif
 
 void* create_csr_daemon(void* arg) {
 	int csr_daemon_port = (int)arg;
