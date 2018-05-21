@@ -1008,7 +1008,7 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 		ai = SSL_get_ex_data(ctx->tls, auth_info_index);
 		if (ai != NULL) {
 			/* free client auth data */
-			free(ai);
+			//free(ai);
 		}
 		#endif
 		SSL_shutdown(ctx->tls);
