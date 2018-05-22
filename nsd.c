@@ -66,7 +66,7 @@ int register_auth_service(int port) {
 	ctx = calloc(1, sizeof(service_ctx_t));
 
 	ctx->port = port;
-	ctx->service_name = "SSA Auth";
+	ctx->service_name = avahi_strdup("SSA Auth");
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
@@ -160,12 +160,13 @@ void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GC
 			break;
 		case AVAHI_ENTRY_GROUP_FAILURE:
 		case AVAHI_ENTRY_GROUP_COLLISION:
-			log_printf(LOG_ERROR, "Avahi Error: %s\n", 
+			log_printf(LOG_INFO, "Avahi name collision: %s\n", 
 				avahi_strerror(avahi_client_errno(ctx->client)));
 				new_name = avahi_alternative_service_name(ctx->service_name);
 				avahi_free(ctx->service_name);
 				ctx->service_name = new_name;
-			avahi_simple_poll_quit(ctx->poller);
+			log_printf(LOG_INFO, "Switching NSD name to %s\n", new_name);
+			publish_service(ctx);
 			break;
 		case AVAHI_ENTRY_GROUP_REGISTERING:
 		case AVAHI_ENTRY_GROUP_UNCOMMITED:
