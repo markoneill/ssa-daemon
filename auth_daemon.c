@@ -163,7 +163,11 @@ void requester_write_cb(struct bufferevent *bev, void *arg) {
 
 void requester_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
-	assert(ctx->device_bev);
+
+	if (ctx->device_bev == 0) {
+		log_printf(LOG_INFO, "requester_read_cb invoked with device disconnected\n");
+		return;
+	}
 	bufferevent_read_buffer(bev, 
 			bufferevent_get_output(ctx->device_bev));
 	return;
@@ -230,7 +234,11 @@ void device_write_cb(struct bufferevent *bev, void *arg) {
 
 void device_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
-	assert(ctx->worker_bev);
+
+	if (ctx->worker_bev == 0) {
+		log_printf(LOG_INFO, "device_read_cb invoked with worker disconnected\n");
+		return;
+	}
 	bufferevent_read_buffer(bev, 
 			bufferevent_get_output(ctx->worker_bev));
 	return;

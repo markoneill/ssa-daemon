@@ -67,6 +67,11 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+	if (geteuid() != 0) {
+		log_printf(LOG_ERROR, "Please run as root\n");
+		exit(EXIT_FAILURE);
+	}
+
 	cpus_on = sysconf(_SC_NPROCESSORS_ONLN);
 	cpus_conf = sysconf(_SC_NPROCESSORS_CONF);
 	log_printf(LOG_INFO, "Detected %ld/%ld active CPUs\n", cpus_on, cpus_conf);

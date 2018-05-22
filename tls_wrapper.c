@@ -1039,7 +1039,11 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
 
 	ai = SSL_get_ex_data(tls, auth_info_index);
 	send_sign_request(ai->fd, hdata, hdata_len, sigalg_nid);
-	recv_sign_response(ai->fd, o_sig, o_siglen);
+	if (recv_sign_response(ai->fd, o_sig, o_siglen) == 0) {
+		log_printf(LOG_ERROR, "Could not receive signature response\n");
+		close(ai->fd);
+		return 1;
+	}
 	close(ai->fd);
 	/* XXX free ai somewhere */
 
@@ -1111,6 +1115,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	send_cert_request(ai->fd, ai->hostname);
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
+		close(ai->fd);
 		return 0;
 	}
 	*key = NULL;
@@ -1175,21 +1180,41 @@ int recv_cert_response(int fd, X509** o_cert) {
 	X509* cert;
 	BIO* bio;
 	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
-	if (bytes_read == -1) return 0;
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message type in cert response\n");
+		return 0;
+	}
+	if (msg_type == FAILURE_RESPONSE) {
+		log_printf(LOG_ERROR, "Device reported failure message for cert response\n");
+		return 0;
+	}
 	bytes_read = recv(fd, &cert_len, sizeof(uint32_t), MSG_WAITALL);
-	if (bytes_read == -1) return 0;
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message length in cert response\n");
+		return 0;
+	}
+
 	cert_len = ntohl(cert_len);
 	cert_mem = malloc(cert_len);
 	if (cert_mem == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate certificate length in cert response\n");
 		return 0;
 	}
 	bytes_read = recv(fd, cert_mem, cert_len, MSG_WAITALL);
 	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read certificate data in cert response\n");
 		return 0;
 	}
-	log_printf(LOG_DEBUG, "Received a responses of type %c and length %d\n", msg_type, cert_len);
+	log_printf(LOG_DEBUG, "Received a responses of type %d and length %d\n", msg_type, cert_len);
 	bio = BIO_new(BIO_s_mem());
-	BIO_write(bio, cert_mem, cert_len);
+	if (bio == NULL) {
+		log_printf(LOG_ERROR, "Failed to create BIO for certificate memory\n");
+		return 0;
+	}
+	if (BIO_write(bio, cert_mem, cert_len) != cert_len) {
+		log_printf(LOG_ERROR, "Failed to write certificate data to BIO\n");
+		return 0;
+	}
 	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
 	if (cert == NULL) {
 		log_printf(LOG_ERROR, "Failed to parse auth certificate\n");
@@ -1207,9 +1232,19 @@ int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen) {
 	int bytes_read;
 	char msg_type;
 	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
-	if (bytes_read == -1) return 0;
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message type in signature response\n");
+		return 0;
+	}
+	if (msg_type == FAILURE_RESPONSE) {
+		log_printf(LOG_ERROR, "Device reported failure message for signature response\n");
+		return 0;
+	}
 	bytes_read = recv(fd, &siglen, sizeof(uint32_t), MSG_WAITALL);
-	if (bytes_read == -1) return 0;
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message length in signature response\n");
+		return 0;
+	}
 	siglen = ntohl(siglen);
 	sig = malloc(siglen);
 	if (sig == NULL) {
@@ -1218,12 +1253,13 @@ int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen) {
 	}
 	bytes_read = recv(fd, sig, siglen, MSG_WAITALL);
 	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read signature response\n");
 		free(sig);
 		return 0;
 	}
 	*o_sig = sig;
 	*o_siglen = siglen;
-	log_printf(LOG_DEBUG, "Received a responses of type %c and length %d\n", msg_type, siglen);
+	log_printf(LOG_DEBUG, "Received a responses of type %d and length %d\n", msg_type, siglen);
 	return 1;
 }
 

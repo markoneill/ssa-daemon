@@ -40,6 +40,7 @@ typedef struct service_ctx {
 	AvahiClient* client;
 	AvahiEntryGroup* group;
 	AvahiSimplePoll* poller;
+	char* service_name;
 	int port;
 } service_ctx_t;
 
@@ -65,6 +66,7 @@ int register_auth_service(int port) {
 	ctx = calloc(1, sizeof(service_ctx_t));
 
 	ctx->port = port;
+	ctx->service_name = "SSA Auth";
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
@@ -102,7 +104,7 @@ int publish_service(service_ctx_t* ctx) {
 			AVAHI_IF_UNSPEC, /* announce on all interfaces */
 			AVAHI_PROTO_UNSPEC, /* announce on all protocols */
 			0,
-			"SSA Auth",
+			ctx->service_name,
 			"_auth._tcp",
 			NULL, /* daemon will decide domain */
 			NULL, /* daemon will decide hostname */
@@ -151,6 +153,7 @@ void client_cb(AvahiClient* client, AvahiClientState state, void* userdata) {
 
 void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void* userdata) {
 	service_ctx_t* ctx = userdata;
+	char* new_name;
 	switch (state) {
 		case AVAHI_ENTRY_GROUP_ESTABLISHED:
 			log_printf(LOG_INFO, "SSA service published\n");
@@ -159,6 +162,9 @@ void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GC
 		case AVAHI_ENTRY_GROUP_COLLISION:
 			log_printf(LOG_ERROR, "Avahi Error: %s\n", 
 				avahi_strerror(avahi_client_errno(ctx->client)));
+				new_name = avahi_alternative_service_name(ctx->service_name);
+				avahi_free(ctx->service_name);
+				ctx->service_name = new_name;
 			avahi_simple_poll_quit(ctx->poller);
 			break;
 		case AVAHI_ENTRY_GROUP_REGISTERING:

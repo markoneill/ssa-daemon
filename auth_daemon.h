@@ -34,6 +34,7 @@
 #define CERTIFICATE_RESPONSE	1
 #define SIGNATURE_REQUEST	2
 #define SIGNATURE_RESPONSE	3
+#define FAILURE_RESPONSE	4
 
 void auth_server_create(int port);
 
