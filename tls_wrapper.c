@@ -876,8 +876,8 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 	if (endpoint->closed == 1) {
 		out_buf = bufferevent_get_output(bev);
 		if (evbuffer_get_length(out_buf) == 0) {
-			bufferevent_free(bev);
-			shutdown_tls_conn_ctx(ctx);
+			//bufferevent_free(bev);
+			//shutdown_tls_conn_ctx(ctx);
 		}
 		return;
 	}
@@ -998,20 +998,10 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
-	#ifdef CLIENT_AUTH
-	auth_info_t* ai;
-	#endif
 	if (ctx == NULL) return;
 
-	if (ctx->tls != NULL) {
-		#ifdef CLIENT_AUTH
-		ai = SSL_get_ex_data(ctx->tls, auth_info_index);
-		if (ai != NULL) {
-			/* free client auth data */
-			//free(ai);
-		}
-		#endif
-		SSL_shutdown(ctx->tls);
+	if (ctx->tls != NULL && ctx->secure.closed == 1) {
+		//SSL_shutdown(ctx->tls);
 	}
 	return;
 }
@@ -1019,9 +1009,15 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	shutdown_tls_conn_ctx(ctx);
 	ctx->tls = NULL;
-	if (ctx->secure.bev != NULL) bufferevent_free(ctx->secure.bev);
+	if (ctx->secure.bev != NULL) {
+		// && ctx->secure.closed == 0) {
+		 bufferevent_free(ctx->secure.bev);
+	}
 	ctx->secure.bev = NULL;
-	if (ctx->plain.bev != NULL) bufferevent_free(ctx->plain.bev);
+	if (ctx->plain.bev != NULL) {
+		// && ctx->plain.closed == 1) {
+		 bufferevent_free(ctx->plain.bev);
+	}
 	ctx->plain.bev = NULL;
 	free(ctx);
 	return;
@@ -1042,10 +1038,11 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
 	if (recv_sign_response(ai->fd, o_sig, o_siglen) == 0) {
 		log_printf(LOG_ERROR, "Could not receive signature response\n");
 		close(ai->fd);
+		free(ai);
 		return 1;
 	}
 	close(ai->fd);
-	/* XXX free ai somewhere */
+	free(ai);
 
         /*printf("Signing hash\n");
         //pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
@@ -1116,6 +1113,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
 		close(ai->fd);
+		free(ai);
 		return 0;
 	}
 	*key = NULL;
