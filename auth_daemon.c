@@ -213,6 +213,20 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	evconnlistener_disable(listener);
 	struct bufferevent* bev = bufferevent_socket_new(ctx->ev_base, fd,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+	// ************************************************************************
+	// code to display a QR code image
+	//
+	
+	int pid;	
+	if((pid = fork())){
+		sleep(10);
+		kill(pid,9);	
+	}else{
+		execv(POPUP_EXE,NULL); 
+	}
+	
+
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
 	bufferevent_enable(bev, EV_READ | EV_WRITE);

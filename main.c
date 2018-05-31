@@ -58,7 +58,6 @@ int main(int argc, char* argv[]) {
 	int csr_daemon_port = 8040;
 	int auth_port = 6666;
 	pthread_t csr_daemon;
-	pthread_t nsd_daemon;
 	pthread_t auth_daemon;
 
 	/* Init logger */
@@ -109,9 +108,8 @@ int main(int argc, char* argv[]) {
 
 	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
 	#ifdef CLIENT_AUTH
-	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, auth_port);
-	#endif
 	pthread_create(&auth_daemon, NULL, create_auth_daemon, auth_port);
+	#endif
 
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
@@ -159,7 +157,8 @@ void sig_handler(int signum) {
 }
 
 void* create_nsd_daemon(void* arg) {
-	int port = (int)arg;
+	nsd_params_t *params = (nsd_params_t*) arg;
+	int port = params->port;
 	register_auth_service(port);
 	return NULL;
 }
@@ -167,11 +166,91 @@ void* create_nsd_daemon(void* arg) {
 void* create_csr_daemon(void* arg) {
 	int csr_daemon_port = (int)arg;
 	csr_server_create(csr_daemon_port);
+	free(arg);
 	return NULL;
 }
 
 void* create_auth_daemon(void* arg) {
-	int port = (int)arg;
+	pthread_t nsd_daemon;
+	int status, pid;
+	int port = (int) arg;
+	BIO *pembio;
+	X509 *cert;
+	
+	// ************************************************************************
+	// add code to generate a cert and key pair hear
+	//
+	
+	//--------------DUMMY--------------------
+	//certbio = BIO_new(BIO_s_file());
+
+	//BIO_read_filename(certbio, "/home/mark/mark-phd/tlswrap/test_files/certificate_b.pem");
+	//if(!(cert = PEM_read_bio_X509(certbio, NULL, 0, NULL)))
+	//	printf("DUMMY error!!!");
+	
+	char filename[] = "/home/mark/mark-phd/tlswrap/test_files/certificate_b.pem";
+	FILE * cert_file = fopen(filename, "r");
+	cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
+	//--------------END DUMMY----------------
+	
+
+	nsd_params_t *forNSD = (nsd_params_t*) malloc(sizeof(nsd_params_t));
+
+	forNSD->port = port;
+	if(!(forNSD->pub_key = X509_get_pubkey(cert))){
+		printf("error geting the public key");
+	}
+	
+	pembio = BIO_new(BIO_s_mem());
+	int length = PEM_write_bio_PUBKEY(pembio,forNSD->pub_key); 	
+
+	char* keyString;
+	int len = BIO_get_mem_data(pembio, &keyString);
+	int pipefd[2];
+	pipe(pipefd);
+	char* argv[6];
+	argv[0] = "qrencode";
+	argv[1] = "-o";
+	argv[2] = IMG_PATH;
+	argv[3] = "-s";
+	argv[4] = "6";
+	argv[5] = NULL;
+
+/*
+ *	printf("FORK\n");
+ *	int i;
+ *	for(i = 0; i < 3; i++) {
+ *		printf("arg[%d] %s\n", i, argv[i]);
+ *	}
+ *	printf("arg[3] ");
+ *	for(i=0;i<len;i++) printf("%0x",argv[3][i]);
+ *	printf("\n");
+ */
+
+	if((pid = fork())) {
+		close(pipefd[0]);          /* Close unused read end */
+		write(pipefd[1], keyString, strlen(keyString));
+		close(pipefd[1]);          /* Reader will see EOF */
+		waitpid(pid,&status,0);
+	} else {
+		char out[1024];
+		int s;
+
+		close(pipefd[1]);          /* Close unused write end */
+		s = dup2(pipefd[0], STDIN_FILENO);
+		if (s != STDIN_FILENO)
+		{
+			perror("dup2 error\n");
+			exit(-1);
+		}
+
+		execv("/usr/bin/qrencode", argv);
+		printf("something went wrong in create_auth_daemon child\n");
+		exit(-1);
+	}
+	//free(keyString);
+	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, forNSD);
+
 	auth_server_create(port);
 	return NULL;
 }

@@ -35,6 +35,9 @@
 #define SIGNATURE_REQUEST	2
 #define SIGNATURE_RESPONSE	3
 #define FAILURE_RESPONSE	4
+#define POPUP_EXE		"./qrdisplay/qrPopUp"
+#define IMG_PATH		"./qrdisplay/qrCode.png"
+
 
 void auth_server_create(int port);
 

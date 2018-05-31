@@ -100,6 +100,9 @@ int publish_service(service_ctx_t* ctx) {
 	}
 
 	if (avahi_entry_group_is_empty(ctx->group)) {
+		AvahiStringList *txt;
+		txt = avahi_string_list_new("does=work",NULL);
+		
 		err = avahi_entry_group_add_service(ctx->group, 
 			AVAHI_IF_UNSPEC, /* announce on all interfaces */
 			AVAHI_PROTO_UNSPEC, /* announce on all protocols */
@@ -109,8 +112,11 @@ int publish_service(service_ctx_t* ctx) {
 			NULL, /* daemon will decide domain */
 			NULL, /* daemon will decide hostname */
 			ctx->port, /* service port */
-			NULL /* Null-terminated list of additional TXT records */
-		);
+			"publicKey=fakepublicKey", /* Null-terminated list of additional TXT records */
+			NULL		
+			);
+		avahi_string_list_free(txt);
+		
 		if (err < 0) {
 			log_printf(LOG_ERROR, "Avahi Error: %s\n", avahi_strerror(err));
 			return 0;
