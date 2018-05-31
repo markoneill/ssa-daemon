@@ -41,7 +41,7 @@ int generate_rsa_key(EVP_PKEY** key_out, int bits) {
 	RSA* rsa;
 	EVP_PKEY* keypair;
 
-	e = RSA_F4;	
+	e = RSA_F4;
 
 	bn_e = BN_new();
 	if (bn_e == NULL) {
