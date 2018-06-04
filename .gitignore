@@ -54,3 +54,6 @@ dkms.conf
 #images
 *.png
 
+# Test files
+*.csv
+test_files/*
