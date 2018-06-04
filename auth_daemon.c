@@ -31,11 +31,16 @@
 #include <sys/un.h>
 #include <assert.h>
 
-#include <event2/event.h>
+#include <event2/bufferevent_ssl.h>
 #include <event2/listener.h>
 #include <event2/util.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
+
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
+
 #include "auth_daemon.h"
 #include "log.h"
 #include "nsd.h"
@@ -48,6 +53,8 @@ typedef struct auth_daemon_ctx {
 	struct bufferevent* device_bev;
 	struct evconnlistener* worker_listener;
 	struct bufferevent* worker_bev;
+	SSL_CTX *tls_ctx;
+	int qrcode_gui_pid;
 } auth_daemon_ctx_t;
 
 enum state {
@@ -75,7 +82,7 @@ static void device_write_cb(struct bufferevent *bev, void *arg);
 static void device_read_cb(struct bufferevent *bev, void *arg);
 static void device_event_cb(struct bufferevent *bev, short events, void *arg);
 
-void auth_server_create(int port) {
+void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	auth_daemon_ctx_t daemon_ctx;
 	struct event_base* ev_base;
 
@@ -88,9 +95,8 @@ void auth_server_create(int port) {
 	struct sockaddr_in ext_addr;
 	int ext_addrlen;
 
-	ev_base = event_base_new();
-
-	/* Set up listener for IPC from SSA workers */
+	SSL_CTX *new_tls_ctx;
+ev_base = event_base_new(); /* Set up listener for IPC from SSA workers */
 	memset(&ipc_addr, 0, sizeof(struct sockaddr_un));
 	ipc_addr.sun_family = AF_UNIX;
 	memcpy(ipc_addr.sun_path, unix_id, sizeof(unix_id));
@@ -119,6 +125,11 @@ void auth_server_create(int port) {
 	}
 	evconnlistener_set_error_cb(ext_listener, new_device_error_cb);
 
+	new_tls_ctx = SSL_CTX_new(SSLv23_server_method());
+	SSL_CTX_use_PrivateKey(new_tls_ctx, pkey);
+        SSL_CTX_use_certificate(new_tls_ctx, cert);
+
+	daemon_ctx.tls_ctx = new_tls_ctx;
 	daemon_ctx.ev_base = ev_base;
 	daemon_ctx.worker_listener = ipc_listener;
 	daemon_ctx.worker_bev = NULL;
@@ -207,11 +218,15 @@ void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
 
 void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
+	SSL *tls;
+
 	log_printf(LOG_INFO, "A new authentication device has registered\n");
 	
 	auth_daemon_ctx_t* ctx = arg;
 	evconnlistener_disable(listener);
-	struct bufferevent* bev = bufferevent_socket_new(ctx->ev_base, fd,
+	tls = SSL_new(ctx->tls_ctx);
+	struct bufferevent* bev = bufferevent_openssl_socket_new(ctx->ev_base, fd,
+			tls, BUFFEREVENT_SSL_ACCEPTING,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
 	// ************************************************************************
@@ -220,12 +235,12 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	
 	int pid;	
 	if((pid = fork())){
-		sleep(10);
-		kill(pid,9);	
+		log_printf(LOG_INFO, "qrCode pop-up launced\n");
 	}else{
 		execv(POPUP_EXE,NULL); 
+		exit(-1);
 	}
-	
+ 	ctx->qrcode_gui_pid = pid;	
 
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
@@ -260,7 +275,13 @@ void device_read_cb(struct bufferevent *bev, void *arg) {
 
 void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
+	int ssl_err;
 	if (events & BEV_EVENT_CONNECTED) {
+		if (ctx->qrcode_gui_pid) {
+			log_printf(LOG_DEBUG, "QRCode closed connected\n");
+			kill(ctx->qrcode_gui_pid, 9);
+			ctx->qrcode_gui_pid = 0;
+		}
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "Authentication device disconnecting\n");
@@ -272,7 +293,17 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 		log_printf(LOG_INFO, "Authentication device error\n");
 		evconnlistener_enable(ctx->device_listener);
 		ctx->device_bev = NULL;
+		while ((ssl_err = bufferevent_get_openssl_error(bev))) {
+			log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n",
+				ERR_func_error_string(ssl_err),
+				 ERR_reason_error_string(ssl_err));
+		}
 		bufferevent_free(bev);
+		if (ctx->qrcode_gui_pid) {
+			log_printf(LOG_DEBUG, "QRCode closed on error\n");
+			kill(ctx->qrcode_gui_pid, 9);
+			ctx->qrcode_gui_pid = 0;
+		}
 	}
 	return;
 }

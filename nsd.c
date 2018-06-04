@@ -36,12 +36,16 @@
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 
+#include <openssl/sha.h>
+#define MAX_TXT_RECORD_LEN 256
+
 typedef struct service_ctx {
 	AvahiClient* client;
 	AvahiEntryGroup* group;
 	AvahiSimplePoll* poller;
 	char* service_name;
 	int port;
+	EVP_PKEY *pkey;
 } service_ctx_t;
 
 static int publish_service(service_ctx_t* ctx);
@@ -58,7 +62,7 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 	return 0;
 }*/
 
-int register_auth_service(int port) {
+int register_auth_service(int port, EVP_PKEY *pkey) {
 	int err;
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
@@ -66,6 +70,7 @@ int register_auth_service(int port) {
 	ctx = calloc(1, sizeof(service_ctx_t));
 
 	ctx->port = port;
+	ctx->pkey = pkey;
 	ctx->service_name = avahi_strdup("SSA Auth");
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
@@ -87,9 +92,39 @@ int register_auth_service(int port) {
 	free(ctx);
 	return 1;
 }
+int base64_encode(const unsigned char* buffer, size_t n, char* b64text, size_t length) { //Encodes a binary safe base 64 string
+	BIO *bio, *b64;
+	char *buffer_ptr;
+	int len;
 
+	b64 = BIO_new(BIO_f_base64());
+	bio = BIO_new(BIO_s_mem());
+	bio = BIO_push(b64, bio);
+
+	BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL); //Ignore newlines - write everything in one line
+	len = BIO_write(bio, buffer, n);
+	log_printf(LOG_ERROR,"len = %d\n", len);
+	if(len > length){
+		log_printf(LOG_ERROR,"len = %d\n", len);
+		return 1;
+	}
+	BIO_flush(bio);
+	len = BIO_get_mem_data(bio, &buffer_ptr);
+	log_printf(LOG_ERROR,"len = %d\n", len);
+	memcpy(b64text, buffer_ptr, len);
+	BIO_set_close(bio, BIO_NOCLOSE);
+	BIO_free_all(bio);
+
+	return 0; //success
+}
 int publish_service(service_ctx_t* ctx) {
 	int err;
+	char buf[1024] = "publicKey=";
+	char *txt;
+	int len;
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha256;
+	BIO *pembio = BIO_new(BIO_s_mem());
 	if (ctx->group == NULL) {
 		ctx->group = avahi_entry_group_new(ctx->client, entry_group_cb, ctx);
 		if (ctx->group == NULL) {
@@ -100,9 +135,15 @@ int publish_service(service_ctx_t* ctx) {
 	}
 
 	if (avahi_entry_group_is_empty(ctx->group)) {
-		AvahiStringList *txt;
-		txt = avahi_string_list_new("does=work",NULL);
+		PEM_write_bio_PUBKEY(pembio,ctx->pkey);
+		len = BIO_get_mem_data(pembio,&txt);
 		
+    		SHA256_Init(&sha256);
+    		SHA256_Update(&sha256, txt, len);
+    		SHA256_Final(hash, &sha256);
+		
+		base64_encode(hash, SHA256_DIGEST_LENGTH, buf+strlen(buf), MAX_TXT_RECORD_LEN);	
+		BIO_free(pembio);
 		err = avahi_entry_group_add_service(ctx->group, 
 			AVAHI_IF_UNSPEC, /* announce on all interfaces */
 			AVAHI_PROTO_UNSPEC, /* announce on all protocols */
@@ -112,10 +153,9 @@ int publish_service(service_ctx_t* ctx) {
 			NULL, /* daemon will decide domain */
 			NULL, /* daemon will decide hostname */
 			ctx->port, /* service port */
-			"publicKey=fakepublicKey", /* Null-terminated list of additional TXT records */
+			buf, /* Null-terminated list of additional TXT records */
 			NULL		
 			);
-		avahi_string_list_free(txt);
 		
 		if (err < 0) {
 			log_printf(LOG_ERROR, "Avahi Error: %s\n", avahi_strerror(err));

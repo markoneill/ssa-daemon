@@ -33,6 +33,8 @@
 #include <event2/util.h>
 
 #include <openssl/ssl.h>
+#include <openssl/x509.h>
+#include <openssl/evp.h>
 
 #include "hashmap.h"
 #include "queue.h"

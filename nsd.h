@@ -27,6 +27,9 @@
 #ifndef NSD_H
 #define NSD_H
 
-int register_auth_service(int port);
+#include <openssl/evp.h>
+
+int register_auth_service(int port,EVP_PKEY *pKey);
+
 
 #endif

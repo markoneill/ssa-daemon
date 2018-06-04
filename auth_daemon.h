@@ -38,7 +38,9 @@
 #define POPUP_EXE		"./qrdisplay/qrPopUp"
 #define IMG_PATH		"./qrdisplay/qrCode.png"
 
+#include <openssl/x509.h>
+#include <openssl/evp.h>
 
-void auth_server_create(int port);
+ void auth_server_create(int port, X509* cert, EVP_PKEY *pkey);
 
 #endif

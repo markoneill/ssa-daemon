@@ -36,6 +36,7 @@
 #include "config.h"
 #include "auth_daemon.h"
 #include "nsd.h"
+#include "self_sign.h"
 
 void sig_handler(int signum);
 void* create_nsd_daemon(void* arg);
@@ -159,14 +160,14 @@ void sig_handler(int signum) {
 void* create_nsd_daemon(void* arg) {
 	nsd_params_t *params = (nsd_params_t*) arg;
 	int port = params->port;
-	register_auth_service(port);
+	EVP_PKEY *pub_key = params->pub_key;	
+	register_auth_service(port, pub_key);
 	return NULL;
 }
 
 void* create_csr_daemon(void* arg) {
 	int csr_daemon_port = (int)arg;
 	csr_server_create(csr_daemon_port);
-	free(arg);
 	return NULL;
 }
 
@@ -176,22 +177,22 @@ void* create_auth_daemon(void* arg) {
 	int port = (int) arg;
 	BIO *pembio;
 	X509 *cert;
+	EVP_PKEY *pkey;	
+
+	if (generate_rsa_key(&pkey, 2048) == 0) {
+		fprintf(stderr, "Failed to generate RSA key\n");
+		return EXIT_FAILURE;
+	}
+
+	cert = generate_self_signed_certificate(pkey, 0, 365);
+	if (cert == NULL) {
+		fprintf(stderr, "Failed to generate self signed certificate\n");
+		return EXIT_FAILURE;
+	}
 	
 	// ************************************************************************
 	// add code to generate a cert and key pair hear
 	//
-	
-	//--------------DUMMY--------------------
-	//certbio = BIO_new(BIO_s_file());
-
-	//BIO_read_filename(certbio, "/home/mark/mark-phd/tlswrap/test_files/certificate_b.pem");
-	//if(!(cert = PEM_read_bio_X509(certbio, NULL, 0, NULL)))
-	//	printf("DUMMY error!!!");
-	
-	char filename[] = "/home/mark/mark-phd/tlswrap/test_files/certificate_b.pem";
-	FILE * cert_file = fopen(filename, "r");
-	cert = PEM_read_X509(cert_file, NULL, NULL, NULL);
-	//--------------END DUMMY----------------
 	
 
 	nsd_params_t *forNSD = (nsd_params_t*) malloc(sizeof(nsd_params_t));
@@ -215,21 +216,10 @@ void* create_auth_daemon(void* arg) {
 	argv[3] = "-s";
 	argv[4] = "6";
 	argv[5] = NULL;
-
-/*
- *	printf("FORK\n");
- *	int i;
- *	for(i = 0; i < 3; i++) {
- *		printf("arg[%d] %s\n", i, argv[i]);
- *	}
- *	printf("arg[3] ");
- *	for(i=0;i<len;i++) printf("%0x",argv[3][i]);
- *	printf("\n");
- */
-
+	
 	if((pid = fork())) {
 		close(pipefd[0]);          /* Close unused read end */
-		write(pipefd[1], keyString, strlen(keyString));
+		write(pipefd[1], keyString, len);
 		close(pipefd[1]);          /* Reader will see EOF */
 		waitpid(pid,&status,0);
 	} else {
@@ -248,9 +238,12 @@ void* create_auth_daemon(void* arg) {
 		printf("something went wrong in create_auth_daemon child\n");
 		exit(-1);
 	}
-	//free(keyString);
+	
+	BIO_free(pembio);	
 	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, forNSD);
 
-	auth_server_create(port);
+	auth_server_create(port, cert, pkey);
+	X509_free(cert);
+	EVP_PKEY_free(pkey);
 	return NULL;
 }
