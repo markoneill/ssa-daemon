@@ -17,6 +17,10 @@ main(int   argc,
   GError    *error;
   int a = 0;
   char ** av; 
+
+  setgid(100);
+  setuid(1000);
+
   gtk_init (&a, &av);
   
   window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
