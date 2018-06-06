@@ -189,11 +189,6 @@ void* create_auth_daemon(void* arg) {
 		fprintf(stderr, "Failed to generate self signed certificate\n");
 		return EXIT_FAILURE;
 	}
-	
-	// ************************************************************************
-	// add code to generate a cert and key pair hear
-	//
-	
 
 	nsd_params_t *forNSD = (nsd_params_t*) malloc(sizeof(nsd_params_t));
 

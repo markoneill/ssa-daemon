@@ -103,14 +103,12 @@ int base64_encode(const unsigned char* buffer, size_t n, char* b64text, size_t l
 
 	BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL); //Ignore newlines - write everything in one line
 	len = BIO_write(bio, buffer, n);
-	log_printf(LOG_ERROR,"len = %d\n", len);
 	if(len > length){
 		log_printf(LOG_ERROR,"len = %d\n", len);
 		return 1;
 	}
 	BIO_flush(bio);
 	len = BIO_get_mem_data(bio, &buffer_ptr);
-	log_printf(LOG_ERROR,"len = %d\n", len);
 	memcpy(b64text, buffer_ptr, len);
 	BIO_set_close(bio, BIO_NOCLOSE);
 	BIO_free_all(bio);
