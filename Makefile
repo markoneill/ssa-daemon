@@ -36,6 +36,8 @@ LIBS_EX = \
 	-Wl,openssl/lib
 INCLUDES= 
 
+.PHONY: clean qrwindow run
+
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: INCLUDES=$(STD_INCLUDES)
 all: $(EXEC)
@@ -46,7 +48,7 @@ release: $(EXEC)
 
 clientauth: CXXFLAGS+=$(CXX_CLIENTAUTH_FLAGS)
 clientauth: INCLUDES+=$(NEW_INCLUDES)
-clientauth: qrdisplay
+clientauth: qrwindow
 clientauth: $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS_EX)
 
@@ -61,8 +63,8 @@ $(EXEC): $(OBJECTS)
 # To remove generated files
 clean:
 	rm -f $(EXEC) $(OBJECTS)
+	$(MAKE) -C ./qrdisplay clean
 
-qrdisplay: 
+qrwindow:
 	$(MAKE) -C ./qrdisplay
 
-.PHONY : clean qrdisplay

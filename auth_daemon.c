@@ -24,6 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
@@ -279,7 +280,7 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	if (events & BEV_EVENT_CONNECTED) {
 		if (ctx->qrcode_gui_pid) {
 			log_printf(LOG_DEBUG, "QRCode closed connected\n");
-			kill(ctx->qrcode_gui_pid, 9);
+			kill(ctx->qrcode_gui_pid, SIGUSR1);
 			ctx->qrcode_gui_pid = 0;
 		}
 	}
@@ -301,7 +302,7 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 		bufferevent_free(bev);
 		if (ctx->qrcode_gui_pid) {
 			log_printf(LOG_DEBUG, "QRCode closed on error\n");
-			kill(ctx->qrcode_gui_pid, 9);
+			kill(ctx->qrcode_gui_pid, SIGUSR2);
 			ctx->qrcode_gui_pid = 0;
 		}
 	}

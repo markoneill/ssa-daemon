@@ -194,7 +194,8 @@ void* create_auth_daemon(void* arg) {
 
 	forNSD->port = port;
 	if(!(forNSD->pub_key = X509_get_pubkey(cert))){
-		printf("error geting the public key");
+		fprintf(stderr, "Failed to extract the public key from the certificate\n");
+		return EXIT_FAILURE;
 	}
 	
 	pembio = BIO_new(BIO_s_mem());
@@ -213,20 +214,23 @@ void* create_auth_daemon(void* arg) {
 	argv[5] = NULL;
 	
 	if((pid = fork())) {
+		if (pid == -1) {
+			fprintf(stderr, "could not create QRCode, Call to fork failed\n");
+			return EXIT_FAILURE;
+		}
 		close(pipefd[0]);          /* Close unused read end */
 		write(pipefd[1], keyString, len);
 		close(pipefd[1]);          /* Reader will see EOF */
 		waitpid(pid,&status,0);
 	} else {
-		char out[1024];
-		int s;
 
 		close(pipefd[1]);          /* Close unused write end */
-		s = dup2(pipefd[0], STDIN_FILENO);
-		if (s != STDIN_FILENO)
+		close(STDIN_FILENO);	   /* repalce stdin with reed end */
+		status = dup2(pipefd[0], STDIN_FILENO);
+		if (status != STDIN_FILENO)
 		{
 			perror("dup2 error\n");
-			exit(-1);
+			return EXIT_FAILURE;
 		}
 
 		execv("/usr/bin/qrencode", argv);
