@@ -29,6 +29,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
 #include <avahi-common/alternative.h>
@@ -37,7 +39,8 @@
 #include <avahi-common/error.h>
 
 #include <openssl/sha.h>
-#define MAX_TXT_RECORD_LEN 256
+#define MAX_TXT_RECORD_LEN	256
+#define MAX_HOSTNAME_LEN	256
 
 typedef struct service_ctx {
 	AvahiClient* client;
@@ -64,14 +67,24 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 
 int register_auth_service(int port, EVP_PKEY *pkey) {
 	int err;
+	char hostname[MAX_HOSTNAME_LEN];
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
 
 	ctx = calloc(1, sizeof(service_ctx_t));
+	if (ctx == NULL) {
+		log_printf(LOG_ERROR, "Unable to allocate service data\n");
+		return 0;
+	}
+
+	if (gethostname(hostname, MAX_HOSTNAME_LEN) == -1) {
+		log_printf(LOG_ERROR, "Failed to get hostname: %s\n", strerror(errno));
+		return 0;
+	}
 
 	ctx->port = port;
 	ctx->pkey = pkey;
-	ctx->service_name = avahi_strdup("SSA Auth");
+	ctx->service_name = avahi_strdup(hostname);
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
