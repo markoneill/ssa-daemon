@@ -67,7 +67,7 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 
 int register_auth_service(int port, EVP_PKEY *pkey) {
 	int err;
-	char hostname[MAX_HOSTNAME_LEN];
+	char hostname[MAX_HOSTNAME_LEN], *charp;
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
 
@@ -85,6 +85,12 @@ int register_auth_service(int port, EVP_PKEY *pkey) {
 	ctx->port = port;
 	ctx->pkey = pkey;
 	ctx->service_name = avahi_strdup(hostname);
+
+	/*
+	while( (charp = strchr(ctx->service_name, '.')) )	// remove '.'s from seriice name
+		(*charp) = ' ';
+	*/
+
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
@@ -210,12 +216,12 @@ void client_cb(AvahiClient* client, AvahiClientState state, void* userdata) {
 
 void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void* userdata) {
 	service_ctx_t* ctx = userdata;
-	char* new_name;
+	char* new_name, *charp;
 	switch (state) {
 		case AVAHI_ENTRY_GROUP_ESTABLISHED:
 			log_printf(LOG_INFO, "SSA service published\n");
+			log_printf(LOG_INFO, "NSD name: %s\n", ctx->service_name);
 			break;
-		case AVAHI_ENTRY_GROUP_FAILURE:
 		case AVAHI_ENTRY_GROUP_COLLISION:
 			log_printf(LOG_INFO, "Avahi name collision: %s\n", 
 				avahi_strerror(avahi_client_errno(ctx->client)));
@@ -224,6 +230,9 @@ void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GC
 				ctx->service_name = new_name;
 			log_printf(LOG_INFO, "Switching NSD name to %s\n", new_name);
 			publish_service(ctx);
+			break;
+		case AVAHI_ENTRY_GROUP_FAILURE:
+			log_printf(LOG_DEBUG, "AVAHI_ENTRY_GROUP_FAILURE\n");
 			break;
 		case AVAHI_ENTRY_GROUP_REGISTERING:
 		case AVAHI_ENTRY_GROUP_UNCOMMITED:
