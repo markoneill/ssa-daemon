@@ -208,7 +208,7 @@ void* create_auth_daemon(void* arg) {
 	char* argv[6];
 	argv[0] = "qrencode";
 	argv[1] = "-o";
-	argv[2] = IMG_PATH;
+	argv[2] = QRIMG_PATH;
 	argv[3] = "-s";
 	argv[4] = "6";
 	argv[5] = NULL;

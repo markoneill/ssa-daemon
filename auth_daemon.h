@@ -36,7 +36,7 @@
 #define SIGNATURE_RESPONSE	3
 #define FAILURE_RESPONSE	4
 #define POPUP_EXE		"./qrdisplay/bin/qrPopUp"
-#define IMG_PATH		"./qrdisplay/qrCode.png"
+#define QRIMG_PATH		"./qrdisplay/qrCode.png"
 
 #include <openssl/x509.h>
 #include <openssl/evp.h>
