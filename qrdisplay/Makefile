@@ -13,8 +13,8 @@ $(DBG_TARGET) : $(CFILES)
 .PHONY: clean dbg run
 
 clean :
-	rm $(TARGET)
-	rm $(DBG_TARGET)
+	rm -f $(TARGET)
+	rm -f $(DBG_TARGET)
 	
 dbg : $(DBG_TARGET)
 
