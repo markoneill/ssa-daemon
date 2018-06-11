@@ -86,10 +86,8 @@ int register_auth_service(int port, EVP_PKEY *pkey) {
 	ctx->pkey = pkey;
 	ctx->service_name = avahi_strdup(hostname);
 
-	/*
 	while( (charp = strchr(ctx->service_name, '.')) )	// remove '.'s from seriice name
 		(*charp) = ' ';
-	*/
 
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
