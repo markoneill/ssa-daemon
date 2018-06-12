@@ -110,6 +110,7 @@ void siguser1_handler(int signal)
 
 		new_image = gtk_image_new_from_pixbuf(pixbuf); 
 		gtk_container_remove(GTK_CONTAINER (layout), image);
+		image = new_image;
 		gtk_layout_put(GTK_LAYOUT (layout), new_image, 0, 0);
 
 		gtk_widget_show_all(layout);
@@ -152,6 +153,7 @@ void siguser2_handler(int signal)
 
 		new_image = gtk_image_new_from_pixbuf(pixbuf); 
 		gtk_container_remove(GTK_CONTAINER (layout), image);
+		image = new_image;
 		gtk_layout_put(GTK_LAYOUT (layout), new_image, 0, 0);
 
 		gtk_widget_show_all(layout);

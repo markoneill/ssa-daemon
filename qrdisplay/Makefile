@@ -14,7 +14,7 @@ $(DBG_TARGET) : $(BIN_PATH) $(CFILES)
 	$(CC) $(DBG_CFLAGS) -o $(DBG_TARGET) $(CFILES) $(LFLAGS)
 
 $(BIN_PATH) : 
-	@mkdir -p "$(BIN_PATH)"
+	@umask 0; mkdir -p "$(BIN_PATH)"
 
 clean :
 	@rm -rf "$(BIN_PATH)"
