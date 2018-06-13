@@ -31,7 +31,6 @@
 #include <sys/socket.h>
 
 typedef enum log_level {
-	LOG_BENCHMARK,
 	LOG_DEBUG,
 	LOG_INFO,
 	LOG_WARNING,

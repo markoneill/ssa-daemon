@@ -38,13 +38,11 @@ typedef struct hsnode {
 
 static int hash(hsmap_t* map, char* key);
 
-int hash(hsmap_t* map, char* key)
-{
+int hash(hsmap_t* map, char* key) {
 	int i;
 	int hash_val = 0;
 	
-	for (int i = 0; i < strlen(key); ++i)
-	{
+	for (i = 0; i < strlen(key); ++i) {
 		hash_val += key[i];
 	}
 
@@ -165,8 +163,7 @@ void* str_hashmap_get(hsmap_t* map, char* key) {
 	int index;
 	hsnode_t* cur;
 
-	if (key == NULL)
-	{
+	if (key == NULL) {
 		return NULL;
 	}
 

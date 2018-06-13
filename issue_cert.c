@@ -9,6 +9,7 @@
 #include <openssl/engine.h>
 #include <openssl/bio.h>
 
+int add_ext(X509* cert, int nid, char* value);
 char req_buf[] =
 "-----BEGIN CERTIFICATE REQUEST-----\n\
 MIICtjCCAZ4CAQIwODELMAkGA1UEBhMCVVMxEjAQBgNVBAoMCVRydXN0QmFzZTEV\n\

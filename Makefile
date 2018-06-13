@@ -1,5 +1,5 @@
 CC = gcc
-CXXFLAGS=-w -Wall
+CXXFLAGS=-Wall -Wno-deprecated-declarations
 CXX_DEBUG_FLAGS=-g
 CXX_RELEASE_FLAGS=-O3 -DNO_LOG
 CXX_CLIENTAUTH_FLAGS= -g -DCLIENT_AUTH

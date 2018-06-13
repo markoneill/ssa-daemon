@@ -77,7 +77,7 @@ enum ssa_nl_groups {
         SSA_NL_NOTIFY,
 };
 
-static const struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
+static struct nla_policy ssa_nl_policy[SSA_NL_A_MAX + 1] = {
         [SSA_NL_A_UNSPEC] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_ID] = { .type = NLA_UNSPEC },
 	[SSA_NL_A_BLOCKING] = { .type = NLA_UNSPEC },
@@ -180,7 +180,7 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			optval = malloc(optlen);
 			if (optval == NULL) {
 				log_printf(LOG_ERROR, "Failed to allocate optval\n");
-				return;
+				return 1;
 			}
 			memcpy(optval, nla_data(attrs[SSA_NL_A_OPTVAL]), optlen);
 			setsockopt_cb(ctx, id, level, optname, optval, optlen);

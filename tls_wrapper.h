@@ -40,13 +40,15 @@
 int SSL_use_certificate_chain_file(SSL *ssl, const char *file);
 #endif
 
+#define ALPN_STRING_MAXLEN	256
+
 typedef struct tls_opts {
 	SSL_CTX* tls_ctx;
 	char* app_path;
 	int custom_validation;
 	int is_server;
-	char alpn_string[256];
-	struct tls_ops* next;
+	char alpn_string[ALPN_STRING_MAXLEN];
+	struct tls_opts* next;
 } tls_opts_t;
 
 typedef struct channel {

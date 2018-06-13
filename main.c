@@ -31,10 +31,12 @@
 #include <errno.h>
 #include <signal.h>
 #include <pthread.h>
+#include <wait.h>
 #include "daemon.h"
 #include "log.h"
 #include "config.h"
 #include "auth_daemon.h"
+#include "csr_daemon.h"
 #include "nsd.h"
 #include "self_sign.h"
 
@@ -47,6 +49,11 @@ pid_t* workers;
 int worker_count;
 int is_parent;
 
+typedef struct daemon_param {
+	int port;
+	EVP_PKEY* pub_key;
+} daemon_param_t;
+
 int main(int argc, char* argv[]) {
 	long cpus_on;
 	long cpus_conf;
@@ -56,10 +63,16 @@ int main(int argc, char* argv[]) {
 	int status;
 	int ret;
 	int starting_port = 8443;
-	int csr_daemon_port = 8040;
-	int auth_port = 6666;
 	pthread_t csr_daemon;
+	daemon_param_t csr_params = {
+		.port = 8040
+	};
+	#ifdef CLIENT_AUTH
+	daemon_param_t auth_params = {
+		.port = 6666
+	};
 	pthread_t auth_daemon;
+	#endif
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -107,9 +120,9 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
+	pthread_create(&csr_daemon, NULL, create_csr_daemon, (void*)&csr_params);
 	#ifdef CLIENT_AUTH
-	pthread_create(&auth_daemon, NULL, create_auth_daemon, auth_port);
+	pthread_create(&auth_daemon, NULL, create_auth_daemon, (void*)&auth_params);
 	#endif
 
 	while ((ret = wait(&status)) > 0) {
@@ -132,8 +145,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	/*pthread_join(csr_daemon, NULL);
-	pthread_join(auth_daemon, NULL);
-	pthread_join(nsd_daemon, NULL);*/
+	pthread_join(auth_daemon, NULL);*/
 
 	log_close();
 	free_config();
@@ -158,7 +170,7 @@ void sig_handler(int signum) {
 }
 
 void* create_nsd_daemon(void* arg) {
-	nsd_params_t *params = (nsd_params_t*) arg;
+	daemon_param_t* params = (daemon_param_t*)arg;
 	int port = params->port;
 	EVP_PKEY *pub_key = params->pub_key;	
 	register_auth_service(port, pub_key);
@@ -166,40 +178,41 @@ void* create_nsd_daemon(void* arg) {
 }
 
 void* create_csr_daemon(void* arg) {
-	int csr_daemon_port = (int)arg;
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int csr_daemon_port = params->port;
 	csr_server_create(csr_daemon_port);
 	return NULL;
 }
 
 void* create_auth_daemon(void* arg) {
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int port = params->port;
 	pthread_t nsd_daemon;
+	daemon_param_t nsd_params;
 	int status, pid;
-	int port = (int) arg;
 	BIO *pembio;
 	X509 *cert;
 	EVP_PKEY *pkey;	
 
 	if (generate_rsa_key(&pkey, 2048) == 0) {
 		fprintf(stderr, "Failed to generate RSA key\n");
-		return EXIT_FAILURE;
+		return NULL;
 	}
 
 	cert = generate_self_signed_certificate(pkey, 0, 365);
 	if (cert == NULL) {
 		fprintf(stderr, "Failed to generate self signed certificate\n");
-		return EXIT_FAILURE;
+		return NULL;
 	}
 
-	nsd_params_t *forNSD = (nsd_params_t*) malloc(sizeof(nsd_params_t));
-
-	forNSD->port = port;
-	if(!(forNSD->pub_key = X509_get_pubkey(cert))){
+	nsd_params.port = port;
+	if (!(nsd_params.pub_key = X509_get_pubkey(cert))) {
 		fprintf(stderr, "Failed to extract the public key from the certificate\n");
-		return EXIT_FAILURE;
+		return NULL;
 	}
 	
 	pembio = BIO_new(BIO_s_mem());
-	int length = PEM_write_bio_PUBKEY(pembio,forNSD->pub_key); 	
+	PEM_write_bio_PUBKEY(pembio, nsd_params.pub_key); 	
 
 	char* keyString;
 	int len = BIO_get_mem_data(pembio, &keyString);
@@ -216,7 +229,7 @@ void* create_auth_daemon(void* arg) {
 	if((pid = fork())) {
 		if (pid == -1) {
 			fprintf(stderr, "could not create QRCode, Call to fork failed\n");
-			return EXIT_FAILURE;
+			return NULL;
 		}
 		close(pipefd[0]);          /* Close unused read end */
 		write(pipefd[1], keyString, len);
@@ -230,7 +243,7 @@ void* create_auth_daemon(void* arg) {
 		if (status != STDIN_FILENO)
 		{
 			perror("dup2 error\n");
-			return EXIT_FAILURE;
+			return NULL;
 		}
 
 		execv("/usr/bin/qrencode", argv);
@@ -239,7 +252,7 @@ void* create_auth_daemon(void* arg) {
 	}
 	
 	BIO_free(pembio);	
-	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, forNSD);
+	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, (void*)&nsd_params);
 
 	auth_server_create(port, cert, pkey);
 	X509_free(cert);

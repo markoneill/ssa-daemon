@@ -12,11 +12,9 @@ size_t global_config_size = 0;
 
 
 void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
-	const char* name = config_setting_name(cur_setting);
 	const char* value;
 	int extension_count = 0;
-	int rand_size = 0;
-	char* rand_path = NULL;
+	const char* name = config_setting_name(cur_setting);
 
 	if (STR_MATCH(name, "Application")) {
 		config->profile = strdup(config_setting_get_string(cur_setting));
@@ -160,8 +158,6 @@ size_t parse_config(char* filename) {
 	ssa_config_t* cur_config;
 
 	int num_profiles;
-	const char* str;
-	int myint;
 
 	config_init(&cfg);
 
