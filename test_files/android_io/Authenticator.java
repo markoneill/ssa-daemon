@@ -28,12 +28,19 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.security.InvalidKeyException;
 import java.util.Base64;
 
 public class Authenticator {
-	private Socket socket;
+	private SSLSocket socket;
+	private SSLContext ctx;
 	final static private byte CERTIFICATE_REQUEST = 0;
 	final static private byte CERTIFICATE_RESPONSE = 1;
 	final static private byte SIGNATURE_REQUEST = 2;
@@ -43,7 +50,12 @@ public class Authenticator {
 
 	public Authenticator() {
 		this.socket = null;
-		
+		try{
+		    ctx = SSLContext.getInstance("TLS");
+		    ctx.init(null, new TrustManager[] { new ClientAuthTrustManager() }, null);
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            e.printStackTrace();
+        }
 		PrivateKey key = readKey();
 		X509Certificate[] certificates = readCertificates();
 		try {
@@ -69,7 +81,7 @@ public class Authenticator {
 
 	public boolean connect(String addr, int port) {
 		try {
-			this.socket = new Socket(addr, port);
+			this.socket = (SSLSocket) ctx.getSocketFactory().createSocket(addr, port);
 		}
 		catch (UnknownHostException e) {
 		}
@@ -272,5 +284,22 @@ public class Authenticator {
 			e.printStackTrace();
 		}
 		return null;
+	}
+	class ClientAuthTrustManager implements X509TrustManager {
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			throw new CertificateException(); // we are not a server
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			//automatically connect without verification
+		}
+
+		@Override
+		public X509Certificate[] getAcceptedIssuers() {
+			return new X509Certificate[0];
+		}
+
 	}
 }
