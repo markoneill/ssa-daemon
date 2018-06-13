@@ -28,10 +28,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/un.h>
+#include <unistd.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
+#include <event2/buffer.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -45,6 +47,7 @@
 #include "auth_daemon.h"
 #include "log.h"
 #include "config.h"
+#include "netlink.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
@@ -58,7 +61,7 @@ static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 static int server_name_cb(SSL* tls, int* ad, void* arg);
 static int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen,
 	       	const unsigned char *in, unsigned int inlen, void *arg);
-static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
+static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
@@ -81,8 +84,9 @@ int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 void send_cert_request(int fd, char* hostname);
 int recv_cert_response(int fd, X509** o_cert);
 void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid);
-int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen);
+int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen);
 void send_all(int fd, char* msg, int bytes_to_send);
+int auth_daemon_connect(void);
 #endif
 
 
@@ -232,20 +236,18 @@ static int read_rand_seed(char **buf, char* seed_path, int size) {
 		return 0;
 	}
 
-	while (data_len < size)
-    {
-    	ret = read(fd, *buf + data_len, size-data_len);
-        if (ret < 0)
-        {
-            free(*buf);
-            close(fd);
+	while (data_len < size) {
+	    	ret = read(fd, *buf + data_len, size-data_len);
+	        if (ret < 0) {
+			free(*buf);
+			close(fd);
 			*buf = NULL;
 			return 0;
-        }
-        data_len += ret;
-    }
+		}
+		data_len += ret;
+	}
 
-    close(fd);
+	close(fd);
 	return 1;
 }
 
@@ -254,10 +256,10 @@ tls_opts_t* tls_opts_create(char* path) {
 	SSL_CTX* tls_ctx;
 	ssa_config_t* ssa_config;
 	struct stat stat_store;
-	char* store_dir = NULL;
+	/*char* store_dir = NULL;*/
 	char* store_file = NULL;
-	unsigned char* rand_buf;
-	int unverified_context_id = 1;
+	char* rand_buf;
+	const unsigned char unverified_context_id = 1;
 
 	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
 	if (opts == NULL) {
@@ -267,7 +269,7 @@ tls_opts_t* tls_opts_create(char* path) {
 	/* Configure default settings for connections based on
 	 * admin preferences */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
-	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(int));
+	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(unverified_context_id));
 	ssa_config = get_app_config(path);
 
 	if (ssa_config) {
@@ -283,7 +285,8 @@ tls_opts_t* tls_opts_create(char* path) {
 
 		stat(ssa_config->trust_store, &stat_store);
 		if (S_ISDIR(stat_store.st_mode)) {
-			store_dir = ssa_config->trust_store;
+			/*store_dir = ssa_config->trust_store;
+			 * XXX We don't support dirs yet */
 		}
 		else {
 			store_file = ssa_config->trust_store;
@@ -293,8 +296,7 @@ tls_opts_t* tls_opts_create(char* path) {
 			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
 		}
 
-		if ( read_rand_seed(&rand_buf,ssa_config->randseed_path,ssa_config->randseed_size) == 1 )
-		{
+		if (read_rand_seed(&rand_buf,ssa_config->randseed_path,ssa_config->randseed_size) == 1) {
 			RAND_seed(rand_buf,ssa_config->randseed_size);
 			free(rand_buf);
 		}
@@ -391,7 +393,7 @@ int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 	int response;
 	char* hostname = arg;
 
-	int ok_so_far = X509_verify_cert(store);
+	X509_verify_cert(store);
 
 	query_id = 1;
 	chain = X509_STORE_CTX_get1_chain(store);
@@ -427,7 +429,7 @@ int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 }
 
 int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
-	int verified_context_id = 2;
+	const unsigned char verified_context_id = 2;
 	SSL_CTX* tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	STACK_OF(X509_NAME)* cert_names;
@@ -445,8 +447,14 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 		if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
 			return 0;
 		}
+		#ifdef CLIENT_AUTH
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | 
+				SSL_VERIFY_POST_HANDSHAKE |
+				SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		#else
 		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
-		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(int));
+		#endif
+		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(verified_context_id));
 
 		/* Really we should only do this if we're the server */
 		cert_names = SSL_load_client_CA_file(value);
@@ -465,9 +473,8 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	char* next;
 	char* proto;
 	int proto_len;
-	//char alpn_string[256];
 	char* alpn_string;
-	int alpn_len;
+	unsigned int alpn_len;
 	char* alpn_str_ptr;
 	tls_opts_t* cur_opts;
 
@@ -480,7 +487,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	alpn_str_ptr = alpn_string;
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	log_printf(LOG_INFO, "ALPN Setting: %s\n", protos);
-	memset(alpn_string, 0, sizeof(alpn_string));
+	memset(alpn_string, 0, ALPN_STRING_MAXLEN);
 	while ((next = strchr(proto, ',')) != NULL) {
 		*next = '\0';
 		proto_len = strlen(proto);
@@ -495,6 +502,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	alpn_str_ptr++;
 	memcpy(alpn_str_ptr, proto, proto_len);
 
+	/* XXX I don't think this is correct. verify */
 	alpn_len = strlen(alpn_string);
 
 	/* We need to apply the callback to all relevant SSL_CTXs */
@@ -504,7 +512,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 		cur_opts = cur_opts->next;
 	}
 	
-	if (SSL_CTX_set_alpn_protos(tls_ctx, alpn_string, alpn_len) == 1) {
+	if (SSL_CTX_set_alpn_protos(tls_ctx, (unsigned char*)alpn_string, alpn_len) == 1) {
 		return 0;
 	}
 	
@@ -516,11 +524,22 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	ssa_config_t* ssa_config;
 	char* cipher_list;
+	int length;
 
 	ssa_config = get_app_config(tls_opts->app_path);
 
-	if (asprintf(&cipher_list, "%s:!%s",ssa_config->cipher_list ,cipher) > 0) {
-		log_printf(LOG_ERROR, "Unable to disable cipher %s\n",cipher);
+	length = snprintf(NULL, 0, "%s:!%s", ssa_config->cipher_list, cipher);
+	if (length == -1) {
+		log_printf(LOG_ERROR, "Unable to parse cipher: %s\n", cipher);
+		return 0;
+	}
+	cipher_list = (char*)malloc(length + 1);
+	if (cipher_list == NULL) {
+		log_printf(LOG_ERROR, "Unable to allocate new cipher list\n");
+		return 0;
+	}
+	if (snprintf(cipher_list, length + 1, "%s:!%s", ssa_config->cipher_list, cipher) == -1) {
+		log_printf(LOG_ERROR, "Unable to add cipher: %s\n",cipher);
 		return 0;
 	}
 
@@ -533,14 +552,6 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 	free(ssa_config->cipher_list);
 	ssa_config->cipher_list = cipher_list;
 
-
-	//char* cur_cipher;
-	// XXX to make this function less than 500 lines we need access to the
-	// config string for this app.
-	// There is no function in OpenSSL to get back a cipher string and append
-	// the desired !cipher to it. All ways to do it are endlessly hairy.
-	//SSL_CTX_set_cipher_list
-	//SSL_set_cipher_list
 	return 1;
 }
 
@@ -557,6 +568,19 @@ int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
 		SSL_CTX_set_timeout(tls_ctx, timeout);
 	}
 	return 1;
+}
+
+int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value) {
+	#ifdef CLIENT_AUTH
+	if (conn_ctx == NULL) {
+		return 0;
+	}
+	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
+		log_printf(LOG_ERROR, "Unable to send auth request\n");
+		return 0;
+	}
+	#endif
+	return 0;
 }
 
 /* XXX update this to take in-memory PEM chains as well as file names */
@@ -646,7 +670,6 @@ int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepa
 }
 
 int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	if (conn_ctx == NULL) {
 		/* We don't fail here because this will be set when the
 		 * connection is actually created by tls_client_setup */
@@ -724,13 +747,12 @@ int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** d
 }
 
 int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	char* hostname;
-	char* hostname_copy;
+	const char* hostname;
 	if (conn_ctx == NULL) {
 		return 0;
 	}
 	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
-	*data = hostname;
+	*data = (char*)hostname;
 	if (hostname == NULL) {
 		*len = 0;
 		return 1;
@@ -745,7 +767,7 @@ int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char**
 }
 
 int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	SSL_get0_alpn_selected(conn_ctx->tls, data, len);
+	SSL_get0_alpn_selected(conn_ctx->tls, (const unsigned char**)data, len);
 	return 1;
 }
 
@@ -763,7 +785,7 @@ long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
 	return timeout;
 }
 
-SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
+SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname) {
 	X509* cert;
 	tls_opts_t* cur_opts;
 	if (tls_opts == NULL) {
@@ -813,7 +835,7 @@ int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, con
 	unsigned char* nc_out;
 
 	//printf("alpn string is %s\n", opts->alpn_string);
-	ret = SSL_select_next_proto(&nc_out, outlen, opts->alpn_string, strlen(opts->alpn_string),
+	ret = SSL_select_next_proto(&nc_out, outlen, (const unsigned char*)opts->alpn_string, strlen(opts->alpn_string),
 			in, inlen);
 	*out = nc_out;
 
@@ -845,6 +867,7 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
 
 	#ifdef CLIENT_AUTH
+	SSL_force_post_handshake_auth(tls);
 	SSL_set_ex_data(tls, auth_info_index, (void*)ai);
 	#endif
 	return tls;
@@ -921,7 +944,6 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
-	char* servername;
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
@@ -931,6 +953,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
+			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
 				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
@@ -1026,12 +1049,13 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 #ifdef CLIENT_AUTH
 int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
 	auth_info_t* ai;
-        EVP_PKEY* pkey = NULL;
+
+        /*EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
         EVP_MD_CTX *mctx = NULL;
         EVP_PKEY_CTX *pctx = NULL;
         size_t siglen;
-        unsigned char* sig;
+        unsigned char* sig;*/
 
 	ai = SSL_get_ex_data(tls, auth_info_index);
 	send_sign_request(ai->fd, hdata, hdata_len, sigalg_nid);
@@ -1122,7 +1146,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	return 1;
 }
 
-int auth_daemon_connect() {
+int auth_daemon_connect(void) {
 	int fd;
 	struct sockaddr_un addr;
 	int addr_len;
@@ -1224,7 +1248,7 @@ int recv_cert_response(int fd, X509** o_cert) {
 	return 1;
 }
 
-int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen) {
+int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen) {
 	unsigned char* sig;
 	int siglen;
 	int bytes_read;

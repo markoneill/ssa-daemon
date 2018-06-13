@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <errno.h>
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
@@ -39,6 +40,8 @@
 #include <avahi-common/error.h>
 
 #include <openssl/sha.h>
+#include <openssl/pem.h>
+
 #define MAX_TXT_RECORD_LEN	256
 #define MAX_HOSTNAME_LEN	256
 
@@ -124,10 +127,16 @@ int base64_encode(const unsigned char* buffer, size_t n, char* b64text, size_t l
 		log_printf(LOG_ERROR,"len = %d\n", len);
 		return 1;
 	}
-	BIO_flush(bio);
+	if (BIO_flush(bio) != 1) {
+		log_printf(LOG_ERROR,"Failed to flush BIO\n");
+		return 1;
+	}
 	len = BIO_get_mem_data(bio, &buffer_ptr);
 	memcpy(b64text, buffer_ptr, len);
-	BIO_set_close(bio, BIO_NOCLOSE);
+	if (BIO_set_close(bio, BIO_NOCLOSE) != 1) {
+		log_printf(LOG_ERROR,"Failed to set close on BIO\n");
+		return 1;
+	}
 	BIO_free_all(bio);
 
 	return 0; //success
@@ -214,7 +223,7 @@ void client_cb(AvahiClient* client, AvahiClientState state, void* userdata) {
 
 void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void* userdata) {
 	service_ctx_t* ctx = userdata;
-	char* new_name, *charp;
+	char* new_name;
 	switch (state) {
 		case AVAHI_ENTRY_GROUP_ESTABLISHED:
 			log_printf(LOG_INFO, "SSA service published\n");

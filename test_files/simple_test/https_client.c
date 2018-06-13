@@ -8,16 +8,14 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 
-#define HOST "hax0r.online"
-
 int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
-int main() {
-	int sock_fd = connect_to_host(HOST, "443");
+int main(int argc, char* argv[]) {
+	int sock_fd = connect_to_host(argv[1], "443");
 	char http_request[2048];
 	char http_response[2048];
-	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", HOST);
+	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, sizeof(http_request)-1, 0);
 	recv(sock_fd, http_response, 750, 0);

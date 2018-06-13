@@ -834,10 +834,10 @@ int create_server_socket(char* port, int protocol) {
         if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
-/*	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
 		perror("ca cert");
 	}
-*/
+
 	set_alpn(sock);
 
 

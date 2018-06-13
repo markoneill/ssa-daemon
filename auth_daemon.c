@@ -97,7 +97,7 @@ void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	int ext_addrlen;
 
 	SSL_CTX *new_tls_ctx;
-ev_base = event_base_new(); /* Set up listener for IPC from SSA workers */
+	ev_base = event_base_new(); /* Set up listener for IPC from SSA workers */
 	memset(&ipc_addr, 0, sizeof(struct sockaddr_un));
 	ipc_addr.sun_family = AF_UNIX;
 	memcpy(ipc_addr.sun_path, unix_id, sizeof(unix_id));
@@ -107,7 +107,7 @@ ev_base = event_base_new(); /* Set up listener for IPC from SSA workers */
 		(struct sockaddr*)&ipc_addr, ipc_addrlen);
 	if (ipc_listener == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create ipc listener\n");
-		return 1;
+		return;
 	}
 	evconnlistener_set_error_cb(ipc_listener, new_requester_error_cb);
 
@@ -122,7 +122,7 @@ ev_base = event_base_new(); /* Set up listener for IPC from SSA workers */
 		(struct sockaddr*)&ext_addr, ext_addrlen);
 	if (ext_listener == NULL) {
 		log_printf(LOG_ERROR, "Couldn't create auth device listener\n");
-		return 1;
+		return;
 	}
 	evconnlistener_set_error_cb(ext_listener, new_device_error_cb);
 
@@ -219,6 +219,7 @@ void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
 
 void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
+	char* const params[] = {POPUP_EXE, NULL};
 	SSL *tls;
 
 	log_printf(LOG_INFO, "A new authentication device has registered\n");
@@ -234,11 +235,11 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// code to display a QR code image
 	//
 	
-	int pid;	
-	if((pid = fork())){
+	int pid;
+	if ((pid = fork())) {
 		log_printf(LOG_INFO, "qrCode pop-up launced\n");
-	}else{
-		execv(POPUP_EXE,NULL); 
+	} else {
+		execv(POPUP_EXE, params);
 		exit(-1);
 	}
  	ctx->qrcode_gui_pid = pid;	

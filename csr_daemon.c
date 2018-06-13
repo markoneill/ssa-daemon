@@ -1,14 +1,17 @@
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
+#include <event2/buffer.h>
 #include <event2/util.h>
 #include <event2/bufferevent_ssl.h>
 
 #include <openssl/ssl.h>
 #include <openssl/engine.h>
 #include <openssl/bio.h>
+#include <openssl/conf.h>
 
 
 #include "log.h"
@@ -51,7 +54,6 @@ static void csr_signal_cb(evutil_socket_t fd, short event, void* arg);
 int csr_server_create(int port) {
 	struct event_base* ev_base = event_base_new();
 	struct evconnlistener* listener;
-	evutil_socket_t server_sock;
 	struct event* sev_pipe;
 	struct event* sev_int;
 	struct sockaddr_in sin;
@@ -194,7 +196,6 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	size_t message_len;
 
 	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
 		if (con_ctx->max_length < recv_len*2) {

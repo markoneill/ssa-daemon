@@ -402,8 +402,8 @@ static int use_certificate_chain_file(SSL_CTX *ctx, SSL *ssl, const char *file)
     BIO *in;
     int ret = 0;
     X509 *x = NULL;
-    pem_password_cb *passwd_callback;
-    void *passwd_callback_userdata;
+    /*pem_password_cb *passwd_callback;
+    void *passwd_callback_userdata;*/
 
     ERR_clear_error();          /* clear error stack for
                                  * SSL_CTX_use_certificate() */

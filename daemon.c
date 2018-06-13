@@ -45,6 +45,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/engine.h>
+#include <openssl/conf.h>
 
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
@@ -275,7 +277,6 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
 	evutil_socket_t sock;
 	char port_buf[6];
 	int ret;
-	int optval = 1;
 
 	struct evutil_addrinfo hints;
 	struct evutil_addrinfo* addr_ptr;
@@ -439,12 +440,12 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 		.sin_port = 0,
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK)
 	};
-	int intaddr_len = sizeof(int_addr);
+	socklen_t intaddr_len = sizeof(int_addr);
 	sock_ctx_t* sock_ctx = (sock_ctx_t*)arg;
 	evutil_socket_t ifd;
 	int port;
 	sock_ctx_t* new_sock_ctx;
-        struct event_base *base = evconnlistener_get_base(listener);
+        //struct event_base *base = evconnlistener_get_base(listener);
 
 	//log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
 	//log_printf_addr(&sock_ctx->int_addr);
@@ -613,6 +614,11 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 	case SO_PEER_IDENTITY:
 		response = -ENOPROTOOPT; /* get only */
 		break;
+	case SO_REQUEST_PEER_AUTH:
+		if (send_peer_auth_req(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
 	case SO_PEER_CERTIFICATE:
 		response = -ENOPROTOOPT; /* get only */
 		break;
@@ -632,7 +638,6 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
 	sock_ctx_t* sock_ctx;
 	long value;
-	int ret;
 	int response = 0;
 	char* data = NULL;
 	unsigned int len = 0;
@@ -679,7 +684,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		if (value < 0) {
 			response = EINVAL;
 		}
-		data = &value;
+		data = (char*)&value;
 		len = sizeof(value);
 		break;
 	case SO_DISABLE_CIPHER:
@@ -692,6 +697,9 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		else {
 			need_free = 1;
 		}
+		break;
+	case SO_REQUEST_PEER_AUTH:
+		response = -ENOPROTOOPT; /* set only */
 		break;
 	case SO_PEER_CERTIFICATE:
 		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
@@ -733,6 +741,14 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 		response = -EBADF;
 	}
 	else {
+		ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+			EVUTIL_CLOSESOCKET(sock_ctx->fd);
+			return;
+		}
+
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
 			perror("bind");
@@ -801,6 +817,11 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 	}
+	if (response != 0) {
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
+
 	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
@@ -834,14 +855,6 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	}
 	
 	/* We're done gathering info, let's set up a server */
-	ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(sock_ctx->fd);
-		return;
-	}
-
 	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
 	if (ret == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
@@ -891,7 +904,6 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 }
 
 void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
-	int ret;
 	sock_ctx_t* sock_ctx;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
@@ -1011,7 +1023,7 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	//			sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	//set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
 
-	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, &addr, addr_len) == -1) {
+	if (sendto(fd, "GOT IT", sizeof("GOT IT"), 0, (struct sockaddr*)&addr, addr_len) == -1) {
 		perror("sendto");
 	}
 	return;
@@ -1023,7 +1035,6 @@ ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct socka
 	struct msghdr msg;
 	struct iovec iov[1];
 	ssize_t	n;
-	int newfd;
 
 	union {
 		struct cmsghdr cm;

@@ -118,7 +118,7 @@ int recv_response_cb(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
 	struct nlattr* attrs[TRUSTBASE_A_MAX + 1];
-	uint64_t id;
+	/*uint64_t id;*/
 	uint32_t result;
 	
 
@@ -129,7 +129,7 @@ int recv_response_cb(struct nl_msg *msg, void *arg) {
 	switch (gnlh->cmd) {
 		case TRUSTBASE_C_RESPONSE:
 			/* Get message fields */
-			id = nla_get_u64(attrs[TRUSTBASE_A_STATE_PTR]);
+			/*id = nla_get_u64(attrs[TRUSTBASE_A_STATE_PTR]);*/
 			result = nla_get_u32(attrs[TRUSTBASE_A_RESULT]);
 			last_response = result;
 			break;

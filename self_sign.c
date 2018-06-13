@@ -9,7 +9,6 @@
 
 static int add_ext(X509* cert, int nid, char* value);
 
-
 int generate_rsa_key(EVP_PKEY** key_out, int bits) {
 	unsigned long e;
 	BIGNUM* bn_e;
@@ -62,7 +61,9 @@ X509* generate_self_signed_certificate(EVP_PKEY* key, int serial, int days) {
 	X509* new_cert;
 	X509_NAME* name;
 	STACK_OF(X509_EXTENSION)* exts;
-	int ext_loc;
+	const unsigned char country[] = "US";
+	const unsigned char org[] = "SSA";
+	const unsigned char cn_name[] = "SSA Client Authentication";
 
 	new_cert = X509_new();
 	if (new_cert == NULL) {
@@ -83,17 +84,17 @@ X509* generate_self_signed_certificate(EVP_PKEY* key, int serial, int days) {
 	}
 	/* Country */
 	if (X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC,
-				"US", -1, -1, 0) != 1) {
+				country, -1, -1, 0) != 1) {
 		return NULL;
 	}
 	/* Organization */
 	if (X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC,
-				"SSA", -1, -1, 0) != 1) {
+				org, -1, -1, 0) != 1) {
 		return NULL;
 	}
 	/* Common Name */
 	if (X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-				"SSA Client Authentication", -1, -1, 0) != 1) {
+				cn_name, -1, -1, 0) != 1) {
 		return NULL;
 	}
 	

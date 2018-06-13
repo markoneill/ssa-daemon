@@ -1,21 +1,24 @@
 CFILES=qrPopUp.c
-TARGET=bin/qrPopUp
-DBG_TARGET=bin/qrPopUpDBG
+BIN_PATH=bin/
+TARGET=$(BIN_PATH)qrPopUp
+DBG_TARGET=$(BIN_PATH)qrPopUpDBG
 LFLAGS=`pkg-config --cflags --libs gtk+-3.0`
 DBG_CFLAGS= -D_DEBUG -Wall -g
 
-$(TARGET) : $(CFILES)
-	$(CC) -o $(TARGET) $(CFILES) $(LFLAGS)
-
-$(DBG_TARGET) : $(CFILES)
-	$(CC) $(DBG_CFLAGS) -o $(DBG_TARGET) $(CFILES) $(LFLAGS)
-
 .PHONY: clean dbg run
 
+$(TARGET) : $(BIN_PATH) $(CFILES)
+	$(CC) -o $(TARGET) $(CFILES) $(LFLAGS)
+
+$(DBG_TARGET) : $(BIN_PATH) $(CFILES)
+	$(CC) $(DBG_CFLAGS) -o $(DBG_TARGET) $(CFILES) $(LFLAGS)
+
+$(BIN_PATH) : 
+	@umask 0; mkdir -p "$(BIN_PATH)"
+
 clean :
-	rm -f $(TARGET)
-	rm -f $(DBG_TARGET)
-	
+	@rm -rf "$(BIN_PATH)"
+
 dbg : $(DBG_TARGET)
 
 run : $(DEB_TARGET)
