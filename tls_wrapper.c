@@ -445,7 +445,13 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 		if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
 			return 0;
 		}
+		#ifdef CLIENT_AUTH
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | 
+				SSL_VERIFY_POST_HANDSHAKE |
+				SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		#else
 		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		#endif
 		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(int));
 
 		/* Really we should only do this if we're the server */
@@ -557,6 +563,20 @@ int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
 		SSL_CTX_set_timeout(tls_ctx, timeout);
 	}
 	return 1;
+}
+
+int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value) {
+	#ifdef CLIENT_AUTH
+	if (conn_ctx == NULL) {
+		return 0;
+	}
+	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
+		log_printf(LOG_ERROR, "Unable to send auth request\n");
+		return 0;
+	}
+	#else
+	return 0;
+	#endif
 }
 
 /* XXX update this to take in-memory PEM chains as well as file names */
@@ -845,6 +865,7 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
 
 	#ifdef CLIENT_AUTH
+	SSL_force_post_handshake_auth(tls);
 	SSL_set_ex_data(tls, auth_info_index, (void*)ai);
 	#endif
 	return tls;
@@ -931,6 +952,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
+			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
 				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}

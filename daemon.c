@@ -613,6 +613,11 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 	case SO_PEER_IDENTITY:
 		response = -ENOPROTOOPT; /* get only */
 		break;
+	case SO_REQUEST_PEER_AUTH:
+		if (send_peer_auth_req(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
+			response = -EINVAL;
+		}
+		break;
 	case SO_PEER_CERTIFICATE:
 		response = -ENOPROTOOPT; /* get only */
 		break;
@@ -693,6 +698,9 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 			need_free = 1;
 		}
 		break;
+	case SO_REQUEST_PEER_AUTH:
+		response = -ENOPROTOOPT; /* set only */
+		break;
 	case SO_PEER_CERTIFICATE:
 		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
@@ -733,6 +741,14 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 		response = -EBADF;
 	}
 	else {
+		ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+			EVUTIL_CLOSESOCKET(sock_ctx->fd);
+			return;
+		}
+
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
 			perror("bind");
@@ -834,14 +850,6 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 	}
 	
 	/* We're done gathering info, let's set up a server */
-	ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-		EVUTIL_CLOSESOCKET(sock_ctx->fd);
-		return;
-	}
-
 	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
 	if (ret == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
