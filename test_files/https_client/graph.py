@@ -31,7 +31,7 @@ if __name__ == '__main__':
         bGraph = myargs['-o']
     if '-b' in myargs:
         bytes_downloaded = 1
-
+    mpl.rcParams['pdf.fonttype']=42#('font',**{'family':'serif','serif':['Computer Modern Roman'],'monospace':['Computer Modern Typewriter']})
     fig, ax = plt.subplots(1)
     df = pd.read_csv(open(fname,'rb'),sep=',').groupby('target')
     plt.rc('lines', linewidth=4)
@@ -54,14 +54,13 @@ if __name__ == '__main__':
                 name2 = "OpenSSL "
                 params = '--'
             ppl.plot(data,params ,label=name2+name)
+    ppl.legend(ax, loc ="upper left")
     if bytes_downloaded == 0:
-        ppl.legend(ax, loc ="upper left")
         plt.ylabel('Time Elapsed')
         plt.xlabel('Number of Processes')
         #plt.title('Time Elapsed Workload')
         fig.savefig(tGraph)
     else:
-        ppl.legend(ax, loc ="upper left")
         plt.ylabel('Time Elapsed')
         plt.xlabel('Number of Bytes Downloaded')
         #plt.title('Time Elapsed Workload')

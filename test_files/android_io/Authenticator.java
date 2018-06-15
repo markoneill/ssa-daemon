@@ -99,14 +99,22 @@ public class Authenticator {
 			DataInputStream dis = new DataInputStream(is);
 			OutputStream os = this.socket.getOutputStream();
 			DataOutputStream dos = new DataOutputStream(os);
+            String hostname = "";
 			while (this.socket.isConnected()) {
-				String hostname = readCertificateRequest(dis);
-				System.out.println("Hostname is " + hostname);
-				byte[] certificate = getCertificateBytes(hostname);
-				sendCertificateResponse(dos, certificate);
-				byte[] handshakeData = readSignatureRequest(dis);
-				byte[] signedData = signHandshakeData(hostname, 0, handshakeData);
-				sendSignatureResponse(dos, signedData);
+                System.out.println("Reading a byte");
+                byte type = dis.readByte();
+                if(type == 0) {
+                    hostname = readCertificateRequest(dis);
+                    System.out.println("Hostname is " + hostname);
+                    byte[] certificate = getCertificateBytes(hostname);
+                    sendCertificateResponse(dos, certificate);
+                }else if(type == 2) {
+                    byte[] handshakeData = readSignatureRequest(dis);
+                    byte[] signedData = signHandshakeData(hostname, 0, handshakeData);
+                    sendSignatureResponse(dos, signedData);
+                }else{
+                    System.out.println("READ AN INCORRECT BYTE");
+                }
 			}
 		}
 		catch (IOException e) {
@@ -127,8 +135,6 @@ public class Authenticator {
 	}
 
 	private String readCertificateRequest(DataInputStream dis) throws IOException {
-		System.out.println("Reading a byte");
-		byte type = dis.readByte();
 		System.out.println("Reading an int");
 		int data_length = dis.readInt();
 		System.out.println("Data length is " + data_length);
@@ -138,8 +144,6 @@ public class Authenticator {
 	}
 	
 	private byte[] readSignatureRequest(DataInputStream dis) throws IOException {
-		System.out.println("Reading a byte");
-		byte type = dis.readByte();
 		System.out.println("Reading an int");
 		int data_length = dis.readInt();
 		System.out.println("Reading an int");
