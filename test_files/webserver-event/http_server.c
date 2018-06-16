@@ -48,7 +48,7 @@ void format_date(char* date_str, time_t raw_time);
 char* first_non_space(char* str);
 char* strnstr(char* haystack, char* needle, int length);
 char* resolve_path(char* root_dir, char* path);
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request);
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request);
 void set_alpn(int fd);
 
 /* HTTP functions */
@@ -407,11 +407,11 @@ int create_http_response(client_t* client, http_request_t* request) {
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
 	/* We're ready to handle CGI now */
-	/*if (strstr(resolved_path, ".php") != NULL) {
-		handle_cgi(client->fd, path, resolved_path, request);
+	if (strstr(resolved_path, ".php") != NULL) {
+		handle_cgi(client, path, resolved_path, request);
 		free(resolved_path);
 		return 1;
-	}*/
+	}
 
 
 	/* Everything seems okay.  Let's actually do what the client requested */
@@ -490,6 +490,10 @@ int create_http_response_header(client_t* client, char* status, char* phrase, ch
 	for (i = 0; headers[i].field != NULL; i++) {
 		if (header_length > MAX_HEADER_LENGTH) break;
 		remaining_length = MAX_HEADER_LENGTH - header_length;
+		if (strcmp(headers[i].field, "Content-Length") == 0 && content_length == 0) {
+			/* workaround for doing dynamic content */
+			continue;
+		}
 		header_length += snprintf(header + header_length, remaining_length, "%s: %s\r\n",
 			headers[i].field, headers[i].value);
 	}
@@ -885,7 +889,7 @@ void format_date(char* date_str, time_t raw_time) {
 	return;
 }
 
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request) {
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request) {
 	pid_t pid;
 	int err;
 	int p[2];
@@ -906,7 +910,7 @@ int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* reques
 	}
 	close(p[1]);
 	dup2(p[0], STDIN_FILENO);
-	dup2(sock, STDOUT_FILENO);
+	dup2(client->fd, STDOUT_FILENO);
 
 	char* value;
 	if ((value = get_header_value(request->headers, "Content-Length")) == NULL) {
@@ -947,6 +951,10 @@ int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* reques
 	char* args[] = { "/usr/bin/php-cgi", NULL };
 	//char cgi_header[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n";
 	//send_data(sock, (unsigned char*)cgi_header, strlen(cgi_header));
+	create_http_response_header(client, "200", "OK", "text/html", 0, 0);
+	client->current_resource.fd = STDOUT_FILENO;
+	client->current_resource.size = 100;
+	client->current_resource.position  = 0;
 	execv(args[0], args);
 	perror("php cgi: execv");
 	exit(EXIT_FAILURE);
