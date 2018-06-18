@@ -17,6 +17,8 @@
 
 #endif
 
+#define TITLE_TEXT "Client-Auth QR code"
+
 
 #define SCALE 486
 #define TEXT_SIZE 50
@@ -55,7 +57,7 @@ int main(int argc, char *argv[]){
 	window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_default_size(GTK_WINDOW (window), SCALE , SCALE+TEXT_SIZE);  
 	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
-	gtk_window_set_title (GTK_WINDOW (window), "See Instructions on Phone");
+	gtk_window_set_title (GTK_WINDOW (window), TITLE_TEXT);
 
 
 	layout = gtk_layout_new(NULL,NULL);

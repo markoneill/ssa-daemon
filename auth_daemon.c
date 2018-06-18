@@ -46,8 +46,8 @@
 #include "log.h"
 #include "nsd.h"
 
-#define QR_SHOW		-1
-#define QR_NO_SHOW	0
+#define QR_SHOW		0
+#define QR_NO_SHOW	-1
 #define HALF_SEC_USEC	5000
 #define MAX_UNIX_NAME	256
 
@@ -279,9 +279,16 @@ void device_read_cb(struct bufferevent *bev, void *arg) {
 void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	int ssl_err;
+
+	log_printf(LOG_DEBUG, "device_event_cb called with event %d (%s%s%s)",
+			events,
+			events & BEV_EVENT_CONNECTED?"BEV_EVENT_CONNECTED":"",
+			events & BEV_EVENT_EOF?"BEV_EVENT_EOF":"",
+			events & BEV_EVENT_ERROR?"BEV_EVENT_ERROR":"");
+
 	if (events & BEV_EVENT_CONNECTED) {
-		if (ctx->qrcode_gui_pid < 0) {
-			log_printf(LOG_DEBUG, "QRCode closed connected\n");
+		if (ctx->qrcode_gui_pid > 0) {
+			log_printf(LOG_DEBUG, "connected. QRCode closed\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR1);
 			ctx->qrcode_gui_pid = QR_NO_SHOW;
 		}
@@ -302,8 +309,8 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 				 ERR_reason_error_string(ssl_err));
 		}
 		bufferevent_free(bev);
-		if (ctx->qrcode_gui_pid < 0) {
-			log_printf(LOG_DEBUG, "QRCode closed on error\n");
+		if (ctx->qrcode_gui_pid > 0) {
+			log_printf(LOG_DEBUG, "error. QRCode closed\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR2);
 			ctx->qrcode_gui_pid = QR_NO_SHOW;
 		}
@@ -316,7 +323,7 @@ void qrpopup_cb(int fd, short event, void *arg) {
 	char* const params[] = {POPUP_EXE, NULL};
 	int pid;
 
-	log_printf(LOG_DEBUG, "qrpoput_cb called with fd: %d event: %d\n", fd, event);
+	log_printf(LOG_DEBUG, "qrpoput_cb called with fd: %d event: %h\n", fd, event);
 
 	if (ctx->qrcode_gui_pid == QR_SHOW) {
 		if ((pid = fork())) {
