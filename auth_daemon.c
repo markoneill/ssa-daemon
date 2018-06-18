@@ -240,7 +240,7 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// code to display a QR code image
 	//
 	
-	ctx->pid = QR_SHOW;
+	ctx->qrcode_gui_pid = QR_SHOW;
 	ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
 	event_add(ev, &half_second);
 	event_base_dispatch(ctx->ev_base);
@@ -320,7 +320,7 @@ void qrpopup_cb(int fd, short event, void *arg) {
 
 	if (ctx->qrcode_gui_pid == QR_SHOW) {
 		if ((pid = fork())) {
-			log_printf(LOG_INFO, "qrCode pop-up launced\n");
+			log_printf(LOG_INFO, "qrCode pop-up launched\n");
 		} else {
 			execv(POPUP_EXE, params);
 			exit(-1);

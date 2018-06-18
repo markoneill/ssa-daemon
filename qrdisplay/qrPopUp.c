@@ -7,13 +7,13 @@
 #include <sys/types.h>
 
 #define QRIMG_PATH "./qrCode.png"
-#define SUCCESS_IMG_PATH "./secured.png"
-#define FAIL_IMG_PATH "./insecure.png"
+#define SUCCESS_IMG_PATH "./secured.svg"
+#define FAIL_IMG_PATH "./insecure.svg"
 
 #else
 #include "../auth_daemon.h"
-#define SUCCESS_IMG_PATH "./qrdisplay/secured.png"
-#define FAIL_IMG_PATH "./qrdisplay/insecure.png"
+#define SUCCESS_IMG_PATH "./qrdisplay/secured.svg"
+#define FAIL_IMG_PATH "./qrdisplay/insecure.svg"
 
 #endif
 
