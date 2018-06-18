@@ -48,7 +48,7 @@ void format_date(char* date_str, time_t raw_time);
 char* first_non_space(char* str);
 char* strnstr(char* haystack, char* needle, int length);
 char* resolve_path(char* root_dir, char* path);
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request);
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request);
 void set_alpn(int fd);
 
 /* HTTP functions */
@@ -407,11 +407,11 @@ int create_http_response(client_t* client, http_request_t* request) {
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
 	/* We're ready to handle CGI now */
-	/*if (strstr(resolved_path, ".php") != NULL) {
-		handle_cgi(client->fd, path, resolved_path, request);
+	if (strstr(resolved_path, ".php") != NULL) {
+		handle_cgi(client, path, resolved_path, request);
 		free(resolved_path);
 		return 1;
-	}*/
+	}
 
 
 	/* Everything seems okay.  Let's actually do what the client requested */
@@ -494,10 +494,14 @@ int create_http_response_header(client_t* client, char* status, char* phrase, ch
 			headers[i].field, headers[i].value);
 	}
 	remaining_length = MAX_HEADER_LENGTH - header_length;
-	header_length += snprintf(header + header_length, remaining_length, "\r\n");
-	if (header_length > MAX_HEADER_LENGTH) {
-		fprintf(stderr, "MAX_HEADER_LENGTH needs to be increased\n");
-		exit(EXIT_FAILURE);
+	/* this is super hackish, but whatever. if modified time is zero, then don't finialize
+	 * headers, because we're (supposedly) using CGI */
+	if (m_time != 0) {
+		header_length += snprintf(header + header_length, remaining_length, "\r\n");
+		if (header_length > MAX_HEADER_LENGTH) {
+			fprintf(stderr, "MAX_HEADER_LENGTH needs to be increased\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 	printfv("Response created. Headers:\n%s", header);
 	client->send_buf.length = header_length;
@@ -885,28 +889,57 @@ void format_date(char* date_str, time_t raw_time) {
 	return;
 }
 
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request) {
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request) {
 	pid_t pid;
 	int err;
 	int p[2];
 	pipe(p);
+
+	char buffer[1024];
+	char* vf_buffer;
+	int vf_buf_len;
+	int bytes_read;
+	int eoh;
 	if ((pid = fork()) != 0) {
 		if (pid < 0) {
 			perror("fork");
 			exit(EXIT_FAILURE);
 		}
-		close(p[0]);
+		//close(p[0]);
 		if (request->body) {
 			write(p[1], request->body, request->body_length);
 		}
+		close(p[1]);
 		if ((err = waitpid(pid, NULL, 0)) == -1) {
 			perror("cgi waitpid");
 		}
+		vf_buffer = NULL;
+		vf_buf_len = 0;
+		while (1) {
+			bytes_read = read(p[0], buffer, 1024);
+			if (bytes_read <= 0) {
+				break;
+			}
+			vf_buffer = realloc(vf_buffer, vf_buf_len + bytes_read);
+			memcpy(vf_buffer + vf_buf_len, buffer, bytes_read);
+			vf_buf_len += bytes_read;
+		}
+		close(p[0]);
+		eoh = (strstr(vf_buffer, "\r\n\r\n") + 4) - vf_buffer;
+		create_http_response_header(client, "200", "OK", "text/html", 0, vf_buf_len - eoh);
+		int new_length = client->send_buf.length + vf_buf_len;
+		if (new_length > client->send_buf.max_length) {
+			client->send_buf.data = (unsigned char*)realloc(client->send_buf.data, new_length);
+			client->send_buf.max_length = new_length;
+		}
+		memcpy(&(client->send_buf.data)[client->send_buf.length], vf_buffer, vf_buf_len);
+		client->send_buf.length = new_length;
+		free(vf_buffer);
 		return 0;
 	}
-	close(p[1]);
+	//close(p[1]);
 	dup2(p[0], STDIN_FILENO);
-	dup2(sock, STDOUT_FILENO);
+	dup2(p[1], STDOUT_FILENO);
 
 	char* value;
 	if ((value = get_header_value(request->headers, "Content-Length")) == NULL) {
@@ -945,8 +978,6 @@ int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* reques
 	setenv("SERVER_PROTOCOL", http_version, 1);
 	setenv("SERVER_SOFTWARE", server_name, 1);
 	char* args[] = { "/usr/bin/php-cgi", NULL };
-	//char cgi_header[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n";
-	//send_data(sock, (unsigned char*)cgi_header, strlen(cgi_header));
 	execv(args[0], args);
 	perror("php cgi: execv");
 	exit(EXIT_FAILURE);

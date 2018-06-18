@@ -46,6 +46,9 @@
 #include "log.h"
 #include "nsd.h"
 
+#define QR_SHOW		-1
+#define QR_NO_SHOW	0
+#define HALF_SEC_USEC	5000
 #define MAX_UNIX_NAME	256
 
 typedef struct auth_daemon_ctx {
@@ -82,6 +85,7 @@ void new_device_error_cb(struct evconnlistener *listener, void *ctx);
 static void device_write_cb(struct bufferevent *bev, void *arg);
 static void device_read_cb(struct bufferevent *bev, void *arg);
 static void device_event_cb(struct bufferevent *bev, short events, void *arg);
+void qrpopup_cb(int fd, short event, void *arg);
 
 void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	auth_daemon_ctx_t daemon_ctx;
@@ -219,7 +223,8 @@ void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
 
 void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
-	char* const params[] = {POPUP_EXE, NULL};
+	struct event *ev;
+	struct timeval half_second = {0, HALF_SEC_USEC};
 	SSL *tls;
 
 	log_printf(LOG_INFO, "A new authentication device has registered\n");
@@ -235,15 +240,11 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// code to display a QR code image
 	//
 	
-	int pid;
-	if ((pid = fork())) {
-		log_printf(LOG_INFO, "qrCode pop-up launced\n");
-	} else {
-		execv(POPUP_EXE, params);
-		exit(-1);
-	}
- 	ctx->qrcode_gui_pid = pid;	
-
+	ctx->pid = QR_SHOW;
+	ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
+	event_add(ev, &half_second);
+	event_base_dispatch(ctx->ev_base);
+	
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
@@ -279,10 +280,10 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	int ssl_err;
 	if (events & BEV_EVENT_CONNECTED) {
-		if (ctx->qrcode_gui_pid) {
+		if (ctx->qrcode_gui_pid < 0) {
 			log_printf(LOG_DEBUG, "QRCode closed connected\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR1);
-			ctx->qrcode_gui_pid = 0;
+			ctx->qrcode_gui_pid = QR_NO_SHOW;
 		}
 	}
 	if (events & BEV_EVENT_EOF) {
@@ -301,12 +302,29 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 				 ERR_reason_error_string(ssl_err));
 		}
 		bufferevent_free(bev);
-		if (ctx->qrcode_gui_pid) {
+		if (ctx->qrcode_gui_pid < 0) {
 			log_printf(LOG_DEBUG, "QRCode closed on error\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR2);
-			ctx->qrcode_gui_pid = 0;
+			ctx->qrcode_gui_pid = QR_NO_SHOW;
 		}
 	}
 	return;
 }
 
+void qrpopup_cb(int fd, short event, void *arg) {
+	auth_daemon_ctx_t *ctx = arg;
+	char* const params[] = {POPUP_EXE, NULL};
+	int pid;
+
+	log_printf(LOG_DEBUG, "qrpoput_cb called with fd: %d event: %d\n", fd, event);
+
+	if (ctx->qrcode_gui_pid == QR_SHOW) {
+		if ((pid = fork())) {
+			log_printf(LOG_INFO, "qrCode pop-up launced\n");
+		} else {
+			execv(POPUP_EXE, params);
+			exit(-1);
+		}
+		ctx->qrcode_gui_pid = pid;
+	}
+}
