@@ -243,8 +243,7 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	ctx->qrcode_gui_pid = QR_SHOW;
 	ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
 	event_add(ev, &half_second);
-	event_base_dispatch(ctx->ev_base);
-	
+
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
 	bufferevent_enable(bev, EV_READ | EV_WRITE);
