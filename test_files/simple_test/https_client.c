@@ -12,7 +12,7 @@ int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
 int main(int argc, char* argv[]) {
-	int sock_fd = connect_to_host(argv[1], "443");
+	int sock_fd = connect_to_host("login.testshop.com", "443");
 	char http_request[2048];
 	char http_response[2048];
 	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
