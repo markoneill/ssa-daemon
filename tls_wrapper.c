@@ -1050,6 +1050,8 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
 	auth_info_t* ai;
 
+	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
+
         /*EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
         EVP_MD_CTX *mctx = NULL;

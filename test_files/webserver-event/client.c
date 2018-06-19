@@ -44,8 +44,8 @@ client_t* create_client(int server_sock) {
 
 	get_alpn(client);
 	get_hostname(client);
-	get_identity(client);
-	send_auth_req(client);
+	//get_identity(client);
+	//send_auth_req(client);
 	set_session_ttl(client);
 	get_session_ttl(client);
 
@@ -235,7 +235,7 @@ void get_identity(client_t* client) {
 	return;
 }
 
-void set_session_ttl(client_t* client) {
+void send_auth_req(client_t* client) {
 	int data;
 	data = 0;
 	socklen_t data_len = sizeof(data);
@@ -245,7 +245,7 @@ void set_session_ttl(client_t* client) {
 	return;
 }
 
-void send_auth_req(client_t* client) {
+void set_session_ttl(client_t* client) {
 	long ttl;
 	ttl = 400;
 	socklen_t ttl_len = sizeof(ttl);

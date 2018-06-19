@@ -36,7 +36,7 @@
 #define CA_FILE   	"../certificate_ca.pem"
 
 char http_version[] = "HTTP/1.1";
-char default_path[] = "/index.html";
+char default_path[] = "/index.php";
 char server_name[]  = "Simple Web Server";
 
 typedef struct server {
@@ -73,6 +73,10 @@ int send_content(client_t* client);
 int recv_data(client_t* client);
 int create_server_socket(char* port, int protocol);
 int set_blocking(int sock, int blocking);
+
+/* SSA specific */
+static char* get_peer_identity(client_t* client);
+static void send_pha_req(client_t* client);
 
 void handle_client(client_t* client);
 void signal_handler(int signum);
@@ -406,6 +410,10 @@ int create_http_response(client_t* client, http_request_t* request) {
 
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
+	if (strstr(resolved_path, "account") != NULL) {
+		send_pha_req(client);
+	}
+
 	/* We're ready to handle CGI now */
 	if (strstr(resolved_path, ".php") != NULL) {
 		handle_cgi(client, path, resolved_path, request);
@@ -478,7 +486,7 @@ int create_http_response_header(client_t* client, char* status, char* phrase, ch
 			{ .field = "Server", .value = server_name },
 			{ .field = "Content-Type", .value = mime_type },
 			{ .field = "Content-Length", .value = length_str },
-			{ .field = "Last-Modified", .value = last_modified_date_str },
+			//{ .field = "Last-Modified", .value = last_modified_date_str },
 			{ .field = NULL, .value = NULL}
 	};
 
@@ -926,7 +934,7 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 		}
 		close(p[0]);
 		eoh = (strstr(vf_buffer, "\r\n\r\n") + 4) - vf_buffer;
-		create_http_response_header(client, "200", "OK", "text/html", 0, vf_buf_len - eoh);
+		create_http_response_header(client, "200", "OK", "text/html", 0, (vf_buf_len - eoh));
 		int new_length = client->send_buf.length + vf_buf_len;
 		if (new_length > client->send_buf.max_length) {
 			client->send_buf.data = (unsigned char*)realloc(client->send_buf.data, new_length);
@@ -942,6 +950,7 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 	dup2(p[1], STDOUT_FILENO);
 
 	char* value;
+	char* id;
 	if ((value = get_header_value(request->headers, "Content-Length")) == NULL) {
 		setenv("CONTENT_LENGTH", "0" , 1);
 	}
@@ -971,6 +980,10 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 	setenv("REMOTE_HOST", "", 1); // XXX 
 	setenv("REMOTE_IDENT", "", 1);
 	setenv("REMOTE_USER", "", 1);
+	id = get_peer_identity(client);
+	if (id != NULL) {
+		setenv("SSA_ID", id , 1);
+	}
 	setenv("REQUEST_METHOD", request->method, 1);
 	setenv("SCRIPT_NAME", getenv("PATH_INFO"), 1);
 	setenv("SERVER_NAME", "", 1); // XXX
@@ -982,6 +995,34 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 	perror("php cgi: execv");
 	exit(EXIT_FAILURE);
 	return 0;
+}
+
+char* get_peer_identity(client_t* client) {
+	char* id;
+	socklen_t id_len = 255;
+	id = malloc(256);
+	if (getsockopt(client->fd, IPPROTO_TLS, SO_PEER_IDENTITY, id, &id_len) == -1) {
+		perror("getsockopt: SO_PEER_IDENTITY");
+		free(id);
+		return NULL;
+	}
+	if (id_len > 0) {
+		printf("Client ID is %s\n", id);
+	}
+	else {
+		printf("Client did not use client auth\n");
+	}
+	return id;
+}
+
+void send_pha_req(client_t* client) {
+	int data;
+	data = 0;
+	socklen_t data_len = sizeof(data);
+	if (setsockopt(client->fd, IPPROTO_TLS, SO_REQUEST_PEER_AUTH, &data, data_len) == -1) {
+		perror("setsockopt: SO_REQUEST_PEER_AUTH");
+	}
+	return;
 }
 
 char* strnstr(char* haystack, char* needle, int length) {
