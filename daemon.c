@@ -615,11 +615,11 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		response = -ENOPROTOOPT; /* get only */
 		break;
 	case SO_REQUEST_PEER_AUTH:
-		/*set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);*/
+		set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
 		if (send_peer_auth_req(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
-		/*return;*/
+		return;
 		break;
 	case SO_PEER_CERTIFICATE:
 		response = -ENOPROTOOPT; /* get only */

@@ -414,7 +414,7 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 	log_printf(LOG_INFO, "User \"%s\" is authenticated\n", identity);
 	sk_X509_pop_free(chain, X509_free);
 
-	/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
+	netlink_notify_kernel(ctx->daemon, ctx->id, 0);
 	return 1;
 }
 
@@ -610,6 +610,7 @@ int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* val
 		log_printf(LOG_ERROR, "Unable to send auth request\n");
 		return 0;
 	}
+	SSL_do_handshake(conn_ctx->tls);
 	#endif
 	return 1;
 }
@@ -914,9 +915,9 @@ SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 }
 
 int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id) {
-	if (conn->tls == NULL) {
+	/*if (conn->tls == NULL) {
 		return 1;
-	}
+	}*/
 	conn->daemon = daemon_ctx;
 	conn->id = id;
 	return 1;

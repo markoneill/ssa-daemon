@@ -29,10 +29,10 @@ int main() {
 	int sock;
 	SSL* tls;
 	char* query;
-	char* query_again;
-	char response[2048];
 	int query_len;
-	int query_again_len;
+	char response[2048];
+	/*char* query_again;
+	int query_again_len;*/
 	char hostname[] = "openrebellion.com";
 
 	printf("Connecting to %s\n", hostname);
@@ -42,17 +42,17 @@ int main() {
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
 
 	query = "GET /account/index.php HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
-	query_again = "GET / HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
 	query_len = strlen(query);
-	query_again_len = strlen(query_again);
+	/*query_again = "GET / HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
+	query_again_len = strlen(query_again);*/
 	while (SSL_write(tls, query, query_len) <= 0) {}
-	SSL_read(tls, NULL, 0);
+	//SSL_read(tls, NULL, 0);
 	while (SSL_read(tls, response, sizeof(response)) <= 0) {}
 	printf("Received:\n%s", response);
 
-	SSL_write(tls, query_again, query_again_len);
+	/*SSL_write(tls, query_again, query_again_len);
 	SSL_read(tls, response, sizeof(response));
-	printf("Received:\n%s", response);
+	printf("Received:\n%s", response);*/
 
 
 	close(sock);
