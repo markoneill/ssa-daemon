@@ -20,7 +20,7 @@
 
 int connect_to_host(char* host, char* port, int protocol);
 SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file);
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 EVP_PKEY* get_private_key_from_file(char* filename);
 X509* get_cert_from_file(char* filename);
@@ -33,7 +33,7 @@ int main() {
 	char response[2048];
 	/*char* query_again;
 	int query_again_len;*/
-	char hostname[] = "openrebellion.com";
+	char hostname[] = "testshop.com";
 
 	printf("Connecting to %s\n", hostname);
 	memset(response, 0, 2048);
@@ -41,19 +41,11 @@ int main() {
 	sock = connect_to_host(hostname, "443", SOCK_STREAM);
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
 
-	query = "GET /account/index.php HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
+	query = "GET /account/index.php HTTP/1.1\r\nHost: testshop.com\r\n\r\n";
 	query_len = strlen(query);
-	/*query_again = "GET / HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
-	query_again_len = strlen(query_again);*/
 	while (SSL_write(tls, query, query_len) <= 0) {}
-	//SSL_read(tls, NULL, 0);
 	while (SSL_read(tls, response, sizeof(response)) <= 0) {}
 	printf("Received:\n%s", response);
-
-	/*SSL_write(tls, query_again, query_again_len);
-	SSL_read(tls, response, sizeof(response));
-	printf("Received:\n%s", response);*/
-
 
 	close(sock);
 	SSL_shutdown(tls);
@@ -176,7 +168,7 @@ int connect_to_host(char* host, char* service, int protocol) {
 	return sock;
 }
 
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
         EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
         EVP_MD_CTX *mctx = NULL;
@@ -203,7 +195,7 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
                 return 0;
         }
         
-        md = EVP_get_digestbynid(sigalg_nid);
+        md = EVP_get_digestbynid(hash_nid);
         if (md == NULL) {
                 EVP_PKEY_free(pkey);
                 EVP_MD_CTX_free(mctx);

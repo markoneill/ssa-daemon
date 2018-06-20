@@ -39,5 +39,7 @@ nsComment           = "SSA Generated Certificate"
 subjectAltName = @alt_names
 
 [ alt_names ]
-DNS.1 = openrebellion.com
+DNS.1 = testshop.com
+DNS.2 = www.testshop.com
+DNS.3 = *.testshop.com
 

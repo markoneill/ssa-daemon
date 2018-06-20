@@ -80,11 +80,11 @@ extern int auth_info_index;
 char auth_daemon_name[] = "\0auth_req";
 #define CLIENT_AUTH_KEY "test_files/openssl_mod_tests/client_key.key"
 #define CLIENT_AUTH_CERT "test_files/openssl_mod_tests/client_pub.pem"
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
 void send_cert_request(int fd, char* hostname);
 int recv_cert_response(int fd, X509** o_cert);
-void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid);
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid);
 int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen);
 void send_all(int fd, char* msg, int bytes_to_send);
 int auth_daemon_connect(void);
@@ -396,17 +396,22 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 	STACK_OF(X509)* chain;
 	char* identity;
 
-	X509_verify_cert(store);
+	if (X509_verify_cert(store) != 1) {
+		netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);
+		return 0;
+	}
 
 	log_printf(LOG_INFO, "Client cert verify invoked\n");
 	chain = X509_STORE_CTX_get1_chain(store);
 	if (chain == NULL) {
 		log_printf(LOG_ERROR, "Certificate chain unavailable\n");
+		netlink_notify_kernel(ctx->daemon, ctx->id, 0);
 		return 0;
 	}
 	cert = sk_X509_value(chain, 0);
 	if (cert == NULL) {
 		log_printf(LOG_ERROR, "First cert not there\n");
+		netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);
 		return 0;
 	}
 	subject_name = X509_get_subject_name(cert);
@@ -1080,7 +1085,7 @@ void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 }
 
 #ifdef CLIENT_AUTH
-int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
 	auth_info_t* ai;
 
 	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
@@ -1093,7 +1098,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int sigalg_nid
         unsigned char* sig;*/
 
 	ai = SSL_get_ex_data(tls, auth_info_index);
-	send_sign_request(ai->fd, hdata, hdata_len, sigalg_nid);
+	send_sign_request(ai->fd, hdata, hdata_len, hash_nid, sigalg_nid);
 	if (recv_sign_response(ai->fd, o_sig, o_siglen) == 0) {
 		log_printf(LOG_ERROR, "Could not receive signature response\n");
 		close(ai->fd);
@@ -1216,13 +1221,14 @@ void send_cert_request(int fd, char* hostname) {
 	return;
 }
 
-void send_sign_request(int fd, void* hdata, size_t hdata_len, int sigalg_nid) {
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid) {
 	int msg_size;
 	char msg_type;
-	msg_size = htonl(hdata_len + sizeof(sigalg_nid));
+	msg_size = htonl(hdata_len + sizeof(hash_nid) + sizeof(sigalg_nid));
 	msg_type = SIGNATURE_REQUEST;
 	send_all(fd, &msg_type, 1);
 	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
+	send_all(fd, (char*)&hash_nid, sizeof(hash_nid));
 	send_all(fd, (char*)&sigalg_nid, sizeof(sigalg_nid));
 	send_all(fd, hdata, hdata_len);
 	log_printf(LOG_DEBUG, "Sent a sign request of length %u\n", hdata_len);

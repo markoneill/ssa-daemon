@@ -239,7 +239,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 		return;
 	}
 
-	bufferevent_write(bev, encoded_cert, cert_len);
+	bufferevent_write(bev, encoded_cert, cert_len + 1);
 
 	free(encoded_cert);
 	X509_REQ_free(cert_req);

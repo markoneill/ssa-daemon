@@ -1,6 +1,6 @@
-From 8a7396942e990bd05dbe593ac13a0d692b297fe9 Mon Sep 17 00:00:00 2001
+From 0d81a67044cbba90fa905e7c34f46076988ef60c Mon Sep 17 00:00:00 2001
 From: Mark O'Neill <mto@byu.edu>
-Date: Tue, 19 Jun 2018 18:33:29 -0600
+Date: Wed, 20 Jun 2018 15:24:43 -0600
 Subject: [PATCH] Test 2
 
 ---
@@ -13,19 +13,19 @@ Subject: [PATCH] Test 2
  6 files changed, 132 insertions(+), 55 deletions(-)
 
 diff --git a/include/openssl/ssl.h b/include/openssl/ssl.h
-index bb64fe0..3ff0be2 100644
+index bb64fe04e8..750a54779d 100644
 --- a/include/openssl/ssl.h
 +++ b/include/openssl/ssl.h
 @@ -1678,6 +1678,7 @@ __owur int SSL_CTX_set_session_id_context(SSL_CTX *ctx, const unsigned char *sid
                                     unsigned int sid_ctx_len);
  
  SSL *SSL_new(SSL_CTX *ctx);
-+int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, unsigned char**, size_t*));
++int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, int, unsigned char**, size_t*));
  int SSL_up_ref(SSL *s);
  int SSL_is_dtls(const SSL *s);
  __owur int SSL_set_session_id_context(SSL *ssl, const unsigned char *sid_ctx,
 diff --git a/ssl/ssl_lib.c b/ssl/ssl_lib.c
-index 062f5ce..2de4786 100644
+index 062f5cef3f..9a4f8bad4d 100644
 --- a/ssl/ssl_lib.c
 +++ b/ssl/ssl_lib.c
 @@ -829,6 +829,9 @@ SSL *SSL_new(SSL_CTX *ctx)
@@ -42,7 +42,7 @@ index 062f5ce..2de4786 100644
      return NULL;
  }
  
-+int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, unsigned char**, size_t*)) {
++int SSL_set_client_auth_cb(SSL* s, int (*cb)(SSL*, void*, size_t, int, int, unsigned char**, size_t*)) {
 +	s->client_auth_cb = cb;
 +	return 1;
 +}
@@ -51,7 +51,7 @@ index 062f5ce..2de4786 100644
  {
      return SSL_IS_DTLS(s) ? 1 : 0;
 diff --git a/ssl/ssl_locl.h b/ssl/ssl_locl.h
-index a28facd..fff5ae1 100644
+index a28facdcc6..88ac7d9d04 100644
 --- a/ssl/ssl_locl.h
 +++ b/ssl/ssl_locl.h
 @@ -1412,6 +1412,9 @@ struct ssl_st {
@@ -60,12 +60,12 @@ index a28facd..fff5ae1 100644
      CRYPTO_RWLOCK *lock;
 +
 +    /* Custom Callback for client auth */
-+    int (*client_auth_cb)(SSL *s, void* hdata, size_t hdata_len, int, unsigned char** sig, size_t* sig_len);
++    int (*client_auth_cb)(SSL *s, void* hdata, size_t hdata_len, int, int, unsigned char** sig, size_t* sig_len);
  };
  
  /*
 diff --git a/ssl/statem/statem_clnt.c b/ssl/statem/statem_clnt.c
-index 86cf5b6..f8ba8a1 100644
+index 86cf5b6ab2..f8ba8a1883 100644
 --- a/ssl/statem/statem_clnt.c
 +++ b/ssl/statem/statem_clnt.c
 @@ -3360,6 +3360,11 @@ int tls_client_key_exchange_post_work(SSL *s)
@@ -106,7 +106,7 @@ index 86cf5b6..f8ba8a1 100644
              i = 0;
          if (i == 0) {
 diff --git a/ssl/statem/statem_lib.c b/ssl/statem/statem_lib.c
-index a82079c..5046d75 100644
+index a82079c2ee..b02847658c 100644
 --- a/ssl/statem/statem_lib.c
 +++ b/ssl/statem/statem_lib.c
 @@ -18,6 +18,7 @@
@@ -192,7 +192,7 @@ index a82079c..5046d75 100644
 +                 ERR_R_INTERNAL_ERROR);
 +	    goto err;
 +	}
-+        s->client_auth_cb(s, hdata, hdatalen, EVP_MD_type(md), &sig, &siglen);
++        s->client_auth_cb(s, hdata, hdatalen, EVP_MD_type(md), lu->sig, &sig, &siglen);
 +    } else {
 +        /* Otherwise do it the normal way */
 +        if (s->s3->tmp.cert == NULL) {
@@ -319,7 +319,7 @@ index a82079c..5046d75 100644
  }
  
 diff --git a/util/libssl.num b/util/libssl.num
-index 344d684..aaf05d3 100644
+index 344d684a94..aaf05d38a2 100644
 --- a/util/libssl.num
 +++ b/util/libssl.num
 @@ -486,3 +486,4 @@ SSL_CTX_set_stateless_cookie_generate_cb 486	1_1_1	EXIST::FUNCTION:
@@ -328,5 +328,5 @@ index 344d684..aaf05d3 100644
  SSL_set_ciphersuites                    489	1_1_1	EXIST::FUNCTION:
 +SSL_set_client_auth_cb                  490     1_1_1	EXIST::FUNCTION:
 -- 
-2.9.3
+2.13.6
 
