@@ -15,8 +15,8 @@
 #include <openssl/x509.h>
 
 #define BUFFER_MAX	200
-#define CLIENT_CERT	"client_pub.pem"
-#define CLIENT_KEY	"client_key.key"
+#define CLIENT_CERT	"../certificate_personal.pem"
+#define CLIENT_KEY	"../key_personal.pem"
 
 int connect_to_host(char* host, char* port, int protocol);
 SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file);
@@ -29,20 +29,31 @@ int main() {
 	int sock;
 	SSL* tls;
 	char* query;
+	char* query_again;
 	char response[2048];
 	int query_len;
-	char hostname[] = "hax0r.online";
+	int query_again_len;
+	char hostname[] = "openrebellion.com";
 
 	printf("Connecting to %s\n", hostname);
+	memset(response, 0, 2048);
 	
 	sock = connect_to_host(hostname, "443", SOCK_STREAM);
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
 
-	query = "Hello From Client\n";
+	query = "GET /account/index.php HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
+	query_again = "GET / HTTP/1.1\r\nHost: openrebellion.com\r\n\r\n";
 	query_len = strlen(query);
-	SSL_write(tls, query, query_len);
+	query_again_len = strlen(query_again);
+	while (SSL_write(tls, query, query_len) <= 0) {}
+	SSL_read(tls, NULL, 0);
+	while (SSL_read(tls, response, sizeof(response)) <= 0) {}
+	printf("Received:\n%s", response);
+
+	SSL_write(tls, query_again, query_again_len);
 	SSL_read(tls, response, sizeof(response));
 	printf("Received:\n%s", response);
+
 
 	close(sock);
 	SSL_shutdown(tls);
@@ -85,6 +96,7 @@ SSL* openssl_connect_to_host(int sock, char* hostname, char* client_pub_file) {
 	}
 
 	tls = SSL_new(tls_ctx);
+	SSL_force_post_handshake_auth(tls);
 
 	if (client_pub_file != NULL) {
 		// set the client auth callback
@@ -205,6 +217,8 @@ int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, 
                 free(sig);
                 return 0;
         }
+	EVP_PKEY_CTX_set_rsa_padding(pctx, RSA_PKCS1_PSS_PADDING);
+	EVP_PKEY_CTX_set_rsa_pss_saltlen(pctx, RSA_PSS_SALTLEN_DIGEST);
 
         if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
                 EVP_PKEY_free(pkey);

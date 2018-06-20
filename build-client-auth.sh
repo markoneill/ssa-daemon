@@ -16,7 +16,8 @@ fi
 echo "Applying OpenSSL patches"
 cd openssl
 git checkout tags/OpenSSL_1_1_1-pre3
-git apply ../../extras/openssl/0001-Adding-support-for-dynamic-client-authentication-cal.patch
+git apply ../../extras/openssl/0001-Test-2.patch
+#git apply ../../extras/openssl/0001-Adding-support-for-dynamic-client-authentication-cal.patch
 echo "Done"
 echo "Configuring OpenSSL"
 mkdir -p $OPENSSL_INSTALL_DIR

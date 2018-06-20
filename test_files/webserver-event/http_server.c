@@ -932,6 +932,7 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 			memcpy(vf_buffer + vf_buf_len, buffer, bytes_read);
 			vf_buf_len += bytes_read;
 		}
+		//vf_buf_len--;
 		close(p[0]);
 		eoh = (strstr(vf_buffer, "\r\n\r\n") + 4) - vf_buffer;
 		create_http_response_header(client, "200", "OK", "text/html", 0, (vf_buf_len - eoh));

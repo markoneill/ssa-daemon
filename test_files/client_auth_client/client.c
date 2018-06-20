@@ -8,7 +8,7 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 
-#define DEFAULT_ADDR    "hax0r.online"
+#define DEFAULT_ADDR    "openrebellion.com"
 #define DEFAULT_PORT    "443"
 #define CERT_PATH       "../certificate_personal.pem"
 #define KEY_PATH        "../key_personal.pem"

@@ -61,7 +61,7 @@ public class Authenticator {
 		try {
 			KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
 			ks.load(null);
-			ks.setKeyEntry("hax0r.online", key, pass, certificates);
+			ks.setKeyEntry("openrebellion.com", key, pass, certificates);
 			FileOutputStream fos = new FileOutputStream("keystore");
 			ks.store(fos, ksPass);
 		}
@@ -173,7 +173,7 @@ public class Authenticator {
 
 	private X509Certificate[] readCertificates() {
 		try {
-			File file = new File("../openssl_mod_tests/client_pub.pem");
+			File file = new File("../certificate_personal.pem");
 			FileInputStream fis = new FileInputStream(file);
 			byte[] data = new byte[(int) file.length()];
 			fis.read(data);
@@ -199,7 +199,7 @@ public class Authenticator {
 		 * and then convert it to a PEM byte array. We're just
 		 * reading from the file directly for simplicity */
 		try {
-			File file = new File("../openssl_mod_tests/client_pub.pem");
+			File file = new File("../certificate_personal.pem");
 			FileInputStream fis = new FileInputStream(file);
 			byte[] data = new byte[(int) file.length()];
 			fis.read(data);
@@ -216,7 +216,7 @@ public class Authenticator {
 		try {
 			String keyString;
 			byte[] keyData;
-			File file = new File("../openssl_mod_tests/client_key.key");
+			File file = new File("../key_personal.pem");
 			FileInputStream fis = new FileInputStream(file);
 			byte[] data = new byte[(int) file.length()];
 			fis.read(data);
@@ -247,7 +247,7 @@ public class Authenticator {
 
 	private byte[] signHandshakeData(String hostname, int algID, byte[] handshakeData) {
 		try {
-			Signature s = Signature.getInstance("SHA512withRSA");
+			Signature s = Signature.getInstance("SHA512WITHRSAPSS");
 			KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
 			FileInputStream fis = new FileInputStream("keystore");
 			ks.load(fis, ksPass);

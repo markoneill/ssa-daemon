@@ -67,6 +67,7 @@ static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
 static int read_rand_seed(char **buf, char* seed_path, int size);
 int trustbase_verify(X509_STORE_CTX* store, void* arg);
+int client_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
 
 #ifdef CLIENT_AUTH
@@ -174,6 +175,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	}
 	
 	/* We're sending just the first tls_ctx here because our SNI callbacks will fix it if needed */
+	SSL_CTX_set_cert_verify_callback(tls_opts->tls_ctx, client_verify, ctx);
 	ctx->tls = tls_server_setup(tls_opts->tls_ctx);
 	ctx->secure.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
@@ -387,6 +389,35 @@ int verify_dummy(int preverify, X509_STORE_CTX* store) {
 	return 1;
 }
 
+int client_verify(X509_STORE_CTX* store, void* arg) {
+	tls_conn_ctx_t* ctx = arg;
+	X509* cert;
+	X509_NAME* subject_name;
+	STACK_OF(X509)* chain;
+	char* identity;
+
+	X509_verify_cert(store);
+
+	log_printf(LOG_INFO, "Client cert verify invoked\n");
+	chain = X509_STORE_CTX_get1_chain(store);
+	if (chain == NULL) {
+		log_printf(LOG_ERROR, "Certificate chain unavailable\n");
+		return 0;
+	}
+	cert = sk_X509_value(chain, 0);
+	if (cert == NULL) {
+		log_printf(LOG_ERROR, "First cert not there\n");
+		return 0;
+	}
+	subject_name = X509_get_subject_name(cert);
+	identity = X509_NAME_oneline(subject_name, NULL, 0);
+	log_printf(LOG_INFO, "User \"%s\" is authenticated\n", identity);
+	sk_X509_pop_free(chain, X509_free);
+
+	/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
+	return 1;
+}
+
 int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 	uint64_t query_id;
 	STACK_OF(X509)* chain;
@@ -580,7 +611,7 @@ int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* val
 		return 0;
 	}
 	#endif
-	return 0;
+	return 1;
 }
 
 /* XXX update this to take in-memory PEM chains as well as file names */
@@ -731,6 +762,7 @@ int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** dat
 	}
 	cert = SSL_get_peer_certificate(conn_ctx->tls);
 	if (cert == NULL) {
+		log_printf(LOG_INFO, "peer cert is NULL\n");
 		return 0;
 	}
 	subject_name = X509_get_subject_name(cert);

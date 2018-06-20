@@ -15,9 +15,9 @@ int main(int argc, char* argv[]) {
 	int sock_fd = connect_to_host("login.testshop.com", "443");
 	char http_request[2048];
 	char http_response[2048];
-	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+	sprintf(http_request,"GET /account/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 	memset(http_response, 0, 2048);
-	send(sock_fd, http_request, sizeof(http_request)-1, 0);
+	send(sock_fd, http_request, strlen(http_request), 0);
 	recv(sock_fd, http_response, 750, 0);
 	printf("Received:\n%s", http_response);
 	close(sock_fd);
