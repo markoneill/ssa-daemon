@@ -883,12 +883,13 @@ char* resolve_path(char* root_dir, char* path) {
 		path_length = strlen(default_path);
 	}*/
 	if (path[path_length-1] == '/') {
-		path_length = snprintf(tmp_path, 1024, "%s%s", path, default_path);
+		path_length = snprintf(tmp_path, 1024, "%.*s%s", path_length, path, default_path);
 		path = tmp_path;
 	}
 	path_length += strlen(root_dir)+1;
 	char* full_path = (char*)malloc(path_length);
 	snprintf(full_path, path_length, "%s%s", root_dir, path);
+	printfv("Full path resolved to %s\n", full_path);
 	return full_path;
 }
 

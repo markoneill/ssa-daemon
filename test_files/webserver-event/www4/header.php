@@ -1,3 +1,23 @@
+<?php
+
+function showMenu() {
+	global $items;
+	$currentSection = 'Sneakers';
+	if (isset($_GET['s'])) {
+		$currentSection = $_GET['s'];
+	}
+
+	$pageKeys = array_keys($items);
+	foreach ($pageKeys as $key) {
+		if ($key == $currentSection) {
+			echo '<li class="active"><a href="/?s=', $key, '">', $key ,'</a></li>';
+		}
+		else {
+			echo '<li><a href="/?s=', $key, '">', $key ,'</a></li>';
+		}
+	}
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,9 +30,9 @@
   <style>
     /* Remove the navbar's default rounded borders and increase the bottom margin */ 
     .navbar {
-      margin-bottom: 50px;
+      margin-bottom: 30px;
       border-radius: 0;
-      min-height:170px !important;
+      min-height:80px !important;
     }
 
     .navbar-nav>li>a {
@@ -22,6 +42,16 @@
     /* Remove the jumbotron's default bottom margin */ 
      .jumbotron {
       margin-bottom: 0;
+    }
+
+    .total {
+      font-weight:bold;
+      text-align:right;
+    }
+
+    .table>tbody>tr>td,
+    .table>tfoot>tr>td {
+      vertical-align:middle !important;
     }
 
      .navbar-brand img {
@@ -52,15 +82,11 @@
         <span class="icon-bar"></span>
         <span class="icon-bar"></span>                        
       </button>
-      <a class="navbar-brand" href="#"><img src="/logo.png" alt="PayMore" /></a>
+      <a class="navbar-brand" href="/"><img src="/logo.png" alt="PayMore" /></a>
     </div>
     <div class="collapse navbar-collapse" id="myNavbar">
       <ul class="nav navbar-nav">
-        <li class="active"><a href="#">Sneakers</a></li>
-        <li><a href="#">Dress</a></li>
-        <li><a href="#">Boots</a></li>
-        <li><a href="#">Sandals</a></li>
-        <li><a href="#">Slippers</a></li>
+<?php showMenu(); ?>
       </ul>
       <ul class="nav navbar-nav navbar-right">
         <li><a href="/account/"><span class="glyphicon glyphicon-user"></span>Your Account</a></li>

@@ -1,5 +1,6 @@
 <?php 
 session_start();
+require('../items.php');
 require('../header.php');
 
 $name = "No one";
