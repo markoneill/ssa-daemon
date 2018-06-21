@@ -36,7 +36,7 @@
 #define CA_FILE   	"../certificate_ca.pem"
 
 char http_version[] = "HTTP/1.1";
-char default_path[] = "/index.php";
+char default_path[] = "index.php";
 char server_name[]  = "Simple Web Server";
 
 typedef struct server {
@@ -411,7 +411,7 @@ int create_http_response(client_t* client, http_request_t* request) {
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
 	if (strstr(resolved_path, "account") != NULL) {
-		send_pha_req(client);
+		//send_pha_req(client);
 	}
 
 	/* We're ready to handle CGI now */
@@ -846,9 +846,9 @@ int create_server_socket(char* port, int protocol) {
         if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
-	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+	/*if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
 		perror("ca cert");
-	}
+	}*/
 
 	set_alpn(sock);
 
@@ -871,15 +871,20 @@ char* first_non_space(char* str) {
 
 char* resolve_path(char* root_dir, char* path) {
 	char* end;
+	char tmp_path[1024];
 	int path_length = strlen(path);
 	/* Don't count the query string in the path length */
 	if ((end = strchr(path, '?')) != NULL) {
 		path_length -= strlen(end);
 	}
 	/* Set default path if this is just slash (/) */
-	if (strncmp("/", path, path_length) == 0) {
+	/*if (strncmp("/", path, path_length) == 0) {
 		path = default_path;
 		path_length = strlen(default_path);
+	}*/
+	if (path[path_length-1] == '/') {
+		path_length = snprintf(tmp_path, 1024, "%s%s", path, default_path);
+		path = tmp_path;
 	}
 	path_length += strlen(root_dir)+1;
 	char* full_path = (char*)malloc(path_length);
