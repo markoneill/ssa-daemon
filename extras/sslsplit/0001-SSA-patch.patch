@@ -1,14 +1,14 @@
-From ce2129641d70c91bf6d59384e969d66ca2962eed Mon Sep 17 00:00:00 2001
+From 790533601169486e12b92be7d227fdbe17e09961 Mon Sep 17 00:00:00 2001
 From: Mark O'Neill <mto@byu.edu>
-Date: Tue, 22 May 2018 14:40:40 -0600
-Subject: [PATCH] Nonblocking fix + Tanner's changes
+Date: Thu, 21 Jun 2018 14:31:23 -0600
+Subject: [PATCH] Only use SSA for testshop.com
 
 ---
- pxyconn.c | 55 ++++++++++++++++++++++++++++++++++++++++++++++++-------
- 1 file changed, 48 insertions(+), 7 deletions(-)
+ pxyconn.c | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 7 deletions(-)
 
 diff --git a/pxyconn.c b/pxyconn.c
-index c9540a2..1ae41f0 100644
+index 0b58143..fcfc34e 100644
 --- a/pxyconn.c
 +++ b/pxyconn.c
 @@ -39,6 +39,7 @@
@@ -27,7 +27,7 @@ index c9540a2..1ae41f0 100644
  /*
   * Dump information on a certificate to the debug log.
   */
-@@ -936,15 +938,25 @@ pxy_srccert_create(pxy_conn_ctx_t *ctx)
+@@ -936,15 +938,28 @@ pxy_srccert_create(pxy_conn_ctx_t *ctx)
   * Returns NULL if no suitable certificate could be found.
   */
  static SSL *
@@ -44,18 +44,21 @@ index c9540a2..1ae41f0 100644
  
 -	ctx->origcrt = SSL_get_peer_certificate(origssl);
 +	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, tmp_cert, &tmp_cert_len) == -1) {
-+		perror("getsockopt: SO_PEER_CERTIFICATE:");
++		//perror("getsockopt: SO_PEER_CERTIFICATE:");
++		ctx->origcrt = SSL_get_peer_certificate(origssl);
++	}
++	else {
++		ctx->origcrt = PEM_str_to_X509(tmp_cert);
 +	}
 +
 +	// log_dbg_printf("Peer Cert [%s]",tmp_cert);
 +
-+	ctx->origcrt = PEM_str_to_X509(tmp_cert);
 +	//PEM_write_X509(stdout, ctx->origcrt);
 +	// ctx->origcrt = SSL_get_peer_certificate(origssl);
  
  	if (OPTS_DEBUG(ctx->opts)) {
  		if (ctx->origcrt) {
-@@ -1871,7 +1883,7 @@ pxy_bev_eventcb(struct bufferevent *bev, short events, void *arg)
+@@ -1880,7 +1895,7 @@ pxy_bev_eventcb(struct bufferevent *bev, short events, void *arg)
  		/* wrap client-side socket in an eventbuffer */
  		if ((ctx->spec->ssl || ctx->clienthello_found) &&
  		    !ctx->passthrough) {
@@ -64,7 +67,7 @@ index c9540a2..1ae41f0 100644
  			if (!ctx->src.ssl) {
  				bufferevent_free_and_close_fd(bev, ctx);
  				ctx->dst.bev = NULL;
-@@ -2022,7 +2034,8 @@ connected:
+@@ -2031,7 +2046,8 @@ connected:
  				               ctx->srcport_str,
  				               SSL_get_version(this->ssl),
  				               SSL_get_cipher(this->ssl));
@@ -74,7 +77,7 @@ index c9540a2..1ae41f0 100644
  				if (keystr) {
  					log_dbg_print_free(keystr);
  				}
-@@ -2040,7 +2053,6 @@ connected:
+@@ -2049,7 +2065,6 @@ connected:
  				               ctx->srcport_str);
  			}
  		}
@@ -82,30 +85,34 @@ index c9540a2..1ae41f0 100644
  		return;
  	}
  
-@@ -2231,6 +2243,8 @@ leave:
+@@ -2240,6 +2255,8 @@ leave:
  static void
  pxy_conn_connect(pxy_conn_ctx_t *ctx)
  {
-+	int ssa_socket;
++	int ssa_socket = 0;
 +
  	if (!ctx->addrlen) {
  		log_err_printf("No target address; aborting connection\n");
  		evutil_closesocket(ctx->fd);
-@@ -2248,7 +2262,12 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
+@@ -2257,7 +2274,16 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
  			return;
  		}
  	}
 -	ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
 +
-+	ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
-+	setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
++	if (strncmp(ctx->sni, "testshop.com", strlen("testshop.com")) == 0) {
++		ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
++		setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
 +
-+	ctx->dst.bev = pxy_bufferevent_setup(ctx, ssa_socket, NULL);
-+	// ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
++		ctx->dst.bev = pxy_bufferevent_setup(ctx, ssa_socket, NULL);
++	}
++	else {
++		ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
++	}
  	if (!ctx->dst.bev) {
  		if (ctx->dst.ssl) {
  			SSL_free(ctx->dst.ssl);
-@@ -2270,11 +2289,11 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
+@@ -2279,11 +2305,14 @@ pxy_conn_connect(pxy_conn_ctx_t *ctx)
  			free(port);
  		}
  	}
@@ -114,11 +121,14 @@ index c9540a2..1ae41f0 100644
  	bufferevent_socket_connect(ctx->dst.bev,
  	                           (struct sockaddr *)&ctx->addr,
  	                           ctx->addrlen);
-+	evutil_make_socket_nonblocking(ssa_socket);
++
++	if (ssa_socket) {
++		evutil_make_socket_nonblocking(ssa_socket);
++	}
  }
  
  #ifndef OPENSSL_NO_TLSEXT
-@@ -2496,4 +2515,26 @@ memout:
+@@ -2505,4 +2534,26 @@ memout:
  	return;
  }
  

@@ -411,7 +411,7 @@ int create_http_response(client_t* client, http_request_t* request) {
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
 	if (strstr(resolved_path, "account") != NULL) {
-		//send_pha_req(client);
+		send_pha_req(client);
 	}
 
 	/* We're ready to handle CGI now */
@@ -846,9 +846,9 @@ int create_server_socket(char* port, int protocol) {
         if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
-	/*if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
 		perror("ca cert");
-	}*/
+	}
 
 	set_alpn(sock);
 
