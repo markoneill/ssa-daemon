@@ -30,13 +30,13 @@ int main() {
 	SSL* tls;
 	char* query;
 	int query_len;
-	char response[2048];
+	char response[4096];
 	/*char* query_again;
 	int query_again_len;*/
 	char hostname[] = "testshop.com";
 
 	printf("Connecting to %s\n", hostname);
-	memset(response, 0, 2048);
+	memset(response, 0, 4096);
 	
 	sock = connect_to_host(hostname, "443", SOCK_STREAM);
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
