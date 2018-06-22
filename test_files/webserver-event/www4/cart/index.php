@@ -97,14 +97,22 @@ function showCart() {
 	echo '  </tbody>';
 	echo '  <tfoot>';
 	$totalStr = money_format('%.2n', $total);
+    
 	echo '    <tr>';
 	echo '      <td colspan="4" class="total">Total: ', $totalStr, '</td>';
 	echo '      <td>';
-	echo '	        <form class="form-inline" method="post" action="/checkout/">';
-	echo '	        <input type="hidden" name="checkout" value="1" />';
-	echo '	        <button type="submit" class="btn btn-success">Checkout</button>';
-	echo '	        </form>';
-	echo '      </td>';
+    if (isset($_SERVER['SSA_ID'])){
+    	echo '	        <form class="form-inline" method="post" action="/checkout/">';
+    	echo '	        <input type="hidden" name="checkout" value="1" />';
+    	echo '	        <button type="submit" class="btn btn-success">Checkout</button>';
+    	echo '	        </form>';
+	} else{
+        echo '          <form class="form-inline" method="post" action="/account/">';
+        echo '          <input type="hidden" name="checkout" value="1" />';
+        echo '          <button type="submit" class="btn btn-success">Sign in to Checkout</button>';
+        echo '          </form>':
+    }
+    echo '      </td>';
 	echo '    </tr>';
 	echo '  </tfoot>';
 	echo '</table>';

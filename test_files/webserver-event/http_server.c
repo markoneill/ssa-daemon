@@ -81,7 +81,7 @@ static void send_pha_req(client_t* client);
 void handle_client(client_t* client);
 void signal_handler(int signum);
 
-time_t g_timeout_secs = 5;
+time_t g_timeout_secs = 500;
 config_t g_config;
 int g_running;
 
