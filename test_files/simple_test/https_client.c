@@ -12,10 +12,17 @@ int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
 int main(int argc, char* argv[]) {
-	int sock_fd = connect_to_host(argv[1], "443");
+	int sock_fd;
 	char http_request[2048];
 	char http_response[2048];
-	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+
+	if (argc < 2) {
+		printf("USAGE: %s <host name>\n", argv[0]);
+		return 0;
+	}
+	sock_fd = connect_to_host(argv[1], "443");
+	sprintf(http_request,"GET /account/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, strlen(http_request), 0);
 	recv(sock_fd, http_response, 750, 0);

@@ -1,2 +1,7 @@
+TARGET=https_client
+
 normal:
-	gcc -o https_client https_client.c
+	gcc -o $(TARGET) https_client.c
+
+clean :
+	rm $(TARGET)

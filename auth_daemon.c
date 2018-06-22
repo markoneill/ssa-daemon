@@ -240,9 +240,12 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// code to display a QR code image
 	//
 	
-	ctx->qrcode_gui_pid = QR_SHOW;
-	ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
-	event_add(ev, &half_second);
+	if (ctx->qrcode_gui_pid <= 0)
+	{	// curently no QR code is being displayed
+		ctx->qrcode_gui_pid = QR_SHOW;
+		ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
+		event_add(ev, &half_second);
+	}
 
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
@@ -279,7 +282,7 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	int ssl_err;
 
-	log_printf(LOG_DEBUG, "device_event_cb called with event %d (%s%s%s)",
+	log_printf(LOG_DEBUG, "device_event_cb called with event %d (%s%s%s)\n",
 			events,
 			events & BEV_EVENT_CONNECTED?"BEV_EVENT_CONNECTED":"",
 			events & BEV_EVENT_EOF?"BEV_EVENT_EOF":"",
@@ -322,15 +325,26 @@ void qrpopup_cb(int fd, short event, void *arg) {
 	char* const params[] = {POPUP_EXE, NULL};
 	int pid;
 
-	log_printf(LOG_DEBUG, "qrpoput_cb called with fd: %d event: %h\n", fd, event);
+	log_printf(LOG_DEBUG, "qrpopup_cb called with event: %hd (%s%s%s%s%s%s) qrPopUp.pid %d\n",
+				fd, event,
+				event & 0x01?"EV_TIMEOUT":"",
+				event & 0x02?"EV_READ":"",
+				event & 0x04?"EV_WRITE":"",
+				event & 0x08?"EV_SIGNAL":"",
+				event & 0x10?"EV_PERSIST":"",
+				event & 0x20?"EV_ET":"",
+				ctx->qrcode_gui_pid);
 
 	if (ctx->qrcode_gui_pid == QR_SHOW) {
 		if ((pid = fork())) {
 			log_printf(LOG_INFO, "qrCode pop-up launched\n");
+			ctx->qrcode_gui_pid = pid;
+			if (pid < 0) {
+				log_printf(LOG_ERROR, "qrCode fork error\n");
+			}
 		} else {
 			execv(POPUP_EXE, params);
 			exit(-1);
 		}
-		ctx->qrcode_gui_pid = pid;
 	}
 }
