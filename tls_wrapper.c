@@ -1102,11 +1102,12 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 	if (recv_sign_response(ai->fd, o_sig, o_siglen) == 0) {
 		log_printf(LOG_ERROR, "Could not receive signature response\n");
 		close(ai->fd);
-		free(ai);
+		//free(ai);
 		return 1;
 	}
+	log_printf(LOG_INFO, "Got a signature, closing fd %d\n", ai->fd);
 	close(ai->fd);
-	free(ai);
+	//free(ai);
 
         /*printf("Signing hash\n");
         //pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
@@ -1167,7 +1168,9 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	ai = SSL_get_ex_data(tls, auth_info_index);
 	/* XXX improve this later to not block. This
 	 * blocking POC is...well, just for POC */
+	log_printf(LOG_INFO, "Client cert callback is invoked\n");
 	fd = auth_daemon_connect();
+	log_printf(LOG_INFO, "fd to auth daemon is %d\n", fd);
 	if (fd == -1) {
 		log_printf(LOG_ERROR, "Failed to connect to auth daemon\n");
 		return 0;
@@ -1177,7 +1180,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
 		close(ai->fd);
-		free(ai);
+		//free(ai);
 		return 0;
 	}
 	*key = NULL;
@@ -1252,12 +1255,15 @@ int recv_cert_response(int fd, X509** o_cert) {
 		return 0;
 	}
 	bytes_read = recv(fd, &cert_len, sizeof(uint32_t), MSG_WAITALL);
+	printf("bytes read = %d\n", bytes_read);
+	
 	if (bytes_read == -1) {
 		log_printf(LOG_ERROR, "Failed to read message length in cert response\n");
 		return 0;
 	}
 
 	cert_len = ntohl(cert_len);
+	printf("cert length = %d (%08X)\n", cert_len, cert_len);
 	cert_mem = malloc(cert_len);
 	if (cert_mem == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate certificate length in cert response\n");
@@ -1333,7 +1339,7 @@ void send_all(int fd, char* msg, int bytes_to_send) {
 	while (total_bytes_sent < bytes_to_send) {
 		bytes_sent = send(fd, msg + total_bytes_sent, bytes_to_send - total_bytes_sent, 0);
 		if (bytes_sent == -1) {
-			log_printf(LOG_ERROR, "Could not send data to auth daemon\n");
+			log_printf(LOG_ERROR, "Could not send data to auth daemon %s\n", strerror(errno));
 			return;
 		}
 		total_bytes_sent += bytes_sent;
