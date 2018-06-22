@@ -1,16 +1,16 @@
-From 0d81a67044cbba90fa905e7c34f46076988ef60c Mon Sep 17 00:00:00 2001
+From 5eb13f708cbb4e86d3943cb3057be5293a49b4f3 Mon Sep 17 00:00:00 2001
 From: Mark O'Neill <mto@byu.edu>
-Date: Wed, 20 Jun 2018 15:24:43 -0600
+Date: Fri, 22 Jun 2018 13:21:46 -0600
 Subject: [PATCH] Test 2
 
 ---
  include/openssl/ssl.h    |   1 +
  ssl/ssl_lib.c            |   8 +++
  ssl/ssl_locl.h           |   3 +
- ssl/statem/statem_clnt.c |  16 +++--
+ ssl/statem/statem_clnt.c |  18 ++++--
  ssl/statem/statem_lib.c  | 158 ++++++++++++++++++++++++++++++++---------------
  util/libssl.num          |   1 +
- 6 files changed, 132 insertions(+), 55 deletions(-)
+ 6 files changed, 133 insertions(+), 56 deletions(-)
 
 diff --git a/include/openssl/ssl.h b/include/openssl/ssl.h
 index bb64fe04e8..750a54779d 100644
@@ -65,7 +65,7 @@ index a28facdcc6..88ac7d9d04 100644
  
  /*
 diff --git a/ssl/statem/statem_clnt.c b/ssl/statem/statem_clnt.c
-index 86cf5b6ab2..f8ba8a1883 100644
+index 86cf5b6ab2..d21fa4ba54 100644
 --- a/ssl/statem/statem_clnt.c
 +++ b/ssl/statem/statem_clnt.c
 @@ -3360,6 +3360,11 @@ int tls_client_key_exchange_post_work(SSL *s)
@@ -80,6 +80,15 @@ index 86cf5b6ab2..f8ba8a1883 100644
      /* If no suitable signature algorithm can't use certificate */
      if (!tls_choose_sigalg(s, 0) || s->s3->tmp.sigalg == NULL)
          return 0;
+@@ -3395,7 +3400,7 @@ WORK_STATE tls_prepare_client_certificate(SSL *s, WORK_STATE wst)
+             }
+             s->rwstate = SSL_NOTHING;
+         }
+-        if (ssl3_check_client_certificate(s)) {
++        if (s->client_auth_cb == NULL && ssl3_check_client_certificate(s)) {
+             if (s->post_handshake_auth == SSL_PHA_REQUESTED) {
+                 return WORK_FINISHED_STOP;
+             }
 @@ -3418,17 +3423,20 @@ WORK_STATE tls_prepare_client_certificate(SSL *s, WORK_STATE wst)
              return WORK_MORE_B;
          }
