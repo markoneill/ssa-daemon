@@ -326,15 +326,18 @@ void qrpopup_cb(int fd, short event, void *arg) {
 	char* const params[] = {POPUP_EXE, NULL};
 	int pid;
 
-	log_printf(LOG_DEBUG, "qrpopup_cb called with event: %hd (%s%s%s%s%s%s) qrPopUp.pid %d\n",
-				fd, event,
-				event & 0x01?"EV_TIMEOUT":"",
-				event & 0x02?"EV_READ":"",
-				event & 0x04?"EV_WRITE":"",
-				event & 0x08?"EV_SIGNAL":"",
-				event & 0x10?"EV_PERSIST":"",
-				event & 0x20?"EV_ET":"",
-				ctx->qrcode_gui_pid);
+	log_printf(LOG_DEBUG,
+		  "qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrPopUp.pid %d\n",
+		  event,
+		  (event & 0x01)?"EV_TIMEOUT":"",
+		  (event & 0x02)?"EV_READ":"",
+		  (event & 0x04)?"EV_WRITE":"",
+		  (event & 0x08)?"EV_SIGNAL":"",
+		  (event & 0x10)?"EV_PERSIST":"",
+		  (event & 0x20)?"EV_ET":"",
+		  (event & 0xC0)?"UNDEFINED":"",
+		  ctx->qrcode_gui_pid
+		  );
 
 	if (ctx->qrcode_gui_pid == QR_SHOW) {
 		if ((pid = fork())) {

@@ -1,14 +1,14 @@
-From 790533601169486e12b92be7d227fdbe17e09961 Mon Sep 17 00:00:00 2001
-From: Mark O'Neill <mto@byu.edu>
-Date: Thu, 21 Jun 2018 14:31:23 -0600
-Subject: [PATCH] Only use SSA for testshop.com
+From 82e4a9d245d67383d21f4a81e49d9f5813912686 Mon Sep 17 00:00:00 2001
+From: Benjamin Davis <benjaminhdavis8@gmail.com>
+Date: Fri, 22 Jun 2018 16:05:00 -0600
+Subject: [PATCH] test2
 
 ---
- pxyconn.c | 65 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-------
+ pxyconn.c | 65 +++++++++++++++++++++++++++++++++++++++++++++++++------
  1 file changed, 58 insertions(+), 7 deletions(-)
 
 diff --git a/pxyconn.c b/pxyconn.c
-index 0b58143..fcfc34e 100644
+index 0b58143..007c154 100644
 --- a/pxyconn.c
 +++ b/pxyconn.c
 @@ -39,6 +39,7 @@
@@ -100,7 +100,7 @@ index 0b58143..fcfc34e 100644
  	}
 -	ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
 +
-+	if (strncmp(ctx->sni, "testshop.com", strlen("testshop.com")) == 0) {
++	if (strstr(ctx->sni, "testshop.com") != NULL) {
 +		ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
 +		setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
 +
@@ -156,5 +156,5 @@ index 0b58143..fcfc34e 100644
 +
  /* vim: set noet ft=c: */
 -- 
-2.13.6
+2.17.1
 
