@@ -206,6 +206,7 @@ void requester_read_cb(struct bufferevent *bev, void *arg) {
 void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	if (events & BEV_EVENT_CONNECTED) {
+		log_printf(LOG_INFO, "Worker connecting\n");
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_INFO, "Worker disconnecting\n");
