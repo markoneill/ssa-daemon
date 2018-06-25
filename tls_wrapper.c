@@ -1168,6 +1168,10 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 }
 
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
+	int i;
+	char name_buf[1024];
+	X509_NAME* name;
+	STACK_OF(X509_NAME)* names;
 	auth_info_t* ai;
 	int fd;
 	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
@@ -1182,7 +1186,18 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 		return 0;
 	}
 	ai->fd = fd;
-	send_cert_request(ai->fd, ai->hostname);
+	names = SSL_get_client_CA_list(tls);
+	if (names == NULL) {
+		send_cert_request(ai->fd, ai->hostname);
+	}
+	else {
+		for (i = 0; i < sk_X509_NAME_num(names); i++) {
+			name = sk_X509_NAME_value(names, i);
+			X509_NAME_oneline(name, name_buf, 1024);
+			printf("Name is %s\n", name_buf);
+		}
+		send_cert_request(ai->fd, ai->hostname);
+	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
 		close(ai->fd);
