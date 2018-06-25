@@ -475,8 +475,12 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	}*/
 
 	if (conn_ctx != NULL) {
-		/* These options not supported after connection (for now) */
-		return 0;
+		cert_names = SSL_load_client_CA_file(value);
+		if (cert_names == NULL) {
+			return 0;
+		}
+		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
+		return 1;
 	}
 	while (tls_opts != NULL) {
        		tls_ctx = tls_opts->tls_ctx;
@@ -611,6 +615,7 @@ int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* val
 	if (conn_ctx == NULL) {
 		return 0;
 	}
+
 	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
 		log_printf(LOG_ERROR, "Unable to send auth request\n");
 		return 0;
@@ -1089,6 +1094,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 	auth_info_t* ai;
 
 	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
+	log_printf(LOG_INFO, "hash ID is %d\n", hash_nid);
 
         /*EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
