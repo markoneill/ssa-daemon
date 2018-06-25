@@ -1169,6 +1169,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	int i;
+	char *host;
 	char name_buf[1024];
 	X509_NAME* name;
 	STACK_OF(X509_NAME)* names;
@@ -1191,11 +1192,18 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 		send_cert_request(ai->fd, ai->hostname);
 	}
 	else {
+		host = calloc(256,1);
 		for (i = 0; i < sk_X509_NAME_num(names); i++) {
 			name = sk_X509_NAME_value(names, i);
 			X509_NAME_oneline(name, name_buf, 1024);
+			X509_NAME_get_text_by_NID(name,NID_commonName,host,256);
+			
 			printf("Name is %s\n", name_buf);
 		}
+		if(strstr(host,"owntrust.org") == NULL){	
+			ai->hostname = host;
+		}
+		printf("%s\n",ai->hostname);
 		send_cert_request(ai->fd, ai->hostname);
 	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
