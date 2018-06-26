@@ -352,6 +352,15 @@ void qrpopup_cb(int fd, short event, void *arg) {
 		  ctx->qrcode_gui_pid
 		  );
 
+	if (ctx->qrcode_gui_pid > 0) {
+		log_printf(LOG_ERROR,
+			       	"qrpopup_cb called with curent pid %d",
+			       	ctx->qrcode_gui_pid
+			  );
+		kill(ctx->qrcode_gui_pid, SIGKILL);
+		ctx->qrcode_gui_pid = QR_PENDING;
+	}
+
 	if (ctx->qrcode_gui_pid == QR_PENDING) {
 		if ((pid = fork())) {
 			log_printf(LOG_DEBUG,
