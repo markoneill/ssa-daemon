@@ -145,6 +145,7 @@ void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	daemon_ctx.worker_bev = NULL;
 	daemon_ctx.device_listener = ext_listener;
 	daemon_ctx.device_bev = NULL;
+	daemon_ctx.qrcode_gui_pid = QR_SHOW;
 
 	log_printf(LOG_INFO, "Starting auth daemon\n");
 	event_base_dispatch(ev_base);

@@ -475,8 +475,12 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	}*/
 
 	if (conn_ctx != NULL) {
-		/* These options not supported after connection (for now) */
-		return 0;
+		cert_names = SSL_load_client_CA_file(value);
+		if (cert_names == NULL) {
+			return 0;
+		}
+		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
+		return 1;
 	}
 	while (tls_opts != NULL) {
        		tls_ctx = tls_opts->tls_ctx;
@@ -611,6 +615,7 @@ int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* val
 	if (conn_ctx == NULL) {
 		return 0;
 	}
+
 	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
 		log_printf(LOG_ERROR, "Unable to send auth request\n");
 		return 0;
@@ -1089,6 +1094,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 	auth_info_t* ai;
 
 	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
+	log_printf(LOG_INFO, "hash ID is %d\n", hash_nid);
 
         /*EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
@@ -1162,6 +1168,11 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 }
 
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
+	int i;
+	char *host;
+	char name_buf[1024];
+	X509_NAME* name;
+	STACK_OF(X509_NAME)* names;
 	auth_info_t* ai;
 	int fd;
 	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
@@ -1176,7 +1187,25 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 		return 0;
 	}
 	ai->fd = fd;
-	send_cert_request(ai->fd, ai->hostname);
+	names = SSL_get_client_CA_list(tls);
+	if (names == NULL) {
+		send_cert_request(ai->fd, ai->hostname);
+	}
+	else {
+		host = calloc(256,1);
+		for (i = 0; i < sk_X509_NAME_num(names); i++) {
+			name = sk_X509_NAME_value(names, i);
+			X509_NAME_oneline(name, name_buf, 1024);
+			X509_NAME_get_text_by_NID(name,NID_commonName,host,256);
+			
+			printf("Name is %s\n", name_buf);
+		}
+		if(strstr(host,"owntrust.org") == NULL){	
+			ai->hostname = host;
+		}
+		printf("%s\n",ai->hostname);
+		send_cert_request(ai->fd, ai->hostname);
+	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
 		close(ai->fd);

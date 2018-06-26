@@ -33,11 +33,16 @@
 #define KEY_FILE_A      "../key_a.pem"
 #define CERT_FILE_B     "../certificate_b.pem"
 #define KEY_FILE_B      "../key_b.pem"
-#define CA_FILE   	"../certificate_ca.pem"
+#define CA_FILE   	"../combined_ca.pem"
+#define NORMAL_CA_FILE  "../certificate_ca.pem"
+#define VISA_CA_FILE	"../certificate_visa_ca.pem"
 
 char http_version[] = "HTTP/1.1";
 char default_path[] = "index.php";
 char server_name[]  = "Simple Web Server";
+
+#define PROTECTED_PATH	"/login"
+#define CART_PROTECTED_PATH	"/checkout"
 
 typedef struct server {
 	int fd;
@@ -48,7 +53,7 @@ void format_date(char* date_str, time_t raw_time);
 char* first_non_space(char* str);
 char* strnstr(char* haystack, char* needle, int length);
 char* resolve_path(char* root_dir, char* path);
-int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request);
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request, char* host);
 void set_alpn(int fd);
 
 /* HTTP functions */
@@ -76,7 +81,7 @@ int set_blocking(int sock, int blocking);
 
 /* SSA specific */
 static char* get_peer_identity(client_t* client);
-static void send_pha_req(client_t* client);
+static void send_pha_req(client_t* client, char* hostname);
 
 void handle_client(client_t* client);
 void signal_handler(int signum);
@@ -410,13 +415,24 @@ int create_http_response(client_t* client, http_request_t* request) {
 
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
-	if (strstr(resolved_path, "account") != NULL) {
-		send_pha_req(client);
+	if (strstr(resolved_path, PROTECTED_PATH) != NULL) {
+		printf("Requesting normal cert\n");
+		if (setsockopt(client->fd, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, NORMAL_CA_FILE, sizeof(NORMAL_CA_FILE)) == -1) {
+			perror("ca cert");
+		}
+		send_pha_req(client, host);
+	}
+	if (strstr(resolved_path, CART_PROTECTED_PATH) != NULL) {
+		printf("Requesting visa cert\n");
+		if (setsockopt(client->fd, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, VISA_CA_FILE, sizeof(VISA_CA_FILE)) == -1) {
+			perror("visa ca cert");
+		}
+		send_pha_req(client, "hax0r.online");
 	}
 
 	/* We're ready to handle CGI now */
 	if (strstr(resolved_path, ".php") != NULL) {
-		handle_cgi(client, path, resolved_path, request);
+		handle_cgi(client, path, resolved_path, request, host);
 		free(resolved_path);
 		return 1;
 	}
@@ -903,7 +919,7 @@ void format_date(char* date_str, time_t raw_time) {
 	return;
 }
 
-int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request) {
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request, char* host) {
 	pid_t pid;
 	int err;
 	int p[2];
@@ -941,7 +957,12 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 		//vf_buf_len--;
 		close(p[0]);
 		eoh = (strstr(vf_buffer, "\r\n\r\n") + 4) - vf_buffer;
-		create_http_response_header(client, "200", "OK", "text/html", 0, (vf_buf_len - eoh));
+		if (strstr(resolved_path, PROTECTED_PATH) != NULL) {
+			create_http_response_header(client, "301", "Found", "text/html", 0, (vf_buf_len - eoh));
+		}
+		else {
+			create_http_response_header(client, "200", "OK", "text/html", 0, (vf_buf_len - eoh));
+		}
 		int new_length = client->send_buf.length + vf_buf_len;
 		if (new_length > client->send_buf.max_length) {
 			client->send_buf.data = (unsigned char*)realloc(client->send_buf.data, new_length);
@@ -993,7 +1014,7 @@ int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t
 	}
 	setenv("REQUEST_METHOD", request->method, 1);
 	setenv("SCRIPT_NAME", getenv("PATH_INFO"), 1);
-	setenv("SERVER_NAME", "", 1); // XXX
+	setenv("SERVER_NAME", host, 1); 
 	setenv("SERVER_PORT", "", 1); // XXX
 	setenv("SERVER_PROTOCOL", http_version, 1);
 	setenv("SERVER_SOFTWARE", server_name, 1);
@@ -1022,11 +1043,11 @@ char* get_peer_identity(client_t* client) {
 	return id;
 }
 
-void send_pha_req(client_t* client) {
-	int data;
-	data = 0;
-	socklen_t data_len = sizeof(data);
-	if (setsockopt(client->fd, IPPROTO_TLS, SO_REQUEST_PEER_AUTH, &data, data_len) == -1) {
+void send_pha_req(client_t* client, char* hostname) {
+	char* data;
+	data = hostname;
+	socklen_t data_len = strlen(hostname)+1;
+	if (setsockopt(client->fd, IPPROTO_TLS, SO_REQUEST_PEER_AUTH, data, data_len) == -1) {
 		perror("setsockopt: SO_REQUEST_PEER_AUTH");
 	}
 	return;

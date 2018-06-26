@@ -814,14 +814,14 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			tls_opts_client_setup(sock_ctx->tls_opts);
 		}
 	}
+	if (response != 0) {
+		netlink_notify_kernel(ctx, id, response);
+		return;
+	}
 	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
 	if (ret == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-	}
-	if (response != 0) {
-		netlink_notify_kernel(ctx, id, response);
-		return;
 	}
 
 	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
