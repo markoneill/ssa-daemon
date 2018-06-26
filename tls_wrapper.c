@@ -1200,7 +1200,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 			
 			printf("Name is %s\n", name_buf);
 		}
-		if(strstr(host,"owntrust.org") == NULL){	
+		if(strstr(host,"owntrust.org") == NULL){
 			ai->hostname = host;
 		}
 		printf("%s\n",ai->hostname);
