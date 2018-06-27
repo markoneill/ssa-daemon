@@ -324,7 +324,7 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	}
 	
 	// QR Popup state transition
-	log_printf(LOG_DEBUG, "qrcode.pid(%d)", ctx->qrcode_gui_pid);
+	log_printf(LOG_DEBUG, "qrcode_gui_pid(%d)", ctx->qrcode_gui_pid);
 	if (ctx->qrcode_gui_pid == QR_PENDING)
 		ctx->qrcode_gui_pid = QR_NO_SHOW;
 	else
@@ -340,7 +340,7 @@ void qrpopup_cb(int fd, short event, void *arg) {
 	int pid;
 
 	log_printf(LOG_DEBUG,
-		  "qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrPopUp.pid %d\n",
+		  "qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrcode_gui_pid %d\n",
 		  event,
 		  (event & 0x01)?"EV_TIMEOUT":"",
 		  (event & 0x02)?"EV_READ":"",
