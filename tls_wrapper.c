@@ -489,10 +489,9 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 		}
 		#ifdef CLIENT_AUTH
 		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | 
-				SSL_VERIFY_POST_HANDSHAKE |
-				SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+				SSL_VERIFY_POST_HANDSHAKE, NULL);
 		#else
-		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
 		#endif
 		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(verified_context_id));
 
@@ -1015,6 +1014,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
 			}
+			startpoint->closed = 1;
 		}
 		if (bev == ctx->secure.bev) {
 			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
@@ -1030,8 +1030,8 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			if (evbuffer_get_length(out_buf) == 0) {
 				endpoint->closed = 1;
 			}
+			startpoint->closed = 1;
 		}
-		startpoint->closed = 1;
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_DEBUG, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
@@ -1208,6 +1208,8 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "It appears the client does not want to authenticate\n");
+		*cert = NULL;
+		*key  = NULL;
 		close(ai->fd);
 		//free(ai);
 		return 1;
