@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, strlen(http_request), 0);
 	recv(sock_fd, http_response, 750, 0);
-	printf("Received:\n%s", http_response);
+	printf("Received:\n%s\n", http_response);
 	close(sock_fd);
 	return 0;
 }
