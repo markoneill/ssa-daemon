@@ -1207,10 +1207,10 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 		send_cert_request(ai->fd, ai->hostname);
 	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
-		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
+		log_printf(LOG_ERROR, "It appears the client does not want to authenticate\n");
 		close(ai->fd);
 		//free(ai);
-		return 0;
+		return 1;
 	}
 	*key = NULL;
 	//*key = get_private_key_from_file(CLIENT_KEY);
