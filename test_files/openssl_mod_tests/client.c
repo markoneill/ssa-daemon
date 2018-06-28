@@ -41,7 +41,7 @@ int main() {
 	sock = connect_to_host(hostname, "443", SOCK_STREAM);
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
 
-	query = "GET /account/index.php HTTP/1.1\r\nHost: testshop.com\r\n\r\n";
+	query = "GET /login/index.php HTTP/1.1\r\nHost: testshop.com\r\n\r\n";
 	query_len = strlen(query);
 	while (SSL_write(tls, query, query_len) <= 0) {}
 	while (SSL_read(tls, response, sizeof(response)) <= 0) {}
@@ -268,7 +268,8 @@ int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key) {
 	printf("Setting certificate\n");
 	*cert = get_cert_from_file(CLIENT_CERT);
 	*key = NULL;
-	//*key = get_private_key_from_file(CLIENT_KEY);
+	/*cert = NULL;
+	return 1;*/
 	SSL_set_client_auth_cb(s, client_auth_callback);
 	return 1;
 }
