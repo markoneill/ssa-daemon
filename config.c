@@ -12,6 +12,7 @@ size_t global_config_size = 0;
 
 
 void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
+	int i;
 	const char* value;
 	int extension_count = 0;
 	const char* name = config_setting_name(cur_setting);
@@ -70,7 +71,7 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
 	}
 	else if (STR_MATCH(name, "Extensions")) {
 		extension_count = config_setting_length(cur_setting);
-		for(int i = 0; i < extension_count; i++) {
+		for(i = 0; i < extension_count; i++) {
 			const char* extension = config_setting_get_string_elem(cur_setting, i);
 			if (STR_MATCH(extension, "SNI")) {
 				config->extensions |= SSA_EXT_SNI;
@@ -148,6 +149,8 @@ void free_config()
 }
 
 size_t parse_config(char* filename) {
+	int i;
+	int j;
 	free_config(); // Just incase you call parse_config multiple times
 	config_t cfg;
 	config_setting_t *default_profile;
@@ -177,7 +180,7 @@ size_t parse_config(char* filename) {
 	// Parse default
 	default_profile = config_lookup(&cfg, "Default");
 	int default_i = config_setting_length(default_profile);
-	for (int i = 0; i < default_i; i++) {
+	for (i = 0; i < default_i; i++) {
 		add_setting(default_config, config_setting_get_elem(default_profile, i));
 	}
 	//Default profile does not need a name
@@ -214,12 +217,12 @@ size_t parse_config(char* filename) {
 	
 	// Parse all the profiles
 
-	for(int i = 0; i < num_profiles; i++) {
+	for(i = 0; i < num_profiles; i++) {
 		cur_config = malloc(sizeof(ssa_config_t));
 		init_ssa_config(default_config, cur_config);
 		cur_profile = config_setting_get_elem(profiles, i);
 		int num_custom = config_setting_length(cur_profile);
-		for (int j = 0; j < num_custom; j++) {
+		for (j = 0; j < num_custom; j++) {
 			cur_setting = config_setting_get_elem(cur_profile, j);
 			add_setting(cur_config, cur_setting);
 		}
