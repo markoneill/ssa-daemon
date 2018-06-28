@@ -19,6 +19,6 @@
 ## OTP Request Response
     64 bits (8 Bytes) - Access Code
 
-## OTP Validate Request
+## OTP Validate Response
     Signed Certificate Null Terminated
 
