@@ -1,16 +1,19 @@
 # Incoming messages
 ### Endpoints
-    00 - otp request
-    01 - validate otp
-    10 - CSR without validation
-    11 - Nothing
+    0 - otp request
+    1 - validate otp
+    2 - CSR without validation
+    3 - Nothing
 
 ## OTP Request
     8 bits(1 Byte) - for endpoint specifier
-    8 bites (1 Byte) - for the length of the phone number string
-    X Bits - the phone number as a string
+    8 bits (1 Byte) - for the length of the phone number string
+    X bits - the phone number as a string
+    8 bits (1 Byte) - for the length of the email string
+    X bits - the email as a string
 
 ## OTP Validate Request
+    8 bits(1 Byte) - for endpoint specifier
     64 bits (8 Bytes) - Access Code
     48 bits (6 Bytes) - OTP
     16 bits (2 Bytes) - length of message recvd in bytes (Max 65535)
