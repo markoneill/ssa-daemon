@@ -58,6 +58,8 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option);
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
+static int pxy_ossl_sessnew_cb(SSL *ssl, SSL_SESSION *sess);
+static SSL_SESSION *pxy_ossl_sessget_cb(struct ssl_st *ssl, const unsigned char *id, int idlen, int *copy);
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking);
 void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,

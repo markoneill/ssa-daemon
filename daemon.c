@@ -54,12 +54,13 @@
 #include "in_tls.h"
 #include "daemon.h"
 #include "hashmap.h"
+#include "hashmap_str.h"
 #include "tls_wrapper.h"
 #include "netlink.h"
 #include "log.h"
 
 #define MAX_UPGRADE_SOCKET  18
-#define HASHMAP_NUM_BUCKETS	100
+#define HASHMAP_NUM_BUCKETS	5
 
 #ifdef CLIENT_AUTH
 int auth_info_index;
@@ -88,6 +89,21 @@ typedef struct sock_ctx {
 	tls_daemon_ctx_t* daemon;
 } sock_ctx_t;
 
+hsmap_t* tls_session_map;
+hmap_t* sock_id_comm_map;
+SSL_SESSION * tls_session_temp;
+char* app_path;
+hsmap_t* dict;
+char* key;
+
+int init_tls_session_map = 0, init_id_comm_map = 0;
+char* new_hmap_keys(char* hostname, int port) {
+	char* key = (char*)calloc(1, strlen(hostname) + 6);
+	// itoa(port, key, 10);
+	snprintf(key, strlen(hostname) + 6, "%d", port);
+	strcat(key, hostname);
+	return key;
+}
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
@@ -524,6 +540,13 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 }
 
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
+
+	if (init_id_comm_map == 0)
+	{
+		init_id_comm_map = 1;
+		sock_id_comm_map = hashmap_create(HASHMAP_NUM_BUCKETS);
+	}
+
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
 	int response = 0;
@@ -553,6 +576,9 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	}
 	log_printf(LOG_INFO, "Socket created on behalf of application %s\n", comm);
 	netlink_notify_kernel(ctx, id, response);
+
+	hashmap_add(sock_id_comm_map, id, comm);
+
 	return;
 }
 
@@ -768,9 +794,33 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	return;
 }
 
+static int pxy_ossl_sessnew_cb(SSL *ssl, SSL_SESSION *sess) {
+	log_printf(LOG_INFO, "-------------------INSIDE pxy_ossl_sessnew_cb\n");
+	if (sess) {
+		str_hashmap_add(dict, key, sess);
+	}
+	return 0;
+}
+
+
+static SSL_SESSION *pxy_ossl_sessget_cb(struct ssl_st *ssl, const unsigned char *id, int idlen, int *copy){
+	log_printf(LOG_INFO, "-------------------INSIDE pxy_ossl_sessget_cb\n");
+	SSL_SESSION *sess;
+
+	*copy = 0; /* SSL should not increment reference count of session */
+	sess = tls_session_temp;
+
+	return sess;
+}
+
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking) {
 	
+	if (init_tls_session_map == 0) {
+		tls_session_map = str_hashmap_create(HASHMAP_NUM_BUCKETS);
+		init_tls_session_map = 1;
+	}
+
 	int ret;
 	sock_ctx_t* sock_ctx;
 	int response = 0;
@@ -789,30 +839,73 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 		response = -EBADF;
 	}
 	else {
-		/* only connect if we're not already.
-		 * we might already be connected due to a
-		 * socket upgrade */
-		if (sock_ctx->is_connected == 0) {
-			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
-		}
-		else {
-			ret = 0;
-		}
-		if (ret == -1) {
-			response = -errno;
-		}
-		else {
-			if (sock_ctx->has_bound == 0) {
-				sock_ctx->int_addr = *int_addr;
-				sock_ctx->int_addrlen = int_addrlen;
+		SSL_CTX_set_session_cache_mode(sock_ctx->tls_opts->tls_ctx, SSL_SESS_CACHE_CLIENT);
+		app_path = hashmap_get(sock_id_comm_map, id);
+		if (app_path != NULL) {
+			key = new_hmap_keys(sock_ctx->rem_hostname, ((struct sockaddr_in*)rem_addr)->sin_port);
+			dict = str_hashmap_get(tls_session_map, app_path);
+			if (dict != NULL) {
+				log_printf(LOG_INFO, "-------------------INSIDE DICT!=NULL\n");
+				tls_session_temp = str_hashmap_get(dict, key);
+				if (tls_session_temp == NULL) {
+					log_printf(LOG_INFO, "-------------------INSIDE tls_opts_temp=NULL\n");
+					goto create_socket;
+				}
+				else {
+					log_printf(LOG_INFO, "-------------------INSIDE tls_opts_temp!=NULL\n");
+					SSL_CTX_sess_set_get_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessget_cb);
+					goto skip_socket;
+				}
 			}
-			log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
-			hashmap_add(ctx->sock_map_port, port, sock_ctx);
-			sock_ctx->rem_addr = *rem_addr;
-			sock_ctx->rem_addrlen = rem_addrlen;
-			sock_ctx->is_connected = 1;
-			tls_opts_client_setup(sock_ctx->tls_opts);
+			else {
+				log_printf(LOG_INFO, "---------------------INSIDE DICT=NULL\n");
+				goto create_socket;
+			}
 		}
+
+		create_socket:
+			/* only connect if we're not already.
+			 * we might already be connected due to a
+			 * socket upgrade */
+			if (sock_ctx->is_connected == 0) {
+				ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+			}
+			else {
+				ret = 0;
+			}
+			if (ret == -1) {
+				response = -errno;
+			}
+			else {
+				if (sock_ctx->has_bound == 0) {
+					sock_ctx->int_addr = *int_addr;
+					sock_ctx->int_addrlen = int_addrlen;
+				}
+				log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
+				hashmap_add(ctx->sock_map_port, port, sock_ctx);
+				sock_ctx->rem_addr = *rem_addr;
+				sock_ctx->rem_addrlen = rem_addrlen;
+				sock_ctx->is_connected = 1;
+				tls_opts_client_setup(sock_ctx->tls_opts);
+
+				if (app_path != NULL) {
+					if (dict != NULL) {
+						log_printf(LOG_INFO, "---------------------INSIDE BELOW DICT!=NULL\n");
+						if (tls_session_temp == NULL) {
+							str_hashmap_del(dict, key);
+							SSL_CTX_sess_set_new_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessnew_cb);
+						}
+					}
+					else {
+						log_printf(LOG_INFO, "---------------------INSIDE BELOW DICT=NULL\n");
+						dict = str_hashmap_create(HASHMAP_NUM_BUCKETS);
+						str_hashmap_del(tls_session_map, app_path);
+						SSL_CTX_sess_set_new_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessnew_cb);
+						str_hashmap_add(tls_session_map, app_path, dict);
+						str_hashmap_print(dict);
+					}
+				}
+			}
 	}
 	if (response != 0) {
 		netlink_notify_kernel(ctx, id, response);
@@ -824,13 +917,14 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 	}
 
-	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
-				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
-	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
-	if (blocking == 0) {
-		log_printf(LOG_INFO, "Nonblocking connect requested\n");
-		netlink_notify_kernel(ctx, id, -EINPROGRESS);
-	}
+	skip_socket:
+		sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+					sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+		set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
+		if (blocking == 0) {
+			log_printf(LOG_INFO, "Nonblocking connect requested\n");
+			netlink_notify_kernel(ctx, id, -EINPROGRESS);
+		}
 	return;
 }
 
