@@ -215,8 +215,9 @@ void* create_auth_daemon(void* arg) {
 	PEM_write_bio_PUBKEY(pembio, nsd_params.pub_key); 	
 
 	char* keyString;
+	char* copy;
 	int len = BIO_get_mem_data(pembio, &keyString);
-	int pipefd[2];
+	int pipefd[2], i, j;
 	pipe(pipefd);
 	char* argv[6];
 	argv[0] = "qrencode";
@@ -226,13 +227,20 @@ void* create_auth_daemon(void* arg) {
 	argv[4] = "6";
 	argv[5] = NULL;
 	
+	copy = strdup(keyString);
+	for (i = j = 0; copy[j] != 0; j++) {
+		if (copy[j] != '\n')
+			copy[i++] = copy[j];
+	}
+	copy[i] = 0;
+
 	if((pid = fork())) {
 		if (pid == -1) {
 			fprintf(stderr, "could not create QRCode, Call to fork failed\n");
 			return NULL;
 		}
 		close(pipefd[0]);          /* Close unused read end */
-		write(pipefd[1], keyString, len);
+		write(pipefd[1], copy, len);
 		close(pipefd[1]);          /* Reader will see EOF */
 		waitpid(pid,&status,0);
 	} else {
@@ -251,6 +259,7 @@ void* create_auth_daemon(void* arg) {
 		exit(-1);
 	}
 	
+	free(copy);
 	BIO_free(pembio);	
 	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, (void*)&nsd_params);
 

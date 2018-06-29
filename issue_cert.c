@@ -101,19 +101,17 @@ char *X509_to_PEM(X509 *cert, int* bio_len) {
 	}
 
 	// Get length of the bio data
-	BIO_get_mem_data(bio, &tmp_pem);
+	*bio_len = BIO_get_mem_data(bio, &tmp_pem);
 	if (NULL == tmp_pem) {
 		return NULL;
 	}
-	*bio_len = strlen(tmp_pem);
 
-	pem = (char *) malloc(*bio_len + 1);
+	pem = (char *)calloc(1, *bio_len + 1);
 	if (NULL == pem) {
 		BIO_free(bio);
 		return NULL;    
 	}
 
-	memset(pem, 0, *bio_len + 1);
 	BIO_read(bio, pem, *bio_len);
 	BIO_free(bio);
 	return pem;

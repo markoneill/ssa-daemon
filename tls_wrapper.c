@@ -76,6 +76,11 @@ typedef struct auth_info {
 	char* hostname;
 } auth_info_t;
 
+typedef struct s_auth_info {
+	unsigned long id;
+	tls_daemon_ctx_t* daemon;
+} s_auth_info_t;
+
 extern int auth_info_index;
 char auth_daemon_name[] = "\0auth_req";
 #define CLIENT_AUTH_KEY "test_files/openssl_mod_tests/client_key.key"
@@ -390,14 +395,14 @@ int verify_dummy(int preverify, X509_STORE_CTX* store) {
 }
 
 int client_verify(X509_STORE_CTX* store, void* arg) {
-	tls_conn_ctx_t* ctx = arg;
+	/*tls_conn_ctx_t* ctx = arg;*/
 	X509* cert;
 	X509_NAME* subject_name;
 	STACK_OF(X509)* chain;
 	char* identity;
 
 	if (X509_verify_cert(store) != 1) {
-		netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
 		return 0;
 	}
 
@@ -405,13 +410,13 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 	chain = X509_STORE_CTX_get1_chain(store);
 	if (chain == NULL) {
 		log_printf(LOG_ERROR, "Certificate chain unavailable\n");
-		netlink_notify_kernel(ctx->daemon, ctx->id, 0);
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
 		return 0;
 	}
 	cert = sk_X509_value(chain, 0);
 	if (cert == NULL) {
 		log_printf(LOG_ERROR, "First cert not there\n");
-		netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
 		return 0;
 	}
 	subject_name = X509_get_subject_name(cert);
@@ -419,7 +424,7 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 	log_printf(LOG_INFO, "User \"%s\" is authenticated\n", identity);
 	sk_X509_pop_free(chain, X509_free);
 
-	netlink_notify_kernel(ctx->daemon, ctx->id, 0);
+	/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
 	return 1;
 }
 
@@ -475,8 +480,12 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	}*/
 
 	if (conn_ctx != NULL) {
-		/* These options not supported after connection (for now) */
-		return 0;
+		cert_names = SSL_load_client_CA_file(value);
+		if (cert_names == NULL) {
+			return 0;
+		}
+		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
+		return 1;
 	}
 	while (tls_opts != NULL) {
        		tls_ctx = tls_opts->tls_ctx;
@@ -485,10 +494,9 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 		}
 		#ifdef CLIENT_AUTH
 		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | 
-				SSL_VERIFY_POST_HANDSHAKE |
-				SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+				SSL_VERIFY_POST_HANDSHAKE, NULL);
 		#else
-		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
 		#endif
 		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(verified_context_id));
 
@@ -606,16 +614,45 @@ int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
 	return 1;
 }
 
+#ifdef CLIENT_AUTH
+void pha_cb(const SSL* tls, int where, int ret) {
+	s_auth_info_t* ai;
+	/*printf("pha_cb invoked!1111111111 and where is %08X\n", where);*/
+	if (where == 0x00002002) {
+		ai = SSL_get_ex_data(tls, auth_info_index);
+		SSL_set_info_callback((SSL*)tls, NULL);
+		netlink_notify_kernel(ai->daemon, ai->id, 0);
+		free(ai);
+	}
+	/*if (where & SSL_ST_CONNECT) {
+		printf("ssl want is %08X\n", SSL_want(tls));
+		//SSL_read(tls, NULL, 0);
+	}*/
+	return;
+}
+#endif
+
 int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value) {
 	#ifdef CLIENT_AUTH
+	s_auth_info_t* ai;
 	if (conn_ctx == NULL) {
 		return 0;
 	}
+	ai = (s_auth_info_t*)calloc(1, sizeof(s_auth_info_t));
+	if (ai == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate auth info\n");
+		return 0;
+	}
+	ai->id = conn_ctx->id;
+	ai->daemon = conn_ctx->daemon;
+	SSL_set_ex_data(conn_ctx->tls, auth_info_index, (void*)ai);
+
 	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
 		log_printf(LOG_ERROR, "Unable to send auth request\n");
 		return 0;
 	}
 	SSL_do_handshake(conn_ctx->tls);
+	SSL_set_info_callback(conn_ctx->tls, pha_cb);
 	#endif
 	return 1;
 }
@@ -1010,6 +1047,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
 			}
+			startpoint->closed = 1;
 		}
 		if (bev == ctx->secure.bev) {
 			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
@@ -1025,8 +1063,8 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			if (evbuffer_get_length(out_buf) == 0) {
 				endpoint->closed = 1;
 			}
+			startpoint->closed = 1;
 		}
-		startpoint->closed = 1;
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_DEBUG, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
@@ -1089,6 +1127,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 	auth_info_t* ai;
 
 	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
+	log_printf(LOG_INFO, "hash ID is %d\n", hash_nid);
 
         /*EVP_PKEY* pkey = NULL;
         const EVP_MD *md = NULL;
@@ -1162,6 +1201,11 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 }
 
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
+	int i;
+	char *host;
+	char name_buf[1024];
+	X509_NAME* name;
+	STACK_OF(X509_NAME)* names;
 	auth_info_t* ai;
 	int fd;
 	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
@@ -1169,6 +1213,7 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	/* XXX improve this later to not block. This
 	 * blocking POC is...well, just for POC */
 	log_printf(LOG_INFO, "Client cert callback is invoked\n");
+
 	fd = auth_daemon_connect();
 	log_printf(LOG_INFO, "fd to auth daemon is %d\n", fd);
 	if (fd == -1) {
@@ -1176,9 +1221,29 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 		return 0;
 	}
 	ai->fd = fd;
-	send_cert_request(ai->fd, ai->hostname);
+	names = SSL_get_client_CA_list(tls);
+	if (names == NULL) {
+		send_cert_request(ai->fd, ai->hostname);
+	}
+	else {
+		host = calloc(256,1);
+		for (i = 0; i < sk_X509_NAME_num(names); i++) {
+			name = sk_X509_NAME_value(names, i);
+			X509_NAME_oneline(name, name_buf, 1024);
+			X509_NAME_get_text_by_NID(name,NID_commonName,host,256);
+			
+			printf("Name is %s\n", name_buf);
+		}
+		if(strstr(host,"owntrust.org") == NULL){
+			ai->hostname = host;
+		}
+		printf("%s\n",ai->hostname);
+		send_cert_request(ai->fd, ai->hostname);
+	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
-		log_printf(LOG_ERROR, "Failed to get certificate from auth daemon\n");
+		log_printf(LOG_ERROR, "It appears the client does not want to authenticate\n");
+		*cert = NULL;
+		*key  = NULL;
 		close(ai->fd);
 		//free(ai);
 		return 0;

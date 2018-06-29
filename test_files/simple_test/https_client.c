@@ -21,12 +21,12 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 	sock_fd = connect_to_host(argv[1], "443");
-	sprintf(http_request,"GET /account/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+	sprintf(http_request,"GET /login/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, strlen(http_request), 0);
 	recv(sock_fd, http_response, 750, 0);
-	printf("Received:\n%s", http_response);
+	printf("Received:\n%s\n", http_response);
 	close(sock_fd);
 	return 0;
 }

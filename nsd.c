@@ -144,8 +144,8 @@ int base64_encode(const unsigned char* buffer, size_t n, char* b64text, size_t l
 int publish_service(service_ctx_t* ctx) {
 	int err;
 	char buf[1024] = "publicKey=";
-	char *txt;
-	int len;
+	char *txt, *copy;
+	int len, i, j;
 	unsigned char hash[SHA256_DIGEST_LENGTH];
 	SHA256_CTX sha256;
 	BIO *pembio = BIO_new(BIO_s_mem());
@@ -161,9 +161,16 @@ int publish_service(service_ctx_t* ctx) {
 	if (avahi_entry_group_is_empty(ctx->group)) {
 		PEM_write_bio_PUBKEY(pembio,ctx->pkey);
 		len = BIO_get_mem_data(pembio,&txt);
+
+		copy = strdup(txt);
+		for (i = j = 0; j<len; j++) {
+			if (copy[j] != '\n')
+				copy[i++] = copy[j];
+		}
+		copy[i] = 0;
 		
     		SHA256_Init(&sha256);
-    		SHA256_Update(&sha256, txt, len);
+    		SHA256_Update(&sha256, copy, i);
     		SHA256_Final(hash, &sha256);
 		
 		base64_encode(hash, SHA256_DIGEST_LENGTH, buf+strlen(buf), MAX_TXT_RECORD_LEN);	
@@ -185,6 +192,7 @@ int publish_service(service_ctx_t* ctx) {
 			log_printf(LOG_ERROR, "Avahi Error: %s\n", avahi_strerror(err));
 			return 0;
 		}
+		free(copy);
 	}
 
 	if (avahi_entry_group_commit(ctx->group) < 0) {
