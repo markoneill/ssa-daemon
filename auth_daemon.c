@@ -37,6 +37,7 @@
 #include <event2/util.h>
 #include <event2/bufferevent.h>
 #include <event2/event.h>
+#include <event2/buffer.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -46,12 +47,8 @@
 #include "log.h"
 #include "nsd.h"
 
-// Values of qrcode_gui_pid are interpreted thusly
-// positive numbers (ie n > 0) are real PIDs -> a popup is on screen
-// negative numbers are defined as below
-#define QR_SHOW_NEW	0	// no timer & no popup on screen
-#define QR_PENDING	-1	// timer set to show popup after delay
-#define QR_NO_SHOW	-2	// timer set but should be ignored
+#define CONNECTED	0x0
+#define AVAILABLE	0x1
 
 #define HALF_SEC_USEC	50000
 #define MAX_UNIX_NAME	256
@@ -64,6 +61,7 @@ typedef struct auth_daemon_ctx {
 	struct bufferevent* worker_bev;
 	SSL_CTX *tls_ctx;
 	int qrcode_gui_pid;
+	char connection_status;
 } auth_daemon_ctx_t;
 
 enum state {
@@ -88,9 +86,12 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 void new_device_error_cb(struct evconnlistener *listener, void *ctx);
 static void device_write_cb(struct bufferevent *bev, void *arg);
+static void log_write_cb(struct bufferevent *bev, void *arg);
+static void log_close_cb(struct bufferevent *bev, void *arg);
 static void device_read_cb(struct bufferevent *bev, void *arg);
 static void device_event_cb(struct bufferevent *bev, short events, void *arg);
-void qrpopup_cb(int fd, short event, void *arg);
+static void qrpopup_read_cb(struct bufferevent *bev, void *arg);
+//static void qrpopup_cb(int fd, short event, void *arg);
 
 void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	auth_daemon_ctx_t daemon_ctx;
@@ -145,7 +146,8 @@ void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
 	daemon_ctx.worker_bev = NULL;
 	daemon_ctx.device_listener = ext_listener;
 	daemon_ctx.device_bev = NULL;
-	daemon_ctx.qrcode_gui_pid = QR_SHOW_NEW;
+	daemon_ctx.qrcode_gui_pid = 0;
+	daemon_ctx.connection_status = AVAILABLE;
 
 	log_printf(LOG_INFO, "Starting auth daemon\n");
 	event_base_dispatch(ev_base);
@@ -230,29 +232,37 @@ void requester_event_cb(struct bufferevent *bev, short events, void *arg) {
 
 void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
-	struct event *ev;
-	struct timeval half_second = {0, HALF_SEC_USEC};
-	SSL *tls;
+	struct evbuffer* out_buf;
+	char byte;
 
-	log_printf(LOG_INFO, "A new authentication device has registered\n");
-	
 	auth_daemon_ctx_t* ctx = arg;
-	evconnlistener_disable(listener);
-	tls = SSL_new(ctx->tls_ctx);
-	struct bufferevent* bev = bufferevent_openssl_socket_new(ctx->ev_base, fd,
-			tls, BUFFEREVENT_SSL_ACCEPTING,
-			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
-	if (ctx->qrcode_gui_pid == QR_SHOW_NEW)
-	{	// curently QR code is not on screen or schedualed to display
-		ctx->qrcode_gui_pid = QR_PENDING;
-		ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
-		event_add(ev, &half_second);
+	log_printf(LOG_INFO, "A new authentication device has registered. Computer is %s(%d)\n",
+			ctx->connection_status?"AVAILABLE":"CONNECTED",
+			ctx->connection_status);
+
+	struct bufferevent* bev = bufferevent_socket_new(ctx->ev_base, fd,
+				BEV_OPT_DEFER_CALLBACKS);
+
+	/* Put a byte in the buffer */
+	//evconnlistener_disable(listener);
+	out_buf = bufferevent_get_output(bev);
+	bufferevent_setwatermark(bev, BEV_EVENT_WRITING | BEV_EVENT_READING, 1, 1);
+
+	if (ctx->connection_status == AVAILABLE) {
+		byte = 1;
+		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
+		bufferevent_setcb(bev, qrpopup_read_cb, log_write_cb, NULL, arg);
+		bufferevent_enable(bev, EV_WRITE);
+		ctx->connection_status = CONNECTED;
 	}
-
-	ctx->device_bev = bev;
-	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
-	bufferevent_enable(bev, EV_READ | EV_WRITE);
+	else {
+		//TODO Tell this fella to bug off
+		byte = 0;
+		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
+		bufferevent_setcb(bev, NULL, log_close_cb, NULL, arg);
+		bufferevent_enable(bev, EV_WRITE);
+	}
 	return;
 }
 
@@ -285,31 +295,41 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	int ssl_err;
 
-	log_printf(LOG_DEBUG, "device_event_cb called with event %#x (%s%s%s%s)\n",
+	log_printf(LOG_DEBUG, "Device_event_cb called with event %#x %s%s%s %s%s%s\n",
 			events,
-			events & BEV_EVENT_CONNECTED?"BEV_EVENT_CONNECTED":"",
-			events & BEV_EVENT_EOF?"BEV_EVENT_EOF":"",
-			events & BEV_EVENT_ERROR?"BEV_EVENT_ERROR":"",
-			events & (
-				~(BEV_EVENT_CONNECTED | BEV_EVENT_EOF | BEV_EVENT_ERROR))
-				?"Unhandled Case":""
+
+			events & BEV_EVENT_READING?"(BEV_EVENT_READING)":"",
+			events & BEV_EVENT_WRITING?"(BEV_EVENT_WRITING)":"",
+			events & BEV_EVENT_EOF?"(BEV_EVENT_EOF)":"",
+
+			events & BEV_EVENT_ERROR?"(BEV_EVENT_ERROR)":"",
+			events & BEV_EVENT_TIMEOUT?"(BEV_EVENT_TIMEOUT)":"",
+			events & BEV_EVENT_CONNECTED?"(BEV_EVENT_CONNECTED)":""
 		  );
 
 	if (events & BEV_EVENT_CONNECTED) {
 		if (ctx->qrcode_gui_pid > 0) {
-			log_printf(LOG_DEBUG, "connected. QRCode signaled to close\n");
+			log_printf(LOG_DEBUG, "Cliant connected. QRCode signaled to close\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR1);
+			ctx->qrcode_gui_pid = 0;
 		}
 	}
 	if (events & BEV_EVENT_EOF) {
-		log_printf(LOG_INFO, "Authentication device disconnecting\n");
-		evconnlistener_enable(ctx->device_listener);
+		log_printf(LOG_INFO, "Authentication device disconnecting, Computer is %s(%d)\n",
+			ctx->connection_status?"AVAILABLE":"CONNECTED",
+			ctx->connection_status);
+		//evconnlistener_enable(ctx->device_listener);
+		ctx->connection_status = AVAILABLE;
 		ctx->device_bev = NULL;
 		bufferevent_free(bev);
 	}
 	if (events & BEV_EVENT_ERROR) {
-		log_printf(LOG_INFO, "Authentication device error\n");
-		evconnlistener_enable(ctx->device_listener);
+		log_printf(LOG_INFO,
+			"Authentication device error,  Computer is %s(%d)\n",
+			ctx->connection_status?"AVAILABLE":"CONNECTED",
+			ctx->connection_status);
+		//evconnlistener_enable(ctx->device_listener);
+		ctx->connection_status = AVAILABLE;
 		ctx->device_bev = NULL;
 		while ((ssl_err = bufferevent_get_openssl_error(bev))) {
 			log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n",
@@ -318,29 +338,87 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 		}
 		bufferevent_free(bev);
 		if (ctx->qrcode_gui_pid > 0) {
-			log_printf(LOG_DEBUG, "error. QRCode closed\n");
+			log_printf(LOG_DEBUG, "Connection error. QRCode signaled to closed\n");
 			kill(ctx->qrcode_gui_pid, SIGUSR2);
+			ctx->qrcode_gui_pid = 0;
 		}
 	}
-	
-	// QR Popup state transition
-	log_printf(LOG_DEBUG, "qrcode_gui_pid(%d)", ctx->qrcode_gui_pid);
-	if (ctx->qrcode_gui_pid == QR_PENDING)
-		ctx->qrcode_gui_pid = QR_NO_SHOW;
-	else
-		ctx->qrcode_gui_pid = QR_SHOW_NEW;
-	log_printf(LOG_DEBUG, "\b\b\b\b\b\b\b\b\b changed to %d\n", ctx->qrcode_gui_pid);
-
 	return;
 }
 
-void qrpopup_cb(int fd, short event, void *arg) {
-	auth_daemon_ctx_t *ctx = arg;
-	char* const params[] = {POPUP_EXE, NULL};
+void launch_qrpopup(auth_daemon_ctx_t *ctx) {
 	int pid;
+	char* const params[] = {POPUP_EXE, NULL};
+	//struct timeval half_second = {0, HALF_SEC_USEC};
+	//struct event *ev;
+
+	if (ctx->qrcode_gui_pid > 0) {
+		kill(ctx->qrcode_gui_pid, SIGALRM);
+	}
+	if ((pid = fork())) {
+		log_printf(LOG_DEBUG,
+			   "QrCode pop-up launched as prosses %d\n",
+			   pid);
+		ctx->qrcode_gui_pid = pid;
+		if (pid < 0) {
+			log_printf(LOG_ERROR, "qrCode fork error\n");
+		}
+	} else {
+		execv(POPUP_EXE, params);
+		exit(-1);
+	}
+}
+
+void qrpopup_read_cb(struct bufferevent *bev, void *arg) {
+	auth_daemon_ctx_t *ctx;
+	SSL *tls;
+	struct evbuffer* in_buf;
+	size_t in_len;
+	char data;
+	int fd;
+
+	ctx = (auth_daemon_ctx_t*)arg;
+	in_buf = bufferevent_get_input(bev);
+	in_len = evbuffer_get_length(in_buf);
+	evbuffer_remove(in_buf, &data, 1);
 
 	log_printf(LOG_DEBUG,
-		  "qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrcode_gui_pid %d\n",
+		  "Qrpopup_read_cb called. %d byte(s) to read (%#x), %s\n",
+		  in_len, data,
+		  data==1?"QR code will launch":"QR code will not launch");
+
+	if (in_len && data == 1) {
+		launch_qrpopup(ctx);
+	}
+	
+	fd = bufferevent_getfd(bev);
+	bufferevent_free(bev);
+
+	tls = SSL_new(ctx->tls_ctx);
+	bev = bufferevent_openssl_socket_new(ctx->ev_base, fd,
+			tls, BUFFEREVENT_SSL_ACCEPTING,
+			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+/*
+	if (ctx->qrcode_gui_pid == QR_SHOW_NEW)
+	{	// curently QR code is not on screen or schedualed to display
+		ctx->qrcode_gui_pid = QR_PENDING;
+		ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
+		event_add(ev, &half_second);
+	}
+*/
+
+	ctx->device_bev = bev;
+	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+	return;
+}
+
+/*
+void qrpopup_cb(int fd, short event, void *arg) {
+	auth_daemon_ctx_t *ctx = arg;
+
+	log_printf(LOG_DEBUG,
+		  "Qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrcode_gui_pid %d\n",
 		  event,
 		  (event & 0x01)?"EV_TIMEOUT":"",
 		  (event & 0x02)?"EV_READ":"",
@@ -361,21 +439,23 @@ void qrpopup_cb(int fd, short event, void *arg) {
 		ctx->qrcode_gui_pid = QR_PENDING;
 	}
 
-	if (ctx->qrcode_gui_pid == QR_PENDING) {
-		if ((pid = fork())) {
-			log_printf(LOG_DEBUG,
-				   "qrCode pop-up launched as prosses %d\n",
-				   pid);
-			ctx->qrcode_gui_pid = pid;
-			if (pid < 0) {
-				log_printf(LOG_ERROR, "qrCode fork error\n");
-			}
-		} else {
-			execv(POPUP_EXE, params);
-			exit(-1);
-		}
-	}
-	else if (ctx->qrcode_gui_pid == QR_NO_SHOW) {
-		ctx->qrcode_gui_pid = QR_SHOW_NEW;
-	}
+	launch_qrpopup(ctx);
+}
+*/
+
+static void log_write_cb(struct bufferevent *bev, void *arg) {
+	//auth_daemon_ctx_t* ctx = (auth_daemon_ctx_t*) arg;
+
+	log_printf(LOG_DEBUG, "Ready status sent\n");
+
+	bufferevent_enable(bev, EV_READ);
+}
+
+static void log_close_cb(struct bufferevent *bev, void *arg) {
+	//auth_daemon_ctx_t* ctx = (auth_daemon_ctx_t*) arg;
+
+	log_printf(LOG_DEBUG, "Connection status=busy -> Socket closed\n");
+
+	evutil_closesocket(bufferevent_getfd(bev));
+	bufferevent_free(bev);
 }
