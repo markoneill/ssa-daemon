@@ -21,6 +21,7 @@ function showItems($category) {
 				echo '  <div class="row">';
 			}
 		}
+		if ($category != 'Commanders') {
 		echo '    <div class="col-sm-4">';
 		echo '      <div class="panel panel-primary">';
 		echo '        <div class="panel-heading">', $item['Name'], '</div>';
@@ -38,6 +39,16 @@ function showItems($category) {
 		echo '      </div>';
 		echo '    </div>';
 		$i++;
+		}
+		else{
+			echo '    <div class="col-sm-4">';
+                	echo '      <div class="panel panel-primary">';
+                	echo '        <div class="panel-heading">', $item['Name'], '</div>';
+                	echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
+                	echo '      </div>';
+                	echo '    </div>';
+               		$i++;
+		}
 	}
 	echo '  </div>';
 	echo '</div><br />';

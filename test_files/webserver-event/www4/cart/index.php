@@ -110,7 +110,7 @@ function showCart() {
         echo '          <form class="form-inline" method="post" action="/account/">';
         echo '          <input type="hidden" name="checkout" value="1" />';
         echo '          <button type="submit" class="btn btn-success">Sign in to Checkout</button>';
-        echo '          </form>':
+        echo '          </form>';
     }
     echo '      </td>';
 	echo '    </tr>';

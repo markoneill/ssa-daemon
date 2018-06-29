@@ -12,6 +12,9 @@ function showMenu() {
 		if ($key == $currentSection) {
 			echo '<li class="active"><a href="/?s=', $key, '">', $key ,'</a></li>';
 		}
+		else if ($key == 'Commanders') {
+		
+		}
 		else {
 			echo '<li><a href="/?s=', $key, '">', $key ,'</a></li>';
 		}

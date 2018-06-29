@@ -191,7 +191,33 @@ $items = array(
                                 'Description' => 'Perfect for the weekend or more casual affairs. It features a canvas upper with traditional loafer details and coin slot accent, soft fabric lining, padded insole, and a sturdy, non-marking outsole.',
                                 'Image_URL' => 'https://sits-pod46.demandware.net/dw/image/v2/AAPR_PRD/on/demandware.static/-/Sites-payless-catalog/default/dwa946727c/images/hi-res/172878_6_1400x1400.jpg?sw=556'
                         )
-        )
+	),
+		'Commanders' => array(
+			array(
+				'Name' => 'Mason Coram',
+				'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t1.0-9/13315367_10209463310330156_4823575832127936530_n.jpg?_nc_cat=0&oh=ec38acf8983c9d38453cd4f11cc716d9&oe=5BA004D6'
+			),
+			array(
+				'Name' => 'Torstein Collett',
+				'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t1.0-9/16708613_1737168799946119_9032436024368214539_n.jpg?_nc_cat=0&oh=fa4d938400e242d199634f67a29412de&oe=5BE3F7A7'
+			),
+			array(
+                                'Name' => 'Benjamin Davis',
+                                'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t31.0-8/241444_102360953191848_1374890_o.jpg?_nc_cat=0&oh=a3a6872e898fdd9617a6351e6b66b457&oe=5BAE3785'
+                        ),
+			array(
+                                'Name' => 'Mark O\'Neill',
+                                'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t1.0-9/1907581_10205761334853241_3572493024181627787_n.jpg?_nc_cat=0&oh=955762fe7240f9ad5d84cc71f5914b8f&oe=5BB46871'
+                        ),
+			array(
+                                'Name' => 'Elham Vaziripour',
+                                'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t1.0-9/35160601_10212174467178611_4629256016670752768_n.jpg?_nc_cat=0&oh=3b4b7dbd75f5db4cbad80090a6497f9e&oe=5BB4C3E5'
+                        ),
+			array(
+                                'Name' => 'Daniel Zappala',
+                                'Image_URL' => 'https://scontent-lax3-1.xx.fbcdn.net/v/t1.0-9/10325620_10152118926576958_839507209864335792_n.jpg?_nc_cat=0&oh=84621ceee5225878484c8061a084e682&oe=5BAE1D2E'
+			)
+	)
 
 );
 
