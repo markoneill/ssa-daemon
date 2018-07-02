@@ -29,7 +29,13 @@ if (isset($_SERVER['SSA_ID'])) {
 	    }
 	}
 }
-header('Location: https://'.$_SERVER["SERVER_NAME"].'/account/');
+if (isset($_POST['checkout']) && $_POST['checkout'] == 1) {
+	unset($_POST['checkout']);
+	header('Location: https://'.$_SERVER["SERVER_NAME"].'/checkout/');
+}
+else {
+	header('Location: https://'.$_SERVER["SERVER_NAME"].'/account/');
+}
 echo "Redirecting";
 exit();
 ?>

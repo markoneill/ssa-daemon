@@ -6,6 +6,7 @@ require('../header.php');
 checkout();
 
 function checkout() {
+	unset($_POST['checkout']);
 	if (isset($_POST['purchase'])) {
 		echo '<div class="container">';
 		echo '	<div class="row">';
@@ -15,7 +16,19 @@ function checkout() {
 		echo '		</div>';
 		echo '	</div>';
 		echo '</div>';
-		session_destroy();
+		
+		global $items;
+		$categories = array_keys($items);
+		foreach ($categories as $category) {
+			$i = 0;
+                	foreach ($items[$category] as $item) {
+                        	$quantity = 0;
+				if (isset($_SESSION[$item['Name']])) {
+					unset($_SESSION[$item['Name']]);
+				}
+			}
+		}
+		# session_destroy();
 		exit();
 	}
 	return;
