@@ -47,9 +47,6 @@
 #include "log.h"
 #include "nsd.h"
 
-#define CONNECTED	0x0
-#define AVAILABLE	0x1
-
 #define HALF_SEC_USEC	50000
 #define MAX_UNIX_NAME	256
 
@@ -188,13 +185,21 @@ void requester_write_cb(struct bufferevent *bev, void *arg) {
 void requester_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	struct evbuffer * out_buf;
+	int gid, uid;
 	char byte;
-	byte  = 4;
 
+	byte  = FAILURE_RESPONSE;
 	if (ctx->device_bev == 0) {
 		out_buf = bufferevent_get_output(bev);
-		evbuffer_add(out_buf, (void*) byte, sizeof(char));
+		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		log_printf(LOG_INFO, "requester_read_cb invoked with device disconnected\n");
+		gid = getgid();
+		uid = getuid();
+		setgid(100);
+		setuid(1000);
+		connect_phone_allert();
+		setgid(gid);
+		setuid(uid);
 		return;
 	}
 	bufferevent_read_buffer(bev, 
@@ -255,14 +260,14 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	bufferevent_setwatermark(bev, BEV_EVENT_WRITING | BEV_EVENT_READING, 1, 1);
 
 	if (ctx->connection_status == AVAILABLE) {
-		byte = 1;
+		byte = AVAILABLE;
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		bufferevent_setcb(bev, qrpopup_read_cb, log_write_cb, NULL, arg);
 		bufferevent_enable(bev, EV_WRITE);
 		ctx->connection_status = CONNECTED;
 	}
 	else {
-		byte = 0;
+		byte = CONNECTED;
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		bufferevent_setcb(bev, NULL, log_close_cb, NULL, arg);
 		bufferevent_enable(bev, EV_WRITE);
