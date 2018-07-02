@@ -26,6 +26,7 @@
 void siguser1_handler(int signal);
 void siguser2_handler(int signal);
 void sigalarm_handler(int signal);
+void on_close_click();
 GtkWidget *layout;
 GtkWidget *image;
 GtkWidget *text_window;
@@ -55,6 +56,7 @@ int main(int argc, char *argv[]){
 	gtk_init (&a, &av);
 	
 	window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+	g_signal_connect(G_OBJECT(window), "destroy", on_close_click, NULL);
 	gtk_window_set_default_size(GTK_WINDOW (window), SCALE , SCALE+TEXT_SIZE);  
 	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
 	gtk_window_set_title (GTK_WINDOW (window), TITLE_TEXT);
@@ -81,6 +83,9 @@ int main(int argc, char *argv[]){
 	return 0;
 }
 
+void on_close_click() {
+	gtk_main_quit();
+}
 
 void siguser1_handler(int signal){
 
