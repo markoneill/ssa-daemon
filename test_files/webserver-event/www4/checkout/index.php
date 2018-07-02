@@ -35,12 +35,13 @@ function checkout() {
 }
 
 ?>
+<!--<script src="myscript.js"></script>-->
 <div class="container">		
 	<div class="row">
 		<div>
 		</div>
 		<div class="col-md-8 col-md-offset-2">
-					<h4 class="mb-3">Shipping address</h4>
+					<h3 class="mb-4">Shipping address</h3>
 					<form class="needs-validation" method="post" action="" novalidate>
 						<div class="row">
 							<div class="col-md-6 mb-3">
@@ -94,7 +95,7 @@ function checkout() {
 						</div>
 						<h2 class="mb-3 text-center"> OR</h2>
 
-					<h4 class="mb-3">Billing address</h4>
+					<h3 class="mb-4">Billing address</h3>
 						<div class="row">
 							<div class="col-md-6 mb-3">
 								<label for="firstName">First name</label>
@@ -141,7 +142,7 @@ function checkout() {
 							</div>
 						</div>
 								 
-						<h4 class="mb-3">Payment</h4>
+						<h3 class="mp-4 mt-3">Payment</h3>
 
 						<div class="row">
 							<div class="col-md-6 mb-3">
@@ -166,6 +167,7 @@ function checkout() {
 						</div>
 						<hr class="mb-4">
 						<button class="btn btn-primary btn-lg btn-block" name="purchase" type="submit">Purchase</button>
+						<!--<input class="btn btn-primary btn-lg btn-block" name="purchase" type="submit" id="register" value="Purchase" disabled="disabled">Purchase</button> -->
 					</form>
 		</div>
 	</div>
