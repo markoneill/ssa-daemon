@@ -187,8 +187,13 @@ void requester_write_cb(struct bufferevent *bev, void *arg) {
 
 void requester_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
+	struct evbuffer * out_buf;
+	char byte;
+	byte  = 4;
 
 	if (ctx->device_bev == 0) {
+		out_buf = bufferevent_get_output(bev);
+		evbuffer_add(out_buf, (void*) byte, sizeof(char));
 		log_printf(LOG_INFO, "requester_read_cb invoked with device disconnected\n");
 		return;
 	}
@@ -257,7 +262,6 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 		ctx->connection_status = CONNECTED;
 	}
 	else {
-		//TODO Tell this fella to bug off
 		byte = 0;
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		bufferevent_setcb(bev, NULL, log_close_cb, NULL, arg);
