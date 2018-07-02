@@ -44,6 +44,7 @@
 #include <openssl/x509.h>
 
 #include "auth_daemon.h"
+#include "notification.h"
 #include "log.h"
 #include "nsd.h"
 
@@ -197,7 +198,7 @@ void requester_read_cb(struct bufferevent *bev, void *arg) {
 		uid = getuid();
 		setgid(100);
 		setuid(1000);
-		connect_phone_allert();
+		connect_phone_alert();
 		setgid(gid);
 		setuid(uid);
 		return;
