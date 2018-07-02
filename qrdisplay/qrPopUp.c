@@ -84,8 +84,7 @@ int main(int argc, char *argv[]){
 }
 
 void on_close_click() {
-	gtk_window_destroy()
-//	gtk_main_quit();
+	gtk_main_quit();
 }
 
 void siguser1_handler(int signal){
