@@ -11,7 +11,7 @@ STD_INCLUDES = -I/usr/include/libnl3
 NEW_INCLUDES = \
 	-I/usr/include/libnl3 \
 	-Iopenssl/include \
-	-Ilibevent/include \
+	-Ilibevent/include
 LIBS = 	-lnl-3 \
 	-lnl-genl-3 \
 	-levent_openssl \
@@ -37,8 +37,10 @@ LIBS_EX = \
 	-Wl,libevent/lib \
 	-Wl,-rpath \
 	-Wl,openssl/lib \
-	`pkg-config --cflags --libs libnotify`
-INCLUDES=
+	`pkg-config --libs libnotify`
+  
+INCLUDES= \
+	`pkg-config --cflags libnotify`
 
 .PHONY: clean qrwindow run
 
