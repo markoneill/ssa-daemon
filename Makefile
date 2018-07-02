@@ -8,7 +8,10 @@ EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 STD_INCLUDES = -I/usr/include/libnl3
-NEW_INCLUDES = -I/usr/include/libnl3 -Iopenssl/include -Ilibevent/include
+NEW_INCLUDES = \
+	-I/usr/include/libnl3 \
+	-Iopenssl/include \
+	-Ilibevent/include
 LIBS = 	-lnl-3 \
 	-lnl-genl-3 \
 	-levent_openssl \
@@ -33,8 +36,11 @@ LIBS_EX = \
 	-Wl,-rpath \
 	-Wl,libevent/lib \
 	-Wl,-rpath \
-	-Wl,openssl/lib
-INCLUDES= 
+	-Wl,openssl/lib \
+	`pkg-config --libs libnotify`
+  
+INCLUDES= \
+	`pkg-config --cflags libnotify`
 
 .PHONY: clean qrwindow run
 

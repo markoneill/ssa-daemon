@@ -38,6 +38,9 @@
 #define POPUP_EXE		"./qrdisplay/bin/qrPopUp"
 #define QRIMG_PATH		"./qrdisplay/qrCode.png"
 
+#define CONNECTED	0x0
+#define AVAILABLE	0x1
+
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 
