@@ -6,12 +6,14 @@ require('../header.php');
 updateCart();
 
 function updateCart() {
+	
 	if (!isset($_POST['s']) || !isset($_POST['p'])) {
 		return;
 	}
 
 	$section = $_POST['s'];
 	$id = $_POST['p'];
+	
 
 	global $items;
 	$item = $items[$section][$id];
@@ -25,6 +27,7 @@ function updateCart() {
 	}
 
 	$newQuantity = 0;
+	
 	if (isset($_POST['add'])) {
 		$newQuantity = $quantity + 1;
 	}
@@ -34,6 +37,7 @@ function updateCart() {
 	else if (isset($_POST['update']) && isset($_POST['q'])) {
 		$newQuantity = intval($_POST['q']);
 	}
+	
 
 	if ($newQuantity > 0) {
 		$_SESSION[$item['Name']] = $newQuantity;

@@ -1,5 +1,7 @@
 <?php 
 session_start();
+ini_set('display_errors', 'On');
+error_reporting(E_ALL);
 require('items.php');
 require('header.php');
 
@@ -29,11 +31,11 @@ function showItems($category) {
 		echo '	      <div class="panel-footer">';
 		echo '          <p>', $item['Description'], '</p>';
 		echo '	        <form class="form-inline" method="post" action="/cart/">';
-		echo '          <h2>', money_format('%.2n', $item['Price']), '</h2>';;
-		echo '	        <input type="hidden" name="p" value="', $i ,'" />';
-		echo '	        <input type="hidden" name="s" value="', $category ,'" />';
-		echo '	        <input type="hidden" name="add" value="1" />';
-		echo '	        <button type="submit" class="btn btn-danger">Add to Cart</button>';
+		echo '            <h2>', money_format('%.2n', $item['Price']), '</h2>';;
+		echo '	          <input type="hidden" name="p" value="', $i ,'" />';
+		echo '	          <input type="hidden" name="s" value="', $category ,'" />';
+		echo '	          <input type="hidden" name="add" value="1" />';
+		echo '	          <button type="submit" class="btn btn-danger">Add to Cart</button>';
 		echo '	        </form>';
 		echo '        </div>';
 		echo '      </div>';
