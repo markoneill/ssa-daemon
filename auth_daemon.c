@@ -186,21 +186,20 @@ void requester_write_cb(struct bufferevent *bev, void *arg) {
 void requester_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	struct evbuffer * out_buf;
-	int gid, uid;
+//	int gid, uid;
 	char byte;
+
+	log_printf(LOG_DEBUG, "requester_read_cb called. Computer is %s(%d)\n",
+			ctx->connection_status?"AVAILABLE":"CONNECTED",
+			ctx->connection_status);
+
 
 	byte  = FAILURE_RESPONSE;
 	if (ctx->device_bev == 0) {
 		out_buf = bufferevent_get_output(bev);
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		log_printf(LOG_INFO, "requester_read_cb invoked with device disconnected\n");
-		gid = getgid();
-		uid = getuid();
-		setgid(100);
-		setuid(1000);
 		connect_phone_alert();
-		setgid(gid);
-		setuid(uid);
 		return;
 	}
 	bufferevent_read_buffer(bev, 
