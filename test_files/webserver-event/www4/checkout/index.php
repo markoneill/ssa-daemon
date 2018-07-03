@@ -166,13 +166,29 @@ function checkout() {
 							</div>
 						</div>
 						<hr class="mb-4">
-						<button class="btn btn-primary btn-lg btn-block" name="purchase" type="submit">Purchase</button>
-						<!--<input class="btn btn-primary btn-lg btn-block" name="purchase" type="submit" id="register" value="Purchase" disabled="disabled">Purchase</button> -->
+						<!--<button class="btn btn-primary btn-lg btn-block" name="purchase" type="submit">Purchase</button>-->
+						<input class="btn btn-primary btn-lg btn-block" name="purchase" type="submit" id="purchase" value="Purchase" disabled="disabled">
 					</form>
 		</div>
 	</div>
 </div><br /><br />
+<script>
+$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip, #firstNameBilling, #lastNameBilling, #addressBilling, #address2Billing, #countryBilling, #stateBilling, #cityBilling, #zipBilling, #cc-name, #cc-number, #cc-expiration, #cc-cvv').bind('keyup', function() {
+	if(allFilled()) {
+		$('#purchase').removeAttr('disabled');
+	} else {
+		$('#purchase').attr('disabled', 'disabled');
+	}
+});
 
+function allFilled() {
+    var filled = true;
+    $('#firstName, #lastName, #address, #country, #state, #city, #zip, #firstNameBilling, #lastNameBilling, #addressBilling, #countryBilling, #stateBilling, #cityBilling, #zipBilling, #cc-name, #cc-number, #cc-expiration, #cc-cvv').each(function() {
+        if($(this).val() == '') filled = false;
+    });
+    return filled;
+}
+</script>
 <?php
 	require('../footer.php');
 ?>
