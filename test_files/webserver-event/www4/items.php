@@ -82,13 +82,13 @@ $items = array(
                         array(
                                 'Name' => 'Women\'s Pepper Ankle-Strap Boots',
                                 'Price' => 50.00,
-                                'Description' => 'Elevate your fall fashion with the Pepper. It features a sleek upper with wide ankle strap showcasing an adjustable buckle, a cut-out heel, chic almond-toe, soft lining, padded insole, 3 1/2\" stacked, block heel, and a rubber outsole. ',
+                                'Description' => 'Elevate your fall fashion with the Pepper. It features a sleek upper with wide ankle strap showcasing an adjustable buckle, a cut-out heel, chic almond-toe, soft lining, padded insole, 3 1/2" stacked, block heel, and a rubber outsole. ',
                                 'Image_URL' => 'https://sits-pod46.demandware.net/dw/image/v2/AAPR_PRD/on/demandware.static/-/Sites-payless-catalog/default/dw52c964e7/images/hi-res/173272_6_1400x1400.jpg?sw=556'
                         ),
                         array(
                                 'Name' => 'Women\'s Slip Resistant Brooke Lace-Up with Zipper Boots',
                                 'Price' => 50.00,
-                                'Description' => 'The zippered side makes this boot easy to get on and off. It features a tumbled outer with laces for secure fit, soft lining, 24/7 Comfort Insole, 1\" stacked heel, and a non-marking, oil- and slip-resistant outsole. ',
+                                'Description' => 'The zippered side makes this boot easy to get on and off. It features a tumbled outer with laces for secure fit, soft lining, 24/7 Comfort Insole, 1" stacked heel, and a non-marking, oil- and slip-resistant outsole. ',
                                 'Image_URL' => 'https://sits-pod46.demandware.net/dw/image/v2/AAPR_PRD/on/demandware.static/-/Sites-payless-catalog/default/dw187ffd88/images/hi-res/161025_6_1400x1400.jpg?sw=556'
                         ),
 			array(
@@ -104,7 +104,7 @@ $items = array(
                                 'Image_URL' => 'https://sits-pod46.demandware.net/dw/image/v2/AAPR_PRD/on/demandware.static/-/Sites-payless-catalog/default/dw71538c4d/images/hi-res/148766_6_1400x1400.jpg?sw=556'
                         ),
 			array(
-                                'Name' => 'Men\'s 6\" Waterproof Cheyenne Boots',
+                                'Name' => 'Men\'s 6" Waterproof Cheyenne Boots',
                                 'Price' => 50.00,
                                 'Description' => 'The Cheyenne boot will have you prepared for just about anything. It features a waterproof upper, laces for a good fit, breathable mesh lining, padded collar and tongue, 24/7 Comfort Insole, and an oil- and skid-resistant lug outsole. ',
                                 'Image_URL' => 'https://sits-pod46.demandware.net/dw/image/v2/AAPR_PRD/on/demandware.static/-/Sites-payless-catalog/default/dwe7cadd9b/images/hi-res/150095_6_1400x1400.jpg?sw=556'

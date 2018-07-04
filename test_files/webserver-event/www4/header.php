@@ -60,6 +60,11 @@ function showMenu() {
      .navbar-brand img {
       height:44px;
     }
+
+    header {
+      /*background-color: #f2f2f2;*/
+      background: linear-gradient(to bottom, #f2f2f2 0%, #dddddd 100%);
+    }
    
     /* Add a gray background color and some padding to the footer */
     footer {
@@ -78,7 +83,7 @@ function showMenu() {
 </div>-->
 
 <nav class="navbar navbar">
-  <div class="container-fluid">
+  <header class="container-fluid">
     <div class="navbar-header">
       <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#myNavbar">
         <span class="icon-bar"></span>
