@@ -6,7 +6,11 @@ require('../header.php');
 updateCart();
 
 function updateCart() {
-	
+
+	//$_POST = array();
+	//console.log("update");
+
+	///*
 	if (!isset($_POST['s']) || !isset($_POST['p'])) {
 		return;
 	}
@@ -15,6 +19,7 @@ function updateCart() {
 	$id = $_POST['p'];
 	
 
+	
 	global $items;
 	$item = $items[$section][$id];
 
@@ -28,6 +33,9 @@ function updateCart() {
 
 	$newQuantity = 0;
 	
+
+
+
 	if (isset($_POST['add'])) {
 		$newQuantity = $quantity + 1;
 	}
@@ -39,6 +47,7 @@ function updateCart() {
 	}
 	
 
+	
 	if ($newQuantity > 0) {
 		$_SESSION[$item['Name']] = $newQuantity;
 	}
@@ -46,6 +55,7 @@ function updateCart() {
 		unset($_SESSION[$item['Name']]);
 	}
 	return;
+	// */
 }
 
 function showCart() {
