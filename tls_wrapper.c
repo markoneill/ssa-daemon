@@ -74,6 +74,7 @@ int verify_dummy(int preverify, X509_STORE_CTX* store);
 typedef struct auth_info {
 	int fd;
 	char* hostname;
+	char* ca_name;
 } auth_info_t;
 
 typedef struct s_auth_info {
@@ -87,7 +88,7 @@ char auth_daemon_name[] = "\0auth_req";
 #define CLIENT_AUTH_CERT "test_files/openssl_mod_tests/client_pub.pem"
 int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
 int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
-void send_cert_request(int fd, char* hostname);
+void send_cert_request(int fd, char* hostname, char* ca_name);
 int recv_cert_response(int fd, X509** o_cert);
 void send_sign_request(int fd, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid);
 int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen);
@@ -485,6 +486,7 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 			return 0;
 		}
 		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
+		printf("size of Cert stack = %d\n", sk_X509_num(cert_names));
 		return 1;
 	}
 	while (tls_opts != NULL) {
@@ -1202,7 +1204,7 @@ int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, 
 
 int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	int i;
-	char *host;
+	char *ca_name;
 	char name_buf[1024];
 	X509_NAME* name;
 	STACK_OF(X509_NAME)* names;
@@ -1223,22 +1225,20 @@ int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
 	ai->fd = fd;
 	names = SSL_get_client_CA_list(tls);
 	if (names == NULL) {
-		send_cert_request(ai->fd, ai->hostname);
+		send_cert_request(ai->fd, ai->hostname, NULL);
 	}
 	else {
-		host = calloc(256,1);
+		ca_name = calloc(256,1);
 		for (i = 0; i < sk_X509_NAME_num(names); i++) {
 			name = sk_X509_NAME_value(names, i);
 			X509_NAME_oneline(name, name_buf, 1024);
-			X509_NAME_get_text_by_NID(name,NID_commonName,host,256);
+			X509_NAME_get_text_by_NID(name,NID_commonName,ca_name,256);
 			
 			printf("Name is %s\n", name_buf);
 		}
-		if(strstr(host,"owntrust.org") == NULL){
-			ai->hostname = host;
-		}
-		printf("%s\n",ai->hostname);
-		send_cert_request(ai->fd, ai->hostname);
+		ai->ca_name = ca_name;
+		printf("%s\n",ai->ca_name);
+		send_cert_request(ai->fd, ai->hostname,ai->ca_name);
 	}
 	if (recv_cert_response(ai->fd, cert) == 0) {
 		log_printf(LOG_ERROR, "It appears the client does not want to authenticate\n");
@@ -1275,16 +1275,22 @@ int auth_daemon_connect(void) {
 	return fd;
 }
 
-void send_cert_request(int fd, char* hostname) {
+void send_cert_request(int fd, char* hostname, char* ca_name) {
 	int msg_size;
 	char msg_type;
 	int hostname_len;
-	hostname_len = strlen(hostname);
-	msg_size = htonl(hostname_len);
+	int ca_name_len;
+	if (ca_name == NULL) {
+		ca_name = hostname;
+	}
+	hostname_len = strlen(hostname)+1;
+	ca_name_len = strlen(ca_name)+1;
+	msg_size = htonl(hostname_len+ca_name_len);
 	msg_type = CERTIFICATE_REQUEST;
 	send_all(fd, &msg_type, 1);
 	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
 	send_all(fd, hostname, hostname_len);
+	send_all(fd, ca_name, ca_name_len);
 	log_printf(LOG_DEBUG, "Sent a cert request of length %u\n", hostname_len);
 	return;
 }
