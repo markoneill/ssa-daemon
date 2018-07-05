@@ -176,7 +176,7 @@ function checkout() {
 		</div>
 	</div>
 </div><br /><br />
-<script>
+<script type="text/javascript" src="http://code.jquery.com/jquery-1.7.1.min.js">
 $('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip, #firstNameBilling, #lastNameBilling, #addressBilling, #address2Billing, #countryBilling, #stateBilling, #cityBilling, #zipBilling, #cc-name, #cc-number, #cc-expiration, #cc-cvv').bind('keyup', function() {
 	if(allFilled()) {
 		$('#purchase').removeAttr('disabled');
