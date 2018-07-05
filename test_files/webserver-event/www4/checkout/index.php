@@ -48,17 +48,17 @@ function checkout() {
 				<div class="row">
 					<div class="col-md-6 mb-3">
 						<label for="firstName">First name</label>
-						<input type="text" class="form-control" id="firstName" placeholder="" value="" required>
+						<input type="text" class="form-control" id="firstName" placeholder="" value="" onchange="checkBothPurchase();" required>
 					</div>
 					<div class="col-md-6 mb-3">
 						<label for="lastName">Last name</label>
-						<input type="text" class="form-control" id="lastName" placeholder="" value="" required>
+						<input type="text" class="form-control" id="lastName" placeholder="" value="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 
 				<div class="mb-3">
 					<label for="address">Address</label>
-					<input type="text" class="form-control" id="address" placeholder="1234 Main St" required>
+					<input type="text" class="form-control" id="address" placeholder="1234 Main St" onchange="checkBothPurchase();" required>
 				</div>
 
 				<div class="mb-3">
@@ -69,25 +69,25 @@ function checkout() {
 				<div class="row">
 					<div class="col-md-2 mb-3">
 						<label for="country">Country</label>
-						<select class="form-control" id="country" required>
+						<select class="form-control" id="country" onchange="checkBothPurchase();" required>
 							<option value="">...</option>
 							<option>US</option>
 						</select>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="state">State</label>
-						<select class="form-control" id="state" required>
+						<select class="form-control" id="state" onchange="checkBothPurchase();" required>
 							<option value="">Choose...</option>
 							<option>California</option>
 						</select>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="city">City</label>
-						<input type="text" class="form-control" id="city" placeholder="" required>
+						<input type="text" class="form-control" id="city" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="zip">Zip</label>
-						<input type="text" class="form-control" id="zip" placeholder="" required>
+						<input type="text" class="form-control" id="zip" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 				<hr class="mb-4">
@@ -102,17 +102,17 @@ function checkout() {
 				<div class="row">
 					<div class="col-md-6 mb-3">
 						<label for="firstName">First name</label>
-						<input type="text" class="form-control" id="firstNameBilling" placeholder="" value="" required>
+						<input type="text" class="form-control" id="firstNameBilling" placeholder="" value="" onchange="checkBothPurchase();" required>
 					</div>
 					<div class="col-md-6 mb-3">
 						<label for="lastName">Last name</label>
-						<input type="text" class="form-control" id="lastNameBilling" placeholder="" value="" required>
+						<input type="text" class="form-control" id="lastNameBilling" placeholder="" value="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 
 				<div class="mb-3">
 					<label for="address">Address</label>
-					<input type="text" class="form-control" id="addressBilling" placeholder="1234 Main St" required>
+					<input type="text" class="form-control" id="addressBilling" placeholder="1234 Main St" onchange="checkBothPurchase();" required>
 				</div>
 
 				<div class="mb-3">
@@ -123,25 +123,25 @@ function checkout() {
 				<div class="row">
 					<div class="col-md-2 mb-3">
 						<label for="country">Country</label>
-						<select class="form-control" id="countryBilling" required>
+						<select class="form-control" id="countryBilling" onchange="checkBothPurchase();" required>
 							<option value="">...</option>
 							<option>US</option>
 						</select>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="state">State</label>
-						<select class="form-control" id="stateBilling" required>
+						<select class="form-control" id="stateBilling" onchange="checkBothPurchase();" required>
 							<option value="">Choose...</option>
 							<option>California</option>
 						</select>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="city">City</label>
-						<input type="text" class="form-control" id="cityBilling" placeholder="" required>
+						<input type="text" class="form-control" id="cityBilling" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="zip">Zip</label>
-						<input type="text" class="form-control" id="zipBilling" placeholder="" required>
+						<input type="text" class="form-control" id="zipBilling" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 								 
@@ -150,22 +150,22 @@ function checkout() {
 				<div class="row">
 					<div class="col-md-6 mb-3">
 						<label for="cc-name">Name on card</label>
-						<input type="text" class="form-control" id="cc-name" placeholder="" required>
+						<input type="text" class="form-control" id="cc-name" placeholder="" onchange="checkBothPurchase();" required>
 						<small class="text-muted">Full name as displayed on card</small>
 					</div>
 					<div class="col-md-6 mb-3">
 						<label for="cc-number">Credit card number</label>
-						<input type="text" class="form-control" id="cc-number" placeholder="" required>
+						<input type="text" class="form-control" id="cc-number" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 				<div class="row">
 					<div class="col-md-3 mb-3">
 						<label for="cc-expiration">Expiration</label>
-						<input type="text" class="form-control" id="cc-expiration" placeholder="" required>
+						<input type="text" class="form-control" id="cc-expiration" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 					<div class="col-md-3 mb-3">
 						<label for="cc-expiration">CVV</label>
-						<input type="text" class="form-control" id="cc-cvv" placeholder="" required>
+						<input type="text" class="form-control" id="cc-cvv" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
 				<hr class="mb-4">
@@ -178,26 +178,69 @@ function checkout() {
 </div><br /><br />
 <script>
 $('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip, #firstNameBilling, #lastNameBilling, #addressBilling, #address2Billing, #countryBilling, #stateBilling, #cityBilling, #zipBilling, #cc-name, #cc-number, #cc-expiration, #cc-cvv').bind('keyup', function() {
-	if(allFilled()) {
-		$('#purchase').removeAttr('disabled');
-	} else {
-		console.log("nopurch");
-		$('#purchase').attr('disabled', 'disabled');
-	}
+        if(allFilled()) {
+                $('#purchase').removeAttr('disabled');
+        } else {
+                console.log("nopurch");
+                $('#purchase').attr('disabled', 'disabled');
+        }
 });
-$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip').bind('keyup', function() {
-	if(shippingFilled()) {
-		$('#secure_purchase').removeAttr('disabled');
-	} else {
-		console.log("noship");
-		$('#secure_purchase').attr('disabled', 'disabled');
-	}
+
+$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip, #firstNameBilling, #lastNameBilling, #addressBilling, #address2Billing, #countryBilling, #stateBilling, #cityBilling, #zipBilling, #cc-name, #cc-number, #cc-expiration, #cc-cvv').bind('click', function() {
+        if(allFilled()) {
+                $('#purchase').removeAttr('disabled');
+        } else {
+                console.log("nopurch");
+                $('#purchase').attr('disabled', 'disabled');
+        }
 });
+
+$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip').bind('keyup', function () {
+        if(shippingFilled()) {
+                $('#secure_purchase').removeAttr('disabled');
+        } else {
+                console.log("noship");
+                $('#secure_purchase').attr('disabled', 'disabled');
+        }
+});
+
+$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip').bind('click', function () {
+        if(shippingFilled()) {
+                $('#secure_purchase').removeAttr('disabled');
+        } else {
+                console.log("noship");
+                $('#secure_purchase').attr('disabled', 'disabled');
+        }
+});
+
 document.getElementById("secure_purchase").onclick = function() {
 	document.getElementById("submitform").submit();
 	//post("", {purchase: '1'});
 	//document.write(' <?php checkout(); ?> ');
 };
+
+function checkPurchase() {
+	if(allFilled()) {
+                $('#purchase').removeAttr('disabled');
+        } else {
+                console.log("nopurch");
+                $('#purchase').attr('disabled', 'disabled');
+        }
+}
+
+function checkQuickPurchase() {
+	if(shippingFilled()) {
+                $('#secure_purchase').removeAttr('disabled');
+        } else {
+                console.log("noship");
+                $('#secure_purchase').attr('disabled', 'disabled');
+        }
+}
+
+function checkBothPurchase() {
+	checkPurchase();
+	checkQuickPurchase();
+}
 
 function allFilled() {
 	var filled = true;
