@@ -44,9 +44,12 @@
 #include <openssl/x509.h>
 
 #include "auth_daemon.h"
-#include "notification.h"
 #include "log.h"
 #include "nsd.h"
+
+#ifdef CLIENT_AUTH
+#include "notification.h"
+#endif //CLIENT_AUTH
 
 #define HALF_SEC_USEC	50000
 #define MAX_UNIX_NAME	256
@@ -84,11 +87,11 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg);
 void new_device_error_cb(struct evconnlistener *listener, void *ctx);
 static void device_write_cb(struct bufferevent *bev, void *arg);
-static void log_write_cb(struct bufferevent *bev, void *arg);
+static void unencrypted_write_cb(struct bufferevent *bev, void *arg);
 static void log_close_cb(struct bufferevent *bev, void *arg);
 static void device_read_cb(struct bufferevent *bev, void *arg);
 static void device_event_cb(struct bufferevent *bev, short events, void *arg);
-static void qrpopup_read_cb(struct bufferevent *bev, void *arg);
+static void unencrypted_read_cb(struct bufferevent *bev, void *arg);
 //static void qrpopup_cb(int fd, short event, void *arg);
 
 void auth_server_create(int port, X509* cert, EVP_PKEY *pkey) {
@@ -186,7 +189,6 @@ void requester_write_cb(struct bufferevent *bev, void *arg) {
 void requester_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	struct evbuffer * out_buf;
-//	int gid, uid;
 	char byte;
 
 	log_printf(LOG_DEBUG, "requester_read_cb called. Computer is %s(%d)\n",
@@ -194,14 +196,18 @@ void requester_read_cb(struct bufferevent *bev, void *arg) {
 			ctx->connection_status);
 
 
-	byte  = FAILURE_RESPONSE;
 	if (ctx->device_bev == 0) {
+		byte  = FAILURE_RESPONSE;
 		out_buf = bufferevent_get_output(bev);
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
 		log_printf(LOG_INFO, "requester_read_cb invoked with device disconnected\n");
+#if CLIENT_AUTH
 		connect_phone_alert();
+#endif
 		return;
 	}
+	log_printf(LOG_DEBUG, "buffer has %d bytes to reed\n",
+		evbuffer_get_length(bufferevent_get_output(ctx->device_bev)));
 	bufferevent_read_buffer(bev, 
 			bufferevent_get_output(ctx->device_bev));
 	return;
@@ -262,7 +268,7 @@ void new_device_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	if (ctx->connection_status == AVAILABLE) {
 		byte = AVAILABLE;
 		evbuffer_add(out_buf, (void*)&byte, sizeof(char));
-		bufferevent_setcb(bev, qrpopup_read_cb, log_write_cb, NULL, arg);
+		bufferevent_setcb(bev, unencrypted_read_cb, unencrypted_write_cb, NULL, arg);
 		bufferevent_enable(bev, EV_WRITE);
 		ctx->connection_status = CONNECTED;
 	}
@@ -304,7 +310,7 @@ void device_event_cb(struct bufferevent *bev, short events, void *arg) {
 	auth_daemon_ctx_t* ctx = arg;
 	int ssl_err;
 
-	log_printf(LOG_DEBUG, "Device_event_cb called with event %#x %s%s%s %s%s%s\n",
+	log_printf(LOG_DEBUG, "Device_event_cb called with event %#x %s%s%s%s%s%s\n",
 			events,
 
 			events & BEV_EVENT_READING?"(BEV_EVENT_READING)":"",
@@ -378,7 +384,7 @@ void launch_qrpopup(auth_daemon_ctx_t *ctx) {
 	}
 }
 
-void qrpopup_read_cb(struct bufferevent *bev, void *arg) {
+void unencrypted_read_cb(struct bufferevent *bev, void *arg) {
 	auth_daemon_ctx_t *ctx;
 	SSL *tls;
 	struct evbuffer* in_buf;
@@ -407,14 +413,6 @@ void qrpopup_read_cb(struct bufferevent *bev, void *arg) {
 	bev = bufferevent_openssl_socket_new(ctx->ev_base, fd,
 			tls, BUFFEREVENT_SSL_ACCEPTING,
 			BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-/*
-	if (ctx->qrcode_gui_pid == QR_SHOW_NEW)
-	{	// curently QR code is not on screen or schedualed to display
-		ctx->qrcode_gui_pid = QR_PENDING;
-		ev = event_new(ctx->ev_base, -1, EV_TIMEOUT, qrpopup_cb, ctx);
-		event_add(ev, &half_second);
-	}
-*/
 
 	ctx->device_bev = bev;
 	bufferevent_setcb(bev, device_read_cb, device_write_cb, device_event_cb, ctx);
@@ -422,37 +420,7 @@ void qrpopup_read_cb(struct bufferevent *bev, void *arg) {
 	return;
 }
 
-/*
-void qrpopup_cb(int fd, short event, void *arg) {
-	auth_daemon_ctx_t *ctx = arg;
-
-	log_printf(LOG_DEBUG,
-		  "Qrpopup_cb called with event: %#2x (%s%s%s%s%s%s) qrcode_gui_pid %d\n",
-		  event,
-		  (event & 0x01)?"EV_TIMEOUT":"",
-		  (event & 0x02)?"EV_READ":"",
-		  (event & 0x04)?"EV_WRITE":"",
-		  (event & 0x08)?"EV_SIGNAL":"",
-		  (event & 0x10)?"EV_PERSIST":"",
-		  (event & 0x20)?"EV_ET":"",
-		  (event & 0xC0)?"UNDEFINED":"",
-		  ctx->qrcode_gui_pid
-		  );
-
-	if (ctx->qrcode_gui_pid > 0) {
-		log_printf(LOG_ERROR,
-			       	"qrpopup_cb called with curent pid %d",
-			       	ctx->qrcode_gui_pid
-			  );
-		kill(ctx->qrcode_gui_pid, SIGKILL);
-		ctx->qrcode_gui_pid = QR_PENDING;
-	}
-
-	launch_qrpopup(ctx);
-}
-*/
-
-static void log_write_cb(struct bufferevent *bev, void *arg) {
+static void unencrypted_write_cb(struct bufferevent *bev, void *arg) {
 	//auth_daemon_ctx_t* ctx = (auth_daemon_ctx_t*) arg;
 
 	log_printf(LOG_DEBUG, "Ready status sent\n");

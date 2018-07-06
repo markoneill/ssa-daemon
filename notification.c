@@ -1,10 +1,10 @@
+#ifdef CLIENT_AUTH
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <libnotify/notify.h>
 #include <sys/types.h>
 #include <pwd.h>
-
+#include <libnotify/notify.h>
 #include "log.h"
 
 int dispatch_notification();
@@ -73,4 +73,7 @@ int dispatch_notification() {
 int main(){
 	connect_phone_alert();
 }
-#endif
+#endif //DEBUG
+
+#endif //CLIENT_AUTH
+

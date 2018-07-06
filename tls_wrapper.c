@@ -1345,7 +1345,14 @@ int recv_cert_response(int fd, X509** o_cert) {
 		log_printf(LOG_ERROR, "Failed to read certificate data in cert response\n");
 		return 0;
 	}
-	log_printf(LOG_DEBUG, "Received a responses of type %d and length %d\n", msg_type, cert_len);
+	log_printf(LOG_DEBUG, "Received a response of type %d%s%s%s%s%s and length %d\n",
+			msg_type,
+			msg_type == 0 ? "(CERTIFICATE_REQUEST)":"",
+			msg_type == 1 ? "(CERTIFICATE_RESPONSE)":"",
+			msg_type == 2 ? "(SIGNATURE_REQUEST)":"",
+			msg_type == 3 ? "(SIGNATURE_RESPONSE)":"",
+			msg_type == 4 ? "(FAILURE_RESPONSE)":"",
+			cert_len);
 	bio = BIO_new(BIO_s_mem());
 	if (bio == NULL) {
 		log_printf(LOG_ERROR, "Failed to create BIO for certificate memory\n");
@@ -1399,7 +1406,15 @@ int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen) {
 	}
 	*o_sig = sig;
 	*o_siglen = siglen;
-	log_printf(LOG_DEBUG, "Received a responses of type %d and length %d\n", msg_type, siglen);
+	log_printf(LOG_DEBUG, "Received a response of type %d%s%s%s%s%s and length %d\n",
+			msg_type,
+			msg_type == 0 ? "(CERTIFICATE_REQUEST)":"",
+			msg_type == 1 ? "(CERTIFICATE_RESPONSE)":"",
+			msg_type == 2 ? "(SIGNATURE_REQUEST)":"",
+			msg_type == 3 ? "(SIGNATURE_RESPONSE)":"",
+			msg_type == 4 ? "(FAILURE_RESPONSE)":"",
+			siglen);
+
 	return 1;
 }
 
