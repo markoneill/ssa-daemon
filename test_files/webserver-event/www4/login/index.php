@@ -29,7 +29,7 @@ if (isset($_SERVER['SSA_ID'])) {
 	    }
 	}
 }
-if (isset($_POST['checkout']) && $_POST['checkout'] == 1) {
+if (isset($_POST['checkout']) && $_POST['checkout'] == 1 && isset($_SERVER['SSA_ID'])) {
 	unset($_POST['checkout']);
 	header('Location: https://'.$_SERVER["SERVER_NAME"].'/checkout/');
 }

@@ -42,7 +42,7 @@ char default_path[] = "index.php";
 char server_name[]  = "Simple Web Server";
 
 #define PROTECTED_PATH	"/login"
-#define CART_PROTECTED_PATH	"/checkout"
+#define CART_PROTECTED_PATH	"/purchase"
 
 typedef struct server {
 	int fd;
