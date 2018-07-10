@@ -1,5 +1,4 @@
 <?php
-
 function showMenu() {
 	global $items;
 	$currentSection = 'Sneakers';
@@ -97,7 +96,17 @@ function showMenu() {
 <?php showMenu(); ?>
       </ul>
       <ul class="nav navbar-nav navbar-right">
-        <li><a href="/account/"><span class="glyphicon glyphicon-user"></span>Your Account</a></li>
+	<li><a href="/account/"><span class="glyphicon glyphicon-user"></span>
+		<?php 
+		if(isset($_SESSION['name']) && isset($_SERVER['SSA_ID'])){
+			echo "Welcome ".$_SESSION['name'];
+		}else{ 
+		?>
+			Your Account
+		<?php
+		 } 
+		?>
+		</a></li>
         <li><a href="/cart/"><span class="glyphicon glyphicon-shopping-cart"></span>Cart</a></li>
       </ul>
     </div>
