@@ -1,11 +1,20 @@
 #ifdef CLIENT_AUTH
-#include <unistd.h>
+#include <errno.h>
+#include <libnotify/notify.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <pwd.h>
-#include <libnotify/notify.h>
+#include <unistd.h>
 #include "log.h"
+
+#define NOTIFICATION_TITLE	"No authentication device"
+#define NOTIFICATION_TEXT_1	"To conect your deviece, open the moble app Securly and connect to "
+#define NOTIFICATION_TEXT_2	"To conect your deviece, use the moble app Securly to connect to your computer"
+#define NOTIFICATION_MAX_LEN	256
+#define NOTIFICATION_LEN_1	strlen(NOTIFICATION_TEXT_1)
+
+#define D_BUSS_ADDRESS		"DBUS_SESSION_BUS_ADDRESS"
 
 int dispatch_notification();
 
@@ -24,18 +33,18 @@ int connect_phone_alert() {
 	data = getpwnam(buf);
 
 	snprintf(cmd_buf, 256, "pgrep -u %s dbus-daemon", buf);
-	cmd_out = popen(cmd_buf, "r");
-	fgets(buf, 50, cmd_out);
+	cmd_out = popen(cmd_buf, "r"); fgets(buf, 50, cmd_out);
 	pclose(cmd_out);
 
 	pid = strtoul(buf, NULL, 10);
 
-	snprintf(cmd_buf, 256, "grep -z DBUS_SESSION_BUS_ADDRESS /proc/%d/environ | sed -e s/DBUS_SESSION_BUS_ADDRESS=//", pid);
+	snprintf(cmd_buf, 256,
+		"grep -z DBUS_SESSION_BUS_ADDRESS /proc/%d/environ | sed -e s/DBUS_SESSION_BUS_ADDRESS=//", pid);
 	cmd_out = popen(cmd_buf, "r");
 	fgets(cmd_buf, 256, cmd_out);
 	pclose(cmd_out);
 
-	if ((err = setenv("DBUS_SESSION_BUS_ADDRESS", cmd_buf, 1)) < 0) {
+	if ((err = setenv(D_BUSS_ADDRESS, cmd_buf, TRUE)) < 0) {
 		log_printf(LOG_ERROR, "setenv error %d\n", err);
 		return -1;
 	}
@@ -53,12 +62,21 @@ int connect_phone_alert() {
 
 int dispatch_notification() {
 	GError *err;
+	char note_text[NOTIFICATION_MAX_LEN];
 	NotifyNotification * message;
 
-	notify_init ("Please connect your phone");
+	strcpy(note_text, NOTIFICATION_TEXT_1);
+	if (gethostname(&note_text[NOTIFICATION_LEN_1],
+			NOTIFICATION_MAX_LEN - NOTIFICATION_LEN_1) < 0) {
+		log_printf(LOG_ERROR, "Failed to get hostname: %s\n", strerror(errno));
+		strcpy(note_text, NOTIFICATION_TEXT_2);
+	}
+
+	err = NULL;
+	notify_init (NOTIFICATION_TITLE);
 	message = notify_notification_new (
-			"Please connect your phone",
-			"Please connect your phone to use ClientAuth",
+			NOTIFICATION_TITLE,
+			note_text,
 			"dialog-information");
 	notify_notification_show (message, &err);
 	if (err != NULL) {
