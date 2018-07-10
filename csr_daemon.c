@@ -36,6 +36,17 @@ typedef struct con_ctx {
 	int max_length;
 } con_ctx_t;
 
+typedef struct otp_ctx {
+    char phone_num_len;
+    char* phone_num;
+} otp_ctx_t;
+
+typedef struct validate_otp_ctx {
+    long access_code;
+    char* otp;
+    con_ctx_t* con_ctx;
+} validate_otp_ctx_t;
+
 
 static csr_ctx_t* create_csr_ctx(struct event_base* ev_base);
 void free_csr_ctx(csr_ctx_t* ctx);
@@ -184,21 +195,33 @@ static SSL_CTX * ssl_ctx_init(void) {
 
 // This is not written correctly and needs to not have to read all at once.
 
+char* otp_request(char* request) {
+    long length = request[1];
+    char* phone_number;
+    // read phone number from request
+    char* totp = generate_totp();
+    const char* error;
+    // add totp to cache
+    // hashmap_create
+    // hashmap_add(totp);
+    twilio_send_message(phone_number, totp, error);
+    // send back the access code
+	bufferevent_write(bev, access_code, 8);
+}
 
 /*
-function (string,)// function to catch first byte of string to know what funtion to run`
-{
-if(string = 0)
-	otp_request(string);
-else if (string = 1)
-	validate_otp(string);
-else if (string = 2)
-	csr_wo_validation(string);
-else 
-	error
-	} //end function
+function handle_request(string,)// function to catch first byte of string to know what funtion to run`*/
+void handle_request(struct evbuffer *input, struct bufferevent *bev, ){
+    if(string[0] == 0)
+        otp_request(string);
+    else if (string[0] == 1)
+        validate_otp(string);
+    else if (string[0] == 2)
+        csr_wo_validation(string);
+    else 
+        error
+}
 
-*/
 void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	int cert_len = 0;
@@ -211,6 +234,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
 	//check what kind of request based on first bits
+    handle_request(input, bev, con);
 
 	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
 		if (con_ctx->max_length < recv_len*2) {
