@@ -183,6 +183,22 @@ static SSL_CTX * ssl_ctx_init(void) {
 
 
 // This is not written correctly and needs to not have to read all at once.
+
+
+/*
+function (string,)// function to catch first byte of string to know what funtion to run`
+{
+if(string = 0)
+	otp_request(string);
+else if (string = 1)
+	validate_otp(string);
+else if (string = 2)
+	csr_wo_validation(string);
+else 
+	error
+	} //end function
+
+*/
 void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	int cert_len = 0;
@@ -194,7 +210,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	size_t message_len;
+	//check what kind of request based on first bits
 
 	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
 		if (con_ctx->max_length < recv_len*2) {
