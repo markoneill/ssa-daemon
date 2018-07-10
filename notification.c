@@ -9,8 +9,8 @@
 #include "log.h"
 
 #define NOTIFICATION_TITLE	"No authentication device"
-#define NOTIFICATION_TEXT_1	"To conect your deviece, open the moble app Securly and connect to "
-#define NOTIFICATION_TEXT_2	"To conect your deviece, use the moble app Securly to connect to your computer"
+#define NOTIFICATION_TEXT_1	"To connect with Securely, open the app and connect to "
+#define NOTIFICATION_TEXT_2	"To connect with Securely, open the app and connect to your computer"
 #define NOTIFICATION_MAX_LEN	256
 #define NOTIFICATION_LEN_1	strlen(NOTIFICATION_TEXT_1)
 
