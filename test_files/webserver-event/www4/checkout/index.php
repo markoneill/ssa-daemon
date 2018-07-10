@@ -54,64 +54,70 @@ function checkout() {
 		<div>
 		</div>
 		<div class="col-md-8 col-md-offset-2">
-			<h3 class="mb-4">Shipping address</h3>
 			<form class="needs-validation" method="post" id="submitform" novalidate>
-				<div class="row">
-					<div class="col-md-6 mb-3">
-						<label for="firstName">First name</label>
-						<input type="text" class="form-control" id="firstName" name="firstName" placeholder="" value="" disabled="disabled" onchange="checkBothPurchase();" required>
+			<h3 class="mb-4">Shipping address</h3>
+					<div style="border-style:solid;padding:10px;border-width:2px;border-color:gray;border-width-bottom:0px;">
+				        	<input type="radio" class="custom-control-input" id="same-address" name="address" checked="true" onchange="checkBothPurchase();">
+						<label class="custom-control-label" for="same-address" style="font:normal 20px times !important;">Use your billing address as the shipping address </label>
+			                </div>
+					<div  style="border-style:solid;padding:10px;border-width:2px;border-color:gray;">
+						<input type="radio" class="custom-control-input" id="different-address" name="address" onchange="checkBothPurchase();">
+						<label class="custom-control-label" for="different-address" style="font:normal 20px times !important;">Input new shipping address </label>
+				<div id = "shippingInfo" style="display:none">
+					<div class="row">
+						<div class="col-md-6 mb-3">
+							<label for="firstName">First name</label>
+							<input type="text" class="form-control" id="firstName" name="firstName" placeholder="" value=""  onchange="checkBothPurchase();" required>
+						</div>
+						<div class="col-md-6 mb-3">
+							<label for="lastName">Last name</label>
+							<input type="text" class="form-control" id="lastName" name="lastName" placeholder="" value=""  onchange="checkBothPurchase();" required>
+						</div>
 					</div>
-					<div class="col-md-6 mb-3">
-						<label for="lastName">Last name</label>
-						<input type="text" class="form-control" id="lastName" name="lastName" placeholder="" value="" disabled="disabled" onchange="checkBothPurchase();" required>
+
+					<div class="mb-3">
+						<label for="address">Address</label>
+						<input type="text" class="form-control" id="address" name="address" placeholder="1234 Main St"  onchange="checkBothPurchase();" required>
+					</div>
+
+					<div class="mb-3">
+						<label for="address2">Address 2 <span class="text-muted">(Optional)</span></label>
+						<input type="text" class="form-control" id="address2" name="address2" placeholder="Apartment or suite">
+					</div>
+
+					<div class="row">
+						<div class="col-md-2 mb-3">
+							<label for="country">Country</label>
+							<select class="form-control" id="country" name="country" onchange="checkBothPurchase();" required>
+								<option value="">...</option>
+								<option>US</option>
+							</select>
+						</div>
+						<div class="col-md-3 mb-3">
+							<label for="state">State</label>
+							<select class="form-control" id="state" name="state" onchange="checkBothPurchase();" required>
+								<option value="">Choose...</option>
+								<option>California</option>
+							</select>
+						</div>
+						<div class="col-md-3 mb-3">
+							<label for="city">City</label>
+							<input type="text" class="form-control" id="city" name="city" placeholder=""  onchange="checkBothPurchase();" required>
+						</div>
+						<div class="col-md-3 mb-3">
+							<label for="zip">Zip</label>
+							<input type="text" class="form-control" id="zip" name="zip" placeholder=""  onchange="checkBothPurchase();" required>
+						</div>
 					</div>
 				</div>
-
-				<div class="mb-3">
-					<label for="address">Address</label>
-					<input type="text" class="form-control" id="address" name="address" placeholder="1234 Main St" disabled="disabled" onchange="checkBothPurchase();" required>
-				</div>
-
-				<div class="mb-3">
-					<label for="address2">Address 2 <span class="text-muted">(Optional)</span></label>
-					<input type="text" class="form-control" id="address2" name="address2" placeholder="Apartment or suite" disabled="disabled">
-				</div>
-
-				<div class="row">
-					<div class="col-md-2 mb-3">
-						<label for="country">Country</label>
-						<select class="form-control" id="country" name="country" disabled="disabled" onchange="checkBothPurchase();" required>
-							<option value="">...</option>
-							<option>US</option>
-						</select>
-					</div>
-					<div class="col-md-3 mb-3">
-						<label for="state">State</label>
-						<select class="form-control" id="state" name="state" disabled="disabled" onchange="checkBothPurchase();" required>
-							<option value="">Choose...</option>
-							<option>California</option>
-						</select>
-					</div>
-					<div class="col-md-3 mb-3">
-						<label for="city">City</label>
-						<input type="text" class="form-control" id="city" name="city" placeholder="" disabled="disabled" onchange="checkBothPurchase();" required>
-					</div>
-					<div class="col-md-3 mb-3">
-						<label for="zip">Zip</label>
-						<input type="text" class="form-control" id="zip" name="zip" placeholder="" disabled="disabled" onchange="checkBothPurchase();" required>
-					</div>
 				</div>
 				<hr class="mb-4">
-					<div class="custom-control custom-checkbox">
-				        	<input type="checkbox" class="custom-control-input" id="same-address" name="same-address" checked='true' onchange="checkBothPurchase();">
-
-						<label class="custom-control-label" for="same-address">Shipping address is the same as my billing address</label>
-			            </div>
+				<h3 class="mb-4">Billing Information</h3>
 				<div class="text-center">
 					<h4 class="mb-3">Quickly check out with:</h4>		
 					<input class="btn btn-primary" type="image" src="../visa_checkout.png" id="secure_purchase" width="240" height="136"/>
 					<h2 class="mb-3"> OR</h2>
-					<h4 class="btn mb-3" id="normal_checkout"style="color:blue; text-decoration:underline; -webkit-text-decoration-color:blue; text-decoration-color:blue">checkout normally </h5>
+					<div class="btn mb-3" id="normal_checkout" style="color:blue; text-decoration:underline; -webkit-text-decoration-color:blue; text-decoration-color:blue;font-size:20px;">checkout normally </div>
 				</div>
 				<div id="billingInfo" style="display:none">
 				<h3 class="mb-4">Billing address</h3>
@@ -249,15 +255,10 @@ function shippingFilled() {
 		if($(this).val() == '') filled = false;
 	});
 	if(document.getElementById("same-address").checked){
-		 filled = true;
-		
-		$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip').each(function() {
-			$(this).attr('disabled','disabled');
-		});
+		filled = true;
+		$("#shippingInfo").css("display", "none");
 	} else {
-		$('#firstName, #lastName, #address, #address2, #country, #state, #city, #zip').each(function() {
-			$(this).removeAttr('disabled');
-		});
+		$("#shippingInfo").removeAttr("style");
 	}
 	return filled;
 }
