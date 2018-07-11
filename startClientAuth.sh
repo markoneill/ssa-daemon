@@ -24,7 +24,7 @@ pkill sslsplit
 pkill tls_wrapper
 
 # Make sure we are in the right directory
-echo "cheking direcotry depencencies"
+echo "checking direcotry dependencies"
 if [ ! -d ${WRAPPER_DIR} ]; then
 	echo "error: missing directory dependency ${WRAPPER_DIR}"
 	exit 1
@@ -50,7 +50,7 @@ fi
 
 
 # See if we need to build anything
-echo "cheking binary dependencies"
+echo "checking binary dependencies"
 if [ ! -x ${WRAPPER_DIR}/tls_wrapper ]; then
 	let MAKE_WRAPPER=true
 else
@@ -78,11 +78,11 @@ fi
 
 
 # Verify kernel moduel is present
-echo "cheking for kernel ssa suport..."
+echo "checking for kernel ssa support..."
 let count=$(kmod list | grep -c ssa)
 echo -e "count = $count"
 if [ $count = "0" ]; then
-	echo -e "\tssa modual not found" 
+	echo -e "\tssa module not found" 
 	if [ MAKE_SSA_KO ]; then
 		if [ ! SSA_SOURCE ]; then
 			echo -e "\tno ssa source or binary. exiting"
@@ -91,9 +91,9 @@ if [ $count = "0" ]; then
 		make -s -C ${SSA_DIR}
 	fi
 	insmod ${SSA_DIR}/ssa.ko
-	echo -e "\tssa modual inserted"
+	echo -e "\tssa module inserted"
 else
-	echo -e "\tmodual found in kernel"
+	echo -e "\tmodule found in kernel"
 fi
 
 
