@@ -85,16 +85,61 @@ int recv_sign_response(int fd, unsigned char** o_sig, int* o_siglen);
 void send_all(int fd, char* msg, int bytes_to_send);
 #endif
 
+void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size){
+	int written;
+	data[size-1] = '\0'; //For printing only
+	printf("%s\n", data);
+	//BIO_set_tcp_ndelay(efd, 0);
+
+	//SSL_write(tls_ctx->tls, data, size);
+
+	int ret = SSL_write_early_data(tls_ctx->tls, data, size, &written);
+	if (ret == 0){
+		// ret = 0 -> error
+		switch (SSL_get_error(tls_ctx->tls, ret)){
+			default:
+				printf("ERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR in early data\n");
+		}
+	}
+	printf("END\n");
+}
+
+// Debugging only
+// TODO : Must Remove later
+void keylog_cb(const SSL *ssl, const char *line){
+
+	FILE *fp;
+	fp = fopen("keylog.pem", "a");
+	fprintf(fp, "%s\n", line);
+	fclose(fp);
+
+
+	//printf("%s\n", line);
+}
+
+
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
-	
+
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
 		log_printf(LOG_ERROR, "Failed to allocate tls_conn_ctx_t: %s\n", strerror(errno));
 		return NULL;
 	}
-	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
+
+	
+
+	if (get_session()){ // Change to get_session(hostname,port,etc.)
+		printf("CACHED\n");
+		ctx->tls = SSL_new(tls_opts->tls_ctx);
+		SSL_set_session(ctx->tls, get_session());
+	}
+	else{
+		ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
+		printf("NEW\n");
+	}
+	
 
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
@@ -148,6 +193,9 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 		return;
 	}*/
 	//SSL_connect(ctx->tls);
+
+
+
 	return ctx;
 }
 
@@ -249,6 +297,20 @@ static int read_rand_seed(char **buf, char* seed_path, int size) {
 	return 1;
 }
 
+
+int new_cb(struct ssl_st *ssl, SSL_SESSION *sess) {
+	if (sess) {
+		set_session(sess);
+	}
+	printf("THIS IS INVOKED\n");
+	return 0;
+}
+
+SSL_SESSION* get_cb(struct ssl_st *ssl, const unsigned char *data, int len, int *copy){
+	printf("THIS IS INVOKED2\n");
+	return get_session();
+}
+
 tls_opts_t* tls_opts_create(char* path) {
 	tls_opts_t* opts;
 	SSL_CTX* tls_ctx;
@@ -267,6 +329,12 @@ tls_opts_t* tls_opts_create(char* path) {
 	/* Configure default settings for connections based on
 	 * admin preferences */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
+	SSL_CTX_set_session_cache_mode(tls_ctx, SSL_SESS_CACHE_CLIENT);
+	SSL_CTX_sess_set_get_cb(tls_ctx, get_cb);
+	SSL_CTX_sess_set_new_cb(tls_ctx, new_cb);
+
+	SSL_CTX_set_keylog_callback(tls_ctx , keylog_cb);
+	
 	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(int));
 	ssa_config = get_app_config(path);
 
@@ -360,6 +428,9 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 
 	return 1;
 }
+
+
+
 
 int tls_opts_client_setup(tls_opts_t* tls_opts) {
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
@@ -507,8 +578,6 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	if (SSL_CTX_set_alpn_protos(tls_ctx, alpn_string, alpn_len) == 1) {
 		return 0;
 	}
-	
-
 	return 1;
 }
 
@@ -532,7 +601,6 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 
 	free(ssa_config->cipher_list);
 	ssa_config->cipher_list = cipher_list;
-
 
 	//char* cur_cipher;
 	// XXX to make this function less than 500 lines we need access to the
@@ -899,6 +967,11 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 
 	in_buf = bufferevent_get_input(bev);
 	in_len = evbuffer_get_length(in_buf);
+
+	char data[in_len+1];
+
+	evbuffer_copyout(in_buf, data, in_len);
+	log_printf(LOG_DEBUG, "read event on bev %p \n%s\n %zu\n", bev, data, in_len);
 	
 	if (endpoint->closed == 1) {
 		evbuffer_drain(in_buf, in_len);
@@ -930,7 +1003,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		log_printf(LOG_DEBUG, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
-			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
+			log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
 				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
@@ -941,7 +1014,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		}
 	}
 	if (events & BEV_EVENT_ERROR) {
-		//log_printf(LOG_DEBUG, "%s endpoint encountered an error\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
+		log_printf(LOG_DEBUG, "%s endpoint encountered an error\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
 		if (errno) {
 			if (errno == ECONNRESET || errno == EPIPE) {
 				log_printf(LOG_INFO, "Connection closed\n");

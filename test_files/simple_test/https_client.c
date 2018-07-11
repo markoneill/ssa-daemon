@@ -8,7 +8,7 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 
-#define HOST "hax0r.online"
+#define HOST "www.google.com"
 
 int connect_to_host(char* host, char* service);
 void print_identity(int fd);

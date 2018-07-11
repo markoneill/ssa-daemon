@@ -55,6 +55,7 @@
 #include "tls_wrapper.h"
 #include "netlink.h"
 #include "log.h"
+#include "session_manager.h"
 
 #define MAX_UPGRADE_SOCKET  18
 #define HASHMAP_NUM_BUCKETS	100
@@ -105,6 +106,9 @@ static void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t 
 static evutil_socket_t create_upgrade_socket(int port);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
+
+
+
 
 int server_create(int port) {
 	int ret;
@@ -808,6 +812,70 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 		log_printf(LOG_INFO, "Nonblocking connect requested\n");
 		netlink_notify_kernel(ctx, id, -EINPROGRESS);
 	}
+	return;
+}
+
+
+
+void connect_and_send_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking, char *msg, size_t size) {
+	
+	int ret;
+	sock_ctx_t* sock_ctx;
+	int response = 0;
+	int port;
+
+	if (int_addr->sa_family == AF_UNIX) {
+		port = strtol(((struct sockaddr_un*)int_addr)->sun_path+1, NULL, 16);
+		log_printf(LOG_INFO, "unix port is %05x", port);
+	}
+	else {
+		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
+	}
+
+	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
+	if (sock_ctx == NULL) {
+		response = -EBADF;
+	}
+	else {
+		/* only connect if we're not already.
+		 * we might already be connected due to a
+		 * socket upgrade */
+		if (sock_ctx->is_connected == 0) {
+			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		}
+		else {
+			ret = 0;
+		}
+		if (ret == -1) {
+			response = -errno;
+		}
+		else {
+			if (sock_ctx->has_bound == 0) {
+				sock_ctx->int_addr = *int_addr;
+				sock_ctx->int_addrlen = int_addrlen;
+			}
+			log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
+			hashmap_add(ctx->sock_map_port, port, sock_ctx);
+			sock_ctx->rem_addr = *rem_addr;
+			sock_ctx->rem_addrlen = rem_addrlen;
+			sock_ctx->is_connected = 1;
+			tls_opts_client_setup(sock_ctx->tls_opts);
+		}
+	}
+	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+	}
+	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
+				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
+	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
+	if (blocking == 0) {
+		log_printf(LOG_INFO, "Nonblocking connect requested\n");
+		netlink_notify_kernel(ctx, id, -EINPROGRESS);
+	}
+	tls_early_data(sock_ctx->tls_conn,msg,size);
 	return;
 }
 

@@ -1,15 +1,16 @@
 CC = gcc
 CXXFLAGS=-w -Wall
-CXX_DEBUG_FLAGS=-g
+CXX_DEBUG_FLAG=S-g
 CXX_RELEASE_FLAGS=-O3 -DNO_LOG
 CXX_CLIENTAUTH_FLAGS= -g -DCLIENT_AUTH
  
 EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
-STD_INCLUDES = -I/usr/include/libnl3
-NEW_INCLUDES = -I/usr/include/libnl3 -Iopenssl/include -Ilibevent/include
-LIBS = 	-lnl-3 \
+STD_INCLUDES = -I/usr/include/libnl3 -I/home/shashwat/Downloads/openssl-1.1.1-pre8/include/
+#NEW_INCLUDES = -I/usr/include/libnl3 -Iopenssl/include -Ilibevent/include
+LIBS = -L /home/shashwat/Downloads/openssl-1.1.1-pre8 \
+     -lnl-3 \
 	-lnl-genl-3 \
 	-levent_openssl \
 	-levent -lcrypto \
@@ -18,22 +19,22 @@ LIBS = 	-lnl-3 \
 	-lavahi-client \
 	-lavahi-common \
 	-lpthread
-LIBS_EX = \
-	-Lopenssl/lib \
-	-Llibevent/lib \
-	-lnl-3 -lnl-genl-3 \
-	-levent_openssl \
-	-levent \
-	-lcrypto \
-	-lssl \
-	-lconfig \
-	-lavahi-client \
-	-lavahi-common \
-	-lpthread \
-	-Wl,-rpath \
-	-Wl,libevent/lib \
-	-Wl,-rpath \
-	-Wl,openssl/lib
+# LIBS_EX = \
+# 	-Lopenssl/lib \
+# 	-Llibevent/lib \
+# 	-lnl-3 -lnl-genl-3 \
+# 	-levent_openssl \
+# 	-levent \
+# 	-lcrypto \
+# 	-lssl \
+# 	-lconfig \
+# 	-lavahi-client \
+# 	-lavahi-common \
+# 	-lpthread \
+# 	-Wl,-rpath \
+# 	-Wl,libevent/lib \
+# 	-Wl,-rpath \
+# 	-Wl,openssl/lib
 INCLUDES= 
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
@@ -52,7 +53,7 @@ clientauth: $(OBJECTS)
 
 # Main target
 $(EXEC): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS)
+	$(CC) $(OBJECTS) -o $(EXEC)  $(LIBS)
  
 # To obtain object files
 %.o: %.c
