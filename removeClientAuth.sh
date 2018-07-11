@@ -6,6 +6,9 @@ pkill testShopServer
 pkill sslsplit
 pkill tls_wrapper
 
-sed -i "0,/${DOMAIN_NAME}/ d" $HOST_FILE
+let count=$(grep -c "${DOMAIN_NAME}" $HOST_FILE)
+if [ $count = "1" ]; then
+	sed -i "0,/${DOMAIN_NAME}/ d" $HOST_FILE
+fi
 cd ./sslsplit
 ./firewallOn.sh > /dev/null &
