@@ -219,7 +219,7 @@ void handle_request(struct evbuffer *input, struct bufferevent *bev, ){
     else if (string[0] == 2)
         csr_wo_validation(string);
     else 
-        error
+        //error
 }
 
 void csr_read_cb(struct bufferevent *bev, void *con) {
