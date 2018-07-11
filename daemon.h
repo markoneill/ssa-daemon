@@ -51,6 +51,16 @@ typedef struct tls_daemon_ctx {
 	hmap_t* sock_map_port;
 } tls_daemon_ctx_t;
 
+typedef struct hmap_keys {
+	int port;
+	char* hostname;
+} hmap_keys_t;
+
+typedef struct hmap_val {
+	SSL_SESSION *tls_session;
+	SSL_CTX *ssl_ctx;
+} hmap_val_t;
+
 int server_create(int port);
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm);
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
