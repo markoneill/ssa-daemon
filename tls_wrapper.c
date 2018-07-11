@@ -98,7 +98,7 @@ int auth_daemon_connect(void);
 
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
-	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
+	char* hostname, int is_accepting, tls_opts_t* tls_opts, int flag, SSL_SESSION * tls_session_temp) {
 	
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
@@ -106,7 +106,17 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 		return NULL;
 	}
 	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
-
+	if(flag == 1)
+	{
+		log_printf(LOG_INFO, "--------------------qwerty\n");
+		SSL_set_session(ctx->tls, tls_session_temp);
+		SSL_connect(ctx->tls);
+		if (SSL_session_reused(ctx->tls)) {
+			printf("REUSED SESSION\n");
+		}
+		flag = 0;
+	}
+	
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
 		free_tls_conn_ctx(ctx);
