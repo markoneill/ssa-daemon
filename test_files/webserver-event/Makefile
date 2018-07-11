@@ -8,7 +8,7 @@ HTTP_SERVER_SRC = main.c \
 		utils.c
 
 HTTP_SERVER_OBJ = $(HTTP_SERVER_SRC:%.c=%.o)
-HTTP_SERVER_EXE = server
+HTTP_SERVER_EXE = testShopServer
 
 all: $(HTTP_SERVER_EXE)
 

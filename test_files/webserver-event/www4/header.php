@@ -102,7 +102,7 @@ function showMenu() {
 			echo "Welcome ".$_SESSION['name'];
 		}else{ 
 		?>
-			Your Account
+			Register
 		<?php
 		 } 
 		?>
