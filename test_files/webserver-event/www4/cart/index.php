@@ -55,7 +55,7 @@ function updateCart() {
 		unset($_SESSION[$item['Name']]);
 	}
 	return;
-	// */
+	//*/
 }
 
 function showCart() {

@@ -4,6 +4,7 @@ ini_set('display_errors', 'On');
 error_reporting(E_ALL);
 require('items.php');
 require('header.php');
+//require('popup-box/showcart.php');
 
 ?>
 
@@ -72,7 +73,7 @@ input[type=text], input[type=password] {
     background-color: #fefefe;
     margin: 4% auto 15% auto;
     border: 1px solid #888;
-    width: 40%;
+    width: 50%;
     padding-left: 15px;
     padding-right:15px;
         padding-bottom: 30px;
@@ -100,29 +101,47 @@ input[type=text], input[type=password] {
     from {transform: scale(0)}
     to {transform: scale(1)}
 }
+
+.block {
+    text-align: center;
+    
+}
+.equalspace {
+    display: flex;
+    justify-content: space-between;
+}
+
 </style>
-<body background="../background1.png">
+<body>
 
-<h1 style="text-align:center; font-size:50px; color:#fff">Modal Popup Box Login Form</h1>
+<h1 style="text-align:center; font-size:50px; color:#fff">Mark is a dirty Protoss Player</h1>
 
+<!--
 <button onclick="document.getElementById('modal-wrapper').style.display='block'" id='checkout-button' style="width:200px; margin-top:200px; margin-left:160px;">
 Open Popup</button>
+-->
 
 <div id="modal-wrapper" class="modal">
 
+  
   <form class="modal-content animate" action="/cart/">
-
+ 
     <div class="imgcontainer">
       <span onclick="document.getElementById('modal-wrapper').style.display='none'" class="close" title="Close PopUp">&times;</span>
       <img src="cart2.png" alt="Avatar" class="avatar">
       <h1 style="text-align:center">Current Cart</h1>
     </div>
 
-    <?php showCart(); ?>
+    <?php 
+    showCart();
+    ?>
 
-    <div class="container">
-      <button type="submit" class="btn btn-success">Checkout</button>
-      <button onclick="document.getElementById('modal-wrapper').style.display='none'" type="button" class="btn btn-success">Keep Shopping</button>
+    <div class="equalspace">
+        <div></div>
+        <button onclick="document.getElementById('modal-wrapper').style.display='none'" type="button" class="btn btn-info"><font size="6">Keep Shopping</font></button>
+        <div></div>
+        <button type="submit" class="btn btn-success"><font size="6">Checkout</font></button>
+        <div></div>
     </div>
 
   </form>
@@ -154,6 +173,74 @@ require('items.php');
 require('header.php');
  */
 
+updateCart();
+
+function updateCart() {
+
+        //$_POST = array();
+        //console.log("update");
+
+	///*
+
+	//console.log($_POST['s']);
+	//console.log($_POST['p']);
+	//console.log("updatecart");
+        if (!isset($_POST['s']) || !isset($_POST['p'])) {
+                return;
+	}
+	//console.log("itemupdated");
+
+        $section = $_POST['s'];
+        $id = $_POST['p'];
+
+
+
+        global $items;
+        $item = $items[$section][$id];
+
+
+        if (isset($_SESSION[$item['Name']])) {
+                $quantity = $_SESSION[$item['Name']];
+        }
+        else {
+                $quantity = 0;
+        }
+
+        $newQuantity = 0;
+
+
+
+
+        if (isset($_POST['add'])) {
+                $newQuantity = $quantity + 1;
+        }
+        else if (isset($_POST['del'])) {
+                $newQuantity = 0;
+        }
+        else if (isset($_POST['update']) && isset($_POST['q'])) {
+                $newQuantity = intval($_POST['q']);
+        }
+
+
+
+        if ($newQuantity > 0) {
+                $_SESSION[$item['Name']] = $newQuantity;
+        }
+        else {
+                unset($_SESSION[$item['Name']]);
+	}
+
+
+	//echo '<script>';
+	//echo 'document.getElementById(\'modal-wrapper\').style.display=\'block\';';
+	//echo '</script>';
+	echo 'updateditems';
+
+        return;
+        // */
+}
+
+
 function showItems($category) {
 	global $items;
 	setlocale(LC_MONETARY, 'en_US.UTF-8');
@@ -179,13 +266,16 @@ function showItems($category) {
 		echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
 		echo '	      <div class="panel-footer">';
 		echo '          <p>', $item['Description'], '</p>';
-		echo '	        <form class="form-inline" method="post" action="/cart/">';
-		echo '            <h2>', money_format('%.2n', $item['Price']), '</h2>';;
-		echo '	          <input type="hidden" name="p" value="', $i ,'" />';
-		echo '	          <input type="hidden" name="s" value="', $category ,'" />';
-		echo '	          <input type="hidden" name="add" value="1" />';
-		echo '	          <button type="submit" class="btn btn-danger">Add to Cart</button>';
-		echo '	        </form>';
+		echo '          <form class="form-inline" method="post" action="">';
+		echo '            <h2>', money_format('%.2n', $item['Price']), '</h2>';
+		echo '            <input type="hidden" name="p" value="', $i ,'" />';
+		echo '            <input type="hidden" name="s" value="', $category ,'" />';
+		echo '            <input type="hidden" name="add" value="1" />';
+		//echo '            <button class="btn btn-danger" onclick="boughtItem(', $i, ', ', $category, ')">Add to Cart</button>';
+		//echo '            <button type="submit" class="btn btn-danger">Add to Cart</button>';
+		echo '          </form>';
+		echo '          <button class="btn btn-danger" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
+		//echo '          <button class="btn btn-danger" onclick="buyItem(\'', $i , '\', \'', $category , '\')">Ajax Post this</button>';
 		echo '        </div>';
 		echo '      </div>';
 		echo '    </div>';
@@ -195,7 +285,11 @@ function showItems($category) {
 			echo '    <div class="col-sm-4">';
                 	echo '      <div class="panel panel-primary">';
                 	echo '        <div class="panel-heading">', $item['Name'], '</div>';
-                	echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
+			echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
+			echo '        <div class="panel-footer">';
+			echo '          <h2>', money_format('%.2n', $item['Price']), '</h2>';
+			echo '          <button class="btn btn-danger" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
+			echo '        </div>';
                 	echo '      </div>';
                 	echo '    </div>';
                		$i++;
@@ -206,10 +300,12 @@ function showItems($category) {
 }
 
 function showCart() {
-        setlocale(LC_MONETARY, 'en_US.UTF-8');
+	setlocale(LC_MONETARY, 'en_US.UTF-8');
+	//$sid = session_id();
+	//session_start($sid);
         global $items;
         $categories = array_keys($items);
-        echo '<table class="table table-striped" width="100%">';
+        echo '<table class="table table-striped" id="checkout-table" width="100%">';
         echo '  <thead>';
         echo '    <tr>';
         echo '      <th>Item</th>';
@@ -285,6 +381,47 @@ showItems($section);
 
 ?>
 <br />
+
+
+<script>
+function boughtItem(id, section) {
+
+	$.ajax({ url: "popup-box/showcart.php",
+		 type: 'POST',
+		 data: {p: id, s: section, add: "1"},
+		 async: "false",
+		 success: function(data) {
+                        
+			 var popuptable = document.getElementById('checkout-table');
+
+			 popuptable.innerHTML = data;
+
+			 document.getElementById('modal-wrapper').style.display='block';
+		 }
+	});
+
+	return false;
+
+}
+
+function buyItem(id, section) {
+
+	$.ajax({ url: "",
+		 type: 'POST',
+		 data: {p: id, s: section, add: "1"},
+		 dataType: 'text',
+		 success: function(data) {
+
+			 document.getElementById('modal-wrapper').style.display='block';
+		 },
+		 error: function(jqXHR, textStatus, errorThrown) {
+			 alert(textStatus, errorThrown);
+		 }
+	});
+
+}
+</script>
+
 
 <?php
 	require('footer.php');
