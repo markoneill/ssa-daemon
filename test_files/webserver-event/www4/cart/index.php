@@ -1,3 +1,35 @@
+
+<html>
+<style>
+td{
+    font-size: 18px;
+    position: relative;
+    vertical-align: middle;
+}
+tr{
+    font-size: 20px;
+}
+
+input[type="text"] {
+    font-size: 18px;
+}
+button[type="submit"] {
+    font-size: 18px;
+}
+.center-vertical {
+    position: absolute;
+    top: 25%;
+}
+.marginalbot {
+    margin-bottom: 0px;
+}
+
+</style>
+</html>
+
+
+
+
 <?php 
 session_start();
 require('../items.php');
@@ -86,17 +118,21 @@ function showCart() {
 				echo '  <td>', $item['Name'], '</td>';
 				echo '  <td>', money_format('%.2n', $item['Price']), '</td>';
 				echo '  <td>';
-				echo '	        <form class="form-inline" method="post" action="/cart/">';
+				echo '	        <form class="form-inline marginalbot" method="post" action="/cart/">';
+				//echo '          <div class="form-group"">';
+				//echo '          <div class="col-xs-3">';
 				echo '	        <input type="text" name="q" size="2" class="form-control" value="', $quantity ,'" />';
 				echo '	        <input type="hidden" name="p" value="', $i ,'" />';
 				echo '	        <input type="hidden" name="s" value="', $category ,'" />';
 				echo '	        <input type="hidden" name="update" value="1" />';
 				echo '	        <button type="submit" class="btn btn-danger">Update</button>';
+				//echo '          </div>';
+				//echo '          </div>';
 				echo '	        </form>';
 				echo '  </td>';
 				echo '  <td>', money_format('%.2n', $subtotal), '</td>';
 				echo '  <td>';
-				echo '	        <form class="form-inline" method="post" action="/cart/">';
+				echo '	        <form class="form-inline marginalbot" role="form" method="post" action="/cart/">';
 				echo '	        <input type="hidden" name="p" value="', $i ,'" />';
 				echo '	        <input type="hidden" name="s" value="', $category ,'" />';
 				echo '	        <input type="hidden" name="del" value="1" />';
