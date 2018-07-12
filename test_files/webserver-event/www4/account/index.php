@@ -6,7 +6,7 @@ if (isset($_POST["logout"])) {
 }
 require('../items.php');
 require('../header.php');
-if (isset($_SERVER['SSA_ID'])) {
+if (isset($_SESSION['name'])) {
 ?>
 <div class="container"> 
   <div class="row">

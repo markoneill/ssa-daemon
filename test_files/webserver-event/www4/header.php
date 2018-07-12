@@ -98,7 +98,7 @@ function showMenu() {
       <ul class="nav navbar-nav navbar-right">
 	<li><a href="/account/"><span class="glyphicon glyphicon-user"></span>
 		<?php 
-		if(isset($_SESSION['name']) && isset($_SERVER['SSA_ID'])){
+		if(isset($_SESSION['name'])){
 			echo "Welcome ".$_SESSION['name'];
 		}else{ 
 		?>
