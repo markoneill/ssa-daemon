@@ -106,11 +106,13 @@ function showCart() {
 	echo '  </thead>';
 	echo '  <tbody>';
 	$total = 0;
+	$emptycart = true;
 	foreach ($categories as $category) {
 		$i = 0;
 		foreach ($items[$category] as $item) {
 			$quantity = 0;
 			if (isset($_SESSION[$item['Name']])) {
+				$emptycart = false;
 				$quantity = $_SESSION[$item['Name']];
 				$subtotal = floatval($item['Price']) * floatval($quantity);
 				$total += $subtotal;
@@ -154,13 +156,21 @@ function showCart() {
 	if (isset($_SERVER['SSA_ID'])) {
 	    	echo '	        <form class="form-inline" method="post" action="/checkout/">';
 	    	echo '	        <input type="hidden" name="checkout" value="1" />';
-	    	echo '	        <button type="submit" class="btn btn-success">Checkout</button>';
+		echo '	        <button type="submit" class="btn btn-success"';
+		if ($emptycart == true) {
+			echo ' disabled';
+		}
+		echo '          >Checkout</button>';
 	    	echo '	        </form>';
 	}
         else {
 	        echo '          <form class="form-inline" method="post" action="/login/">';
 	        echo '          <input type="hidden" name="checkout" value="1" />';
-        	echo '          <button type="submit" class="btn btn-success">Sign in to Checkout</button>';
+		echo '          <button type="submit" class="btn btn-success"';
+		if ($emptycart == true) {
+			echo ' disabled';
+		}
+		echo '          >Sign in to Checkout</button>';
 	        echo '          </form>';
 	}
 	echo '      </td>';
