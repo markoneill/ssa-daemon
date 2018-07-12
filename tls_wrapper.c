@@ -106,11 +106,13 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 		return NULL;
 	}
 	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
+	
 	if(flag == 1)
 	{
-		log_printf(LOG_INFO, "--------------------qwerty\n");
+		log_printf(LOG_INFO, "-------------------- Flag One \n");
 		SSL_set_session(ctx->tls, tls_session_temp);
 		SSL_connect(ctx->tls);
+	
 		if (SSL_session_reused(ctx->tls)) {
 			printf("REUSED SESSION\n");
 		}
@@ -369,7 +371,9 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 
 	/* XXX We can do all sorts of caching modes and define our own callbacks
 	 * if desired */
-	SSL_CTX_set_session_cache_mode(tls_ctx, SSL_SESS_CACHE_SERVER);
+	log_printf(LOG_INFO, " BOTH SET \n");
+
+	SSL_CTX_set_session_cache_mode(tls_ctx, SSL_SESS_CACHE_BOTH);
 
 	/* SNI configuration */
 	SSL_CTX_set_tlsext_servername_callback(tls_ctx, server_name_cb);

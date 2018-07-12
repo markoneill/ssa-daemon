@@ -66,6 +66,9 @@
 int auth_info_index;
 #endif
 
+static SSL_CTX *g_dummy_ssl_ctx;
+
+
 typedef struct sock_ctx {
 	unsigned long id;
 	evutil_socket_t fd;
@@ -105,7 +108,14 @@ char* new_hmap_keys(char* hostname, int port) {
 	return key;
 }
 static int pxy_ossl_sessnew_cb(SSL *, SSL_SESSION *);
+//hsagar
+static SSL_SESSION *get_session_cb(SSL *ssl, const unsigned char *id, int len,
+                                   int *copy);
+static void remove_session_cb(SSL_CTX *ctx, SSL_SESSION *sess);
+
+
 static SSL_SESSION * pxy_ossl_sessget_cb(SSL*, unsigned char *, int, int *);
+
 
 void free_sock_ctx(sock_ctx_t* sock_ctx);
 
@@ -125,6 +135,29 @@ static void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t 
 static evutil_socket_t create_upgrade_socket(int port);
 static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
+
+
+
+SSL_SESSION *get_session_cb(SSL *ssl, const unsigned char *id, int len,
+                                   int *copy)
+{
+
+	 	log_printf(LOG_INFO, " get_session_cb \n");
+
+//    get_called++;
+    *copy = 1;
+    return NULL;
+
+}
+
+
+void remove_session_cb(SSL_CTX *ctx, SSL_SESSION *sess)
+{
+
+		log_printf(LOG_INFO, " remove_session_cb \n");
+}
+
+
 
 int server_create(int port) {
 	int ret;
@@ -797,7 +830,10 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 }
 
 int pxy_ossl_sessnew_cb(SSL *ssl, SSL_SESSION *sess) {
+	log_printf(LOG_INFO, "-------------------pxy_ossl_sessnew_cb\n");
+
 	if (sess) {
+		log_printf(LOG_INFO, "-------------------pxy_ossl_sessnew_cb \n");
 		val_temp->tls_session = sess;
 		str_hashmap_add(dict, key, val_temp);
 		str_hashmap_print(dict);
@@ -870,8 +906,25 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 						str_hashmap_print(dict);
 						log_printf(LOG_INFO, "-------------------INSIDE val_temp!=NULL\n");
 						sock_ctx->tls_opts->tls_ctx = val_temp->ssl_ctx;
-						// SSL_CTX_sess_set_get_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessget_cb);
-						flag = 1;
+						// SSL_CTX_sess_set_get_cb(sock_ctx->tls_opts->tls_ctx, get_session_cb);
+
+						 long cache = SSL_CTX_get_session_cache_mode( g_dummy_ssl_ctx );
+
+						 printf("%d\n", g_dummy_ssl_ctx );
+
+
+
+
+						 printf("cache %ld\n", cache );
+						 if(cache  == SSL_SESS_CACHE_BOTH)
+						 	log_printf(LOG_INFO, " GOOD TO GO : SSL_SESS_CACHE_BOTH\n", port);
+						 else if(cache == SSL_SESS_CACHE_SERVER)
+						 	log_printf(LOG_INFO, " GOOD TO GO :  SSL_SESS_CACHE_SERVER \n", port);
+						 else if(cache == SSL_SESS_CACHE_CLIENT) 
+						 	log_printf(LOG_INFO, " GOOD TO GO :  SSL_SESS_CACHE_CLIENT\n", port);
+						 	
+
+						//flag = 1;
 						goto skip_socket;
 					}
 				}
@@ -891,7 +944,28 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 				sock_ctx->rem_addrlen = rem_addrlen;
 				sock_ctx->is_connected = 1;
 				tls_opts_client_setup(sock_ctx->tls_opts);
-				SSL_CTX_set_session_cache_mode(sock_ctx->tls_opts->tls_ctx, SSL_SESS_CACHE_CLIENT);
+				//SSL_CTX_set_session_cache_mode(sock_ctx->tls_opts->tls_ctx, SSL_SESS_CACHE_CLIENT);
+
+				log_printf(LOG_INFO, " XXXXXXXXXXXXXXXXXXXXXXXX BOTH SET \n");
+  				SSL_CTX_set_session_cache_mode(sock_ctx->tls_opts->tls_ctx, SSL_SESS_CACHE_BOTH);
+
+  				g_dummy_ssl_ctx = sock_ctx->tls_opts->tls_ctx;
+  				printf("%d\n", g_dummy_ssl_ctx );
+
+
+
+  				 long cache = SSL_CTX_get_session_cache_mode(  g_dummy_ssl_ctx  );
+
+						 printf("cache %ld\n", cache );
+						 if(cache  == SSL_SESS_CACHE_BOTH)
+						 	log_printf(LOG_INFO, " GOOD TO GO : SSL_SESS_CACHE_BOTH\n", port);
+						 else if(cache == SSL_SESS_CACHE_SERVER)
+						 	log_printf(LOG_INFO, " GOOD TO GO :  SSL_SESS_CACHE_SERVER \n", port);
+						 else if(cache == SSL_SESS_CACHE_CLIENT) 
+						 	log_printf(LOG_INFO, " GOOD TO GO :  SSL_SESS_CACHE_CLIENT\n", port);
+						 	
+
+
 				if (app_path != NULL) {
 					val_temp = (hmap_val_t*)calloc(1, sizeof(hmap_val_t));
 					val_temp->ssl_ctx = sock_ctx->tls_opts->tls_ctx;
@@ -899,6 +973,16 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 						if (val_temp == NULL) {
 							str_hashmap_del(dict, key);
 							SSL_CTX_sess_set_new_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessnew_cb);
+
+							SSL_CTX_sess_set_remove_cb(sock_ctx->tls_opts->tls_ctx,  remove_session_cb);
+							 SSL_CTX_sess_set_get_cb(sock_ctx->tls_opts->tls_ctx, get_session_cb);
+
+
+
+							//SSL_CTX_sess_set_new_cb(sock_ctx->tls_opts->tls_ctx, pxy_ossl_sessnew_cb);
+
+
+
 						}
 					}
 					else {
