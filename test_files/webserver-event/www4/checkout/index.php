@@ -1,3 +1,31 @@
+<html>
+<style>
+
+
+.center {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.animate {
+    animation-name: grow;
+    animation-duration: 5s;
+    animation-iteration-count: infinite;
+}
+@keyframes grow {
+    0%    {transform: scale(1);}
+    25%   {transform: scale(1.2);}
+    50%   {transform: scale(1);}
+}
+
+</style>
+</html>
+
+
+
+
+
 
 <?php 
 session_start();
@@ -14,9 +42,12 @@ function checkout() {
 			//print($_POST['purchase']);
 			echo '<div class="container">';
 			echo '	<div class="row">';
-			echo '		<div class="col-md-8 col-md-offset-2">';
-			echo '				 <h1 class="text-center">Thank You!</h1>';
-			echo '				 <p class="text-center">Your order has been placed</p>';
+			echo '		<div class="col-md-12">';
+			echo '            <div class="jumbotron">';
+			echo '                           <img class="center animate" src="check.png" alt="Purchase Complete" width="150" height="150">';
+			echo '				 <h1 class="text-center"><font size="7" color="#1bdc71"><b>Thank You! Your order has been placed</b></font></h1>';
+			echo '				 <h2 class="text-center">Come back anytime to PayMore!</h2>';
+			echo '            </div>';
 			echo '		</div>';
 			echo '	</div>';
 			echo '</div>';

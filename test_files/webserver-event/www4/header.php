@@ -9,19 +9,21 @@ function showMenu() {
 	$pageKeys = array_keys($items);
 	foreach ($pageKeys as $key) {
 		if ($key == $currentSection) {
-			echo '<li class="active"><a href="/?s=', $key, '">', $key ,'</a></li>';
+			echo '<li class="active menu-item"><a href="/?s=', $key, '">', $key ,'</a></li>';
 		}
 		else if ($key == 'Commanders') {
 		
 		}
 		else {
-			echo '<li><a href="/?s=', $key, '">', $key ,'</a></li>';
+			echo '<li class="menu-item"><a href="/?s=', $key, '">', $key ,'</a></li>';
 		}
 	}
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
+<link rel="icon" href="favicon.ico" type="image/x-icon">
+<link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
 <head>
   <title>TestShop</title>
   <meta charset="utf-8">
@@ -39,6 +41,20 @@ function showMenu() {
 
     .navbar-nav>li>a {
       line-height:44px;
+    }
+
+    /*
+    .navbar a {
+        font-size: 1.8em;
+    }
+    */
+
+    .menu-item {
+        font-size: 1.5em;
+    }
+
+    .menu-account-item {
+        font-size: 1.2em;
     }
 
     /* Remove the jumbotron's default bottom margin */ 
@@ -93,10 +109,10 @@ function showMenu() {
     </div>
     <div class="collapse navbar-collapse" id="myNavbar">
       <ul class="nav navbar-nav">
-<?php showMenu(); ?>
+        <?php showMenu(); ?>
       </ul>
       <ul class="nav navbar-nav navbar-right">
-	<li><a href="/account/"><span class="glyphicon glyphicon-user"></span>
+	<li class="menu-account-item"><a href="/account/"><span class="glyphicon glyphicon-user"></span>
 		<?php 
 		if(isset($_SESSION['name'])){
 			echo "Welcome ".$_SESSION['name'];
@@ -107,7 +123,7 @@ function showMenu() {
 		 } 
 		?>
 		</a></li>
-        <li><a href="/cart/"><span class="glyphicon glyphicon-shopping-cart"></span>Cart</a></li>
+        <li class="menu-account-item"><a href="/cart/"><span class="glyphicon glyphicon-shopping-cart"></span>Cart</a></li>
       </ul>
     </div>
   </div>

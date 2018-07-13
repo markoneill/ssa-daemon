@@ -102,6 +102,18 @@ input[type=text], input[type=password] {
     to {transform: scale(1)}
 }
 
+.animate-grow {
+    animation-name: grow;
+    animation-duration: 5s;
+    animation-iteration-count: infinite;
+}
+@keyframes grow {
+    0%    {transform: scale(1);}
+    15%   {transform: scale(1.09);}
+    40%   {transform: scale(1);}
+}
+
+
 .block {
     text-align: center;
     
@@ -110,6 +122,14 @@ input[type=text], input[type=password] {
     display: flex;
     justify-content: space-between;
 }
+
+.item-name {
+    font-size: 1.3em;
+}
+.addtocart {
+    font-size: 1.3em;
+}
+
 
 </style>
 <body>
@@ -262,7 +282,7 @@ function showItems($category) {
 		if ($category != 'Commanders') {
 		echo '    <div class="col-sm-4">';
 		echo '      <div class="panel panel-primary">';
-		echo '        <div class="panel-heading">', $item['Name'], '</div>';
+		echo '        <div class="panel-heading item-name">', $item['Name'], '</div>';
 		echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
 		echo '	      <div class="panel-footer">';
 		echo '          <p>', $item['Description'], '</p>';
@@ -274,7 +294,7 @@ function showItems($category) {
 		//echo '            <button class="btn btn-danger" onclick="boughtItem(', $i, ', ', $category, ')">Add to Cart</button>';
 		//echo '            <button type="submit" class="btn btn-danger">Add to Cart</button>';
 		echo '          </form>';
-		echo '          <button class="btn btn-danger" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
+		echo '          <button class="btn btn-danger addtocart" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
 		//echo '          <button class="btn btn-danger" onclick="buyItem(\'', $i , '\', \'', $category , '\')">Ajax Post this</button>';
 		echo '        </div>';
 		echo '      </div>';
@@ -284,11 +304,11 @@ function showItems($category) {
 		else{
 			echo '    <div class="col-sm-4">';
                 	echo '      <div class="panel panel-primary">';
-                	echo '        <div class="panel-heading">', $item['Name'], '</div>';
+                	echo '        <div class="panel-heading item-name">', $item['Name'], '</div>';
 			echo '        <div class="panel-body"><img src="', $item['Image_URL'] ,'" class="img-responsive" style="width:100%" alt="Image"></div>';
 			echo '        <div class="panel-footer">';
 			echo '          <h2>', money_format('%.2n', $item['Price']), '</h2>';
-			echo '          <button class="btn btn-danger" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
+			echo '          <button class="btn btn-danger addtocart" onclick="boughtItem(\'', $i , '\', \'', $category , '\')">Add to Cart</button>';
 			echo '        </div>';
                 	echo '      </div>';
                 	echo '    </div>';
