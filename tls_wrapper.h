@@ -99,4 +99,7 @@ long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx);
 int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
 int get_peer_certificate(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len);
 
+
+void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size);
+
 #endif

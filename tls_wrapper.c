@@ -48,12 +48,12 @@
 #include "log.h"
 #include "config.h"
 #include "netlink.h"
+#include "tls_session_mgr.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
 
 
-static SSL_SESSION *cached_session = NULL;
 
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);
 static SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname);
@@ -357,23 +357,6 @@ void tls_opts_free(tls_opts_t* opts) {
 	return;
 }
 
-int new_session_cb(SSL *ssl, SSL_SESSION *sess)
-{
-	/*
-     * sess has been up-refed for us, but we don't actually need it so free it
-     * immediately.
-     */
-
-	if (cached_session == NULL) 
-	{
-		cached_session = sess;
-		printf("new_session_cb invokved\n");
-	}
-
-	 //SSL_SESSION_free(sess);
-
-	return 1;
-}
 
 int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
@@ -1471,4 +1454,36 @@ void send_all(int fd, char* msg, int bytes_to_send) {
 }
 
 #endif
+
+void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size){
+	int written;
+	data[size-1] = '\0'; //For printing only
+	printf("%s\n", data);
+	//BIO_set_tcp_ndelay(efd, 0);
+
+	//SSL_write(tls_ctx->tls, data, size);
+
+	int ret = SSL_write_early_data(tls_ctx->tls, data, size, &written);
+	if (ret == 0){
+		// ret = 0 -> error
+		switch (SSL_get_error(tls_ctx->tls, ret)){
+			default:
+				printf("ERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR in early data\n");
+		}
+	}
+	printf("END\n");
+}
+
+// Debugging only
+// TODO : Must Remove later
+void keylog_cb(const SSL *ssl, const char *line){
+
+	FILE *fp;
+	fp = fopen("keylog.pem", "a");
+	fprintf(fp, "%s\n", line);
+	fclose(fp);
+
+
+	//printf("%s\n", line);
+}
 

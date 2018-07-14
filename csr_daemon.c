@@ -62,6 +62,12 @@ int csr_server_create(int port) {
 
 	log_printf(LOG_INFO, "Started CSR server. port %d\n",port);
 
+	#ifdef CLIENT_AUTH_CORRUPTED
+
+	log_printf(LOG_INFO, "Started CSR server. port %d\n",port);
+
+	#endif
+
 		/* Signal handler registration */
 	sev_pipe = evsignal_new(ev_base, SIGPIPE, csr_signal_cb, NULL);
 	if (sev_pipe == NULL) {

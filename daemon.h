@@ -60,6 +60,8 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking);
+void connect_and_send_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
+	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking, char *msg, size_t size);
 void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen);
 void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
@@ -67,5 +69,7 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 void close_cb(tls_daemon_ctx_t* ctx, unsigned long id);
 void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen);
+
+
 
 #endif

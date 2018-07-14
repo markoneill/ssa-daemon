@@ -38,6 +38,8 @@
 enum {
         SSA_NL_A_UNSPEC,
 	SSA_NL_A_ID,
+	SSA_NL_A_EARLYDATA,
+	SSA_NL_A_EARLYDATA_SIZE,
 	SSA_NL_A_BLOCKING,
 	SSA_NL_A_COMM,
 	SSA_NL_A_SOCKADDR_INTERNAL,
@@ -61,6 +63,7 @@ enum {
 	SSA_NL_C_GETSOCKOPT_NOTIFY,
         SSA_NL_C_BIND_NOTIFY,
         SSA_NL_C_CONNECT_NOTIFY,
+        SSA_NL_C_CONNECT_AND_SEND_NOTIFY,
         SSA_NL_C_LISTEN_NOTIFY,
 	SSA_NL_C_ACCEPT_NOTIFY,
 	SSA_NL_C_CLOSE_NOTIFY,
@@ -151,6 +154,8 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 	struct sockaddr_in addr_internal;
 	struct sockaddr_in addr_external;
 	struct sockaddr_in addr_remote;
+	char * msg_data;
+	size_t msg_data_size;
 
 	int level;
 	int blocking;
@@ -217,6 +222,21 @@ int handle_netlink_msg(struct nl_msg* msg, void* arg) {
 			//log_printf_addr((struct sockaddr*)&addr_remote);
 			connect_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len,
 					    (struct sockaddr*)&addr_remote, addr_remote_len, blocking);
+			break;
+		case SSA_NL_C_CONNECT_AND_SEND_NOTIFY:
+			id = nla_get_u64(attrs[SSA_NL_A_ID]);
+			addr_internal_len = nla_len(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_remote_len = nla_len(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
+			addr_internal = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_INTERNAL]);
+			addr_remote = *(struct sockaddr_in*)nla_data(attrs[SSA_NL_A_SOCKADDR_REMOTE]);
+			blocking = nla_get_u32(attrs[SSA_NL_A_BLOCKING]);
+			msg_data = (char *)nla_data(attrs[SSA_NL_A_EARLYDATA]);
+			msg_data_size = *(size_t*) nla_data(attrs[SSA_NL_A_EARLYDATA_SIZE]);
+			log_printf(LOG_INFO, "Received connect and send notification for socket ID %lu\n", id);
+			//log_printf_addr((struct sockaddr*)&addr_internal);
+			//log_printf_addr((struct sockaddr*)&addr_remote);
+			connect_and_send_cb(ctx, id, (struct sockaddr*)&addr_internal, addr_internal_len,
+					    (struct sockaddr*)&addr_remote, addr_remote_len, blocking, msg_data, msg_data_size);
 			break;
 		case SSA_NL_C_LISTEN_NOTIFY:
 			id = nla_get_u64(attrs[SSA_NL_A_ID]);
