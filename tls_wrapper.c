@@ -1138,7 +1138,6 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	// if (ctx->tls != NULL && ctx->secure.closed == 1) {
 	// 	//SSL_shutdown(ctx->tls);
 	//}
-
 	if (ctx->tls != NULL) 
 		SSL_shutdown(ctx->tls);
  	
