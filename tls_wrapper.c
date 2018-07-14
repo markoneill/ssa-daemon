@@ -53,6 +53,8 @@
 #define IPPROTO_TLS 	(715 % 255)
 
 
+static SSL_SESSION *cached_session = NULL;
+
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);
 static SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname);
 static void tls_bev_write_cb(struct bufferevent *bev, void *arg);
@@ -106,6 +108,13 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 		return NULL;
 	}
 	ctx->tls = tls_client_setup(tls_opts->tls_ctx, hostname);
+
+	if( cached_session != NULL)
+	{
+		if(SSL_set_session(	ctx->tls, cached_session) == 0) 
+			log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) Session\n");
+
+	}
 
 	if (ctx->tls == NULL) {
 		log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) context\n");
@@ -348,6 +357,24 @@ void tls_opts_free(tls_opts_t* opts) {
 	return;
 }
 
+int new_session_cb(SSL *ssl, SSL_SESSION *sess)
+{
+	/*
+     * sess has been up-refed for us, but we don't actually need it so free it
+     * immediately.
+     */
+
+	if (cached_session == NULL) 
+	{
+		cached_session = sess;
+		printf("new_session_cb invokved\n");
+	}
+
+	 //SSL_SESSION_free(sess);
+
+	return 1;
+}
+
 int tls_opts_server_setup(tls_opts_t* tls_opts) {
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	
@@ -381,6 +408,9 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 	/* Temporarily disable validation */
 	//SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, verify_dummy);
 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, verify_dummy);
+	
+	SSL_CTX_set_session_cache_mode(tls_ctx,	SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL );
+	SSL_CTX_sess_set_new_cb( tls_ctx, new_session_cb);
 
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
@@ -1031,6 +1061,10 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
+
+			if (SSL_session_reused( ctx->tls)) 
+				log_printf(LOG_INFO, "Resumed session from cache \n");
+
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
 				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
@@ -1101,9 +1135,13 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	if (ctx == NULL) return;
 
-	if (ctx->tls != NULL && ctx->secure.closed == 1) {
-		//SSL_shutdown(ctx->tls);
-	}
+	// if (ctx->tls != NULL && ctx->secure.closed == 1) {
+	// 	//SSL_shutdown(ctx->tls);
+	//}
+
+	if (ctx->tls != NULL) 
+		SSL_shutdown(ctx->tls);
+ 	
 	return;
 }
 
