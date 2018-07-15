@@ -35,10 +35,10 @@
 
 static SSL_SESSION *cached_session = NULL;
 
-static int new_session_cb(SSL *ssl, SSL_SESSION *sess);
+static int custom_new_session_cb(SSL *ssl, SSL_SESSION *sess);
 
 
-int new_session_cb(SSL *ssl, SSL_SESSION *sess)
+int custom_new_session_cb(SSL *ssl, SSL_SESSION *sess)
 {
 	/*
      * sess has been up-refed for us, but we don't actually need it so free it
@@ -47,8 +47,11 @@ int new_session_cb(SSL *ssl, SSL_SESSION *sess)
 
 	if (cached_session == NULL) 
 	{
+		printf("custom_new_session_cb invokved\n");
+
 		cached_session = sess;
-		printf("new_session_cb invokved\n");
+		
+
 	}
 
 	 //SSL_SESSION_free(sess);

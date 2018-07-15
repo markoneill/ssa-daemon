@@ -111,8 +111,21 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 
 	if( cached_session != NULL)
 	{
+
+		uint32_t max_bytes = SSL_SESSION_get_max_early_data(ctx->tls);
+		
+		if(max_bytes == 0)
+			log_printf(LOG_INFO , "NO EARLY DATA Possible\n");
+		else
+			log_printf(LOG_INFO , " EARLY DATA : Max bytes %d\n" , max_bytes );
+		
 		if(SSL_set_session(	ctx->tls, cached_session) == 0) 
-			log_printf(LOG_ERROR, "Failed to set up TLS (SSL*) Session\n");
+			log_printf(LOG_ERROR, "Fail : Set up TLS (SSL*) Session\n");
+		else
+			log_printf(LOG_INFO , "Success : Set up TLS (SSL*) Session\n");
+
+
+
 
 	}
 
@@ -393,7 +406,7 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, verify_dummy);
 	
 	SSL_CTX_set_session_cache_mode(tls_ctx,	SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL );
-	SSL_CTX_sess_set_new_cb( tls_ctx, new_session_cb);
+	SSL_CTX_sess_set_new_cb( tls_ctx, custom_new_session_cb);
 
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
@@ -1457,21 +1470,68 @@ void send_all(int fd, char* msg, int bytes_to_send) {
 
 void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size){
 	int written;
+	int ret;
 	data[size-1] = '\0'; //For printing only
 	printf("%s\n", data);
 	//BIO_set_tcp_ndelay(efd, 0);
 
 	//SSL_write(tls_ctx->tls, data, size);
 
-	int ret = SSL_write_early_data(tls_ctx->tls, data, size, &written);
-	if (ret == 0){
-		// ret = 0 -> error
-		switch (SSL_get_error(tls_ctx->tls, ret)){
-			default:
-				printf("ERRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR in early data\n");
+	ret = SSL_is_init_finished(tls_ctx->tls);
+
+	if(ret)
+		printf("SSL_is_init_finished gives 1\n");
+
+
+	ret = SSL_write_early_data(tls_ctx->tls, data, size, &written);
+	if (ret == 0)
+	{
+		switch (SSL_get_error(tls_ctx->tls, ret))
+		{
+			case SSL_ERROR_ZERO_RETURN:
+			printf("SSL_ERROR_ZERO_RETURN\n");
+
+			
+			case SSL_ERROR_WANT_WRITE:
+			printf("SSL_ERROR_WANT_WRITE\n");
+			
+			case SSL_ERROR_WANT_READ:
+			printf("SSL_ERROR_WANT_READ\n");
+			
+
+
+			case SSL_ERROR_WANT_CONNECT:
+			printf("SSL_ERROR_WANT_CONNECT\n");
+			
+			case SSL_ERROR_WANT_ACCEPT:
+			printf("SSL_ERROR_WANT_ACCEPT\n");
+			
+
+
+			
+			case SSL_ERROR_WANT_X509_LOOKUP:
+			printf("SSL_ERROR_WANT_X509_LOOKUP\n");
+			
+			case SSL_ERROR_WANT_ASYNC:
+			printf("SSL_ERROR_WANT_ASYNC\n");
+			
+
+
+			case SSL_ERROR_WANT_CLIENT_HELLO_CB:
+			printf("SSL_ERROR_WANT_CLIENT_HELLO_CB\n");
+			
+			case SSL_ERROR_SYSCALL:
+			printf("SSL_ERROR_SYSCALL\n");
+
+			
+			case SSL_ERROR_SSL:
+			printf("SSL_ERROR_SSL\n");
+
+			break;
+			
 		}
 	}
-	printf("END\n");
+	printf("tls_early_data function END\n");
 }
 
 // Debugging only
