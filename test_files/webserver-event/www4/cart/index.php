@@ -153,7 +153,7 @@ function showCart() {
 	echo '    <tr>';
 	echo '      <td colspan="4" class="total">Total: ', $totalStr, '</td>';
 	echo '      <td>';
-	if (isset($_SERVER['SSA_ID'])) {
+	if (isset($_SESSION['name'])) {
 	    	echo '	        <form class="form-inline" method="post" action="/checkout/">';
 	    	echo '	        <input type="hidden" name="checkout" value="1" />';
 		echo '	        <button type="submit" class="btn btn-success"';
@@ -186,6 +186,7 @@ function showCart() {
 	<?php showCart(); ?>
     </div>
   </div>
+<hr>
 </div><br /><br />
 
 <?php

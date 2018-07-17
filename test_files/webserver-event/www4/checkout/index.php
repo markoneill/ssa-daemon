@@ -44,7 +44,7 @@ function checkout() {
 			echo '	<div class="row">';
 			echo '		<div class="col-md-12">';
 			echo '            <div class="jumbotron">';
-			echo '                           <img class="center animate" src="check.png" alt="Purchase Complete" width="150" height="150">';
+			echo '                           <img class="center animate" src="check5.png" alt="Purchase Complete" width="150" height="150">';
 			echo '				 <h1 class="text-center"><font size="7" color="#1bdc71"><b>Thank You! Your order has been placed</b></font></h1>';
 			echo '				 <h2 class="text-center">Come back anytime to PayMore!</h2>';
 			echo '            </div>';
