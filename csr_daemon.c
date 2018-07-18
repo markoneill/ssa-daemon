@@ -193,9 +193,7 @@ static SSL_CTX * ssl_ctx_init(void) {
 }
 
 
-// This is not written correctly and needs to not have to read all at once.
-
-char* otp_request(char* request) {
+char* otp_request(char *request, struct bfferenvent *bev, void *con) {
     long length = request[1];
     char* phone_number;
     // read phone number from request
@@ -206,22 +204,26 @@ char* otp_request(char* request) {
     // hashmap_add(totp);
     twilio_send_message(phone_number, totp, error);
     // send back the access code
-	bufferevent_write(bev, access_code, 8);
+	bufferevent_write(bev, "santi", 8);
+    return totp;
 }
 
 /*
 function handle_request(string,)// function to catch first byte of string to know what funtion to run`*/
-void handle_request(struct evbuffer *input, struct bufferevent *bev, ){
-    if(string[0] == 0)
-        otp_request(string);
-    else if (string[0] == 1)
-        validate_otp(string);
-    else if (string[0] == 2)
-        csr_wo_validation(string);
-    else 
+void handle_request(struct evbuffer *input, struct bufferevent *bev, void *con){
+    if(input[0] == 0) {
+        otp_request(input, bev, con);
+    } else if (input[0] == 1) {
+        //validate_otp();
+    } else if (input[0] == 2) {
+        //csr_wo_validation(string);
+    } else  {
+        printf("INVALID Request");
+    }
         //error
 }
 
+// This is not written correctly and needs to not have to read all at once.
 void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	int cert_len = 0;
@@ -234,7 +236,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
 	//check what kind of request based on first bits
-    handle_request(input, bev, con);
+    handle_request(input, recv_len, bev, con);
 
 	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
 		if (con_ctx->max_length < recv_len*2) {
