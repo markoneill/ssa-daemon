@@ -19,7 +19,8 @@ LIBS = 	-lpthread \
 		libnl-genl-3.0 \
 	       	avahi-client \
 	       	openssl \
-		`
+		` \
+	$(shell curl-config --libs)
 LIBS_EX = \
 	-Llibevent/lib \
 	-Lopenssl/lib \

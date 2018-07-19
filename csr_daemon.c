@@ -36,16 +36,16 @@ typedef struct con_ctx {
 	int max_length;
 } con_ctx_t;
 
-typedef struct otp_ctx {
-    char phone_num_len;
-    char* phone_num;
-} otp_ctx_t;
+typedef struct totp_ctx {
+	int phone_num_len;
+	char* phone_num;
+} totp_ctx_t;
 
-typedef struct validate_otp_ctx {
-    long access_code;
-    char* otp;
-    con_ctx_t* con_ctx;
-} validate_otp_ctx_t;
+typedef struct validate_totp_ctx {
+	long access_code;
+	char* totp;
+	con_ctx_t* con_ctx;
+} validate_totp_ctx_t;
 
 
 static csr_ctx_t* create_csr_ctx(struct event_base* ev_base);
@@ -58,6 +58,11 @@ static void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *ctx);
 static void csr_signal_cb(evutil_socket_t fd, short event, void* arg);
 static void csr_signal_cb(evutil_socket_t fd, short event, void* arg);
+static void new_read_cb(struct bufferevent *bev, void *ctx);
+static void new_event_cb(struct bufferevent *bev, short events, void *ctx);
+static void totp_read_cb(struct bufferevent *bev, void *ctx);
+static void totp_event_cb(struct bufferevent *bev, short events, void *ctx);
+
 
 int csr_server_create(int port) {
 	struct event_base* ev_base = event_base_new();
@@ -129,6 +134,29 @@ int csr_server_create(int port) {
 	return 0;
 }
 
+totp_ctx_t* create_totp_ctx(struct event_base* ev_base) {
+
+	totp_ctx_t* ctx;
+
+	ctx = (totp_ctx_t*)malloc(sizeof(totp_ctx_t));
+	ctx->phone_num_len = 0;
+	ctx->phone_num = NULL;
+
+	return ctx;
+}
+
+validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
+
+	validate_totp_ctx_t* ctx;
+
+	ctx = (validate_totp_ctx_t*)malloc(sizeof(validate_totp_ctx_t));
+	ctx->access_code = 0;
+	ctx->totp = NULL;
+	ctx->con_ctx = NULL;
+
+	return ctx;
+}
+
 csr_ctx_t* create_csr_ctx(struct event_base* ev_base) {
 
 	csr_ctx_t* ctx;
@@ -193,34 +221,26 @@ static SSL_CTX * ssl_ctx_init(void) {
 }
 
 
-char* otp_request(char *request, struct bfferenvent *bev, void *con) {
-    long length = request[1];
-    char* phone_number;
-    // read phone number from request
-    char* totp = generate_totp();
-    const char* error;
-    // add totp to cache
-    // hashmap_create
-    // hashmap_add(totp);
-    twilio_send_message(phone_number, totp, error);
-    // send back the access code
+char* otp_request(char *request, struct bufferenvent *bev, void *con) {
+	long length = request[1];
+	char* phone_number;
+	// read phone number from request
+	char* totp = generate_totp();
+	const char* error;
+	// add totp to cache
+	// hashmap_create
+	// hashmap_add(totp);
+	twilio_send_message(phone_number, totp, error);
+	// send back the access code
 	bufferevent_write(bev, "santi", 8);
-    return totp;
+	return totp;
 }
 
-/*
-function handle_request(string,)// function to catch first byte of string to know what funtion to run`*/
-void handle_request(struct evbuffer *input, struct bufferevent *bev, void *con){
-    if(input[0] == 0) {
-        otp_request(input, bev, con);
-    } else if (input[0] == 1) {
-        //validate_otp();
-    } else if (input[0] == 2) {
-        //csr_wo_validation(string);
-    } else  {
-        printf("INVALID Request");
-    }
-        //error
+/**
+ *  Write the cert from the evbuffer into the given connection_context->cert
+ */
+int copy_cert(struct bufferevent *bev, con_ctx_t *con) {
+	return 0;
 }
 
 // This is not written correctly and needs to not have to read all at once.
@@ -235,8 +255,6 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	//check what kind of request based on first bits
-    handle_request(input, recv_len, bev, con);
 
 	if (con_ctx->max_length < (con_ctx->length + recv_len)) {
 		if (con_ctx->max_length < recv_len*2) {
@@ -250,7 +268,6 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 	}
 	bufferevent_read(bev, con_ctx->cert+con_ctx->length, recv_len);
 	con_ctx->length += recv_len;
-
 	// Check if last byte is null byte and we are done receiving
 	if (con_ctx->cert[con_ctx->length-1] != '\x00' ) {
 		return;
@@ -326,10 +343,6 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct bufferevent *bev = bufferevent_openssl_socket_new(ev_base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
 	log_printf(LOG_INFO, "Received CSR connection.\n");
 
-	con = malloc(sizeof(con_ctx_t));
-	memset(con, 0, sizeof(con_ctx_t));
-	con->ctx = ctx;
-
 	// if (evutil_make_socket_nonblocking(fd) == -1) {
 	// 	log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 	// 		 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
@@ -337,7 +350,7 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// 	return;
 	// }
 
-	bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, con);
+	bufferevent_setcb(bev, new_read_cb, NULL, new_event_cb, NULL);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
 
 	return;
@@ -358,3 +371,75 @@ void csr_signal_cb(evutil_socket_t fd, short event, void* arg) {
 	}
 	return;
 }
+
+void new_event_cb(struct bufferevent *bev, short events, void *ctx) {
+	printf("New Event Callback invoked\n");
+}
+
+void totp_read_cb(struct bufferevent *bev, void *ctx) {
+	printf("TOTP READ CALLBACK INVOKED.");
+}
+
+void totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
+	printf("TOTP EVENT CALLBACK INVOKED.");
+}
+
+
+void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {
+	printf("TOTP VALIDATE READ CALLBACK INVOKED.");
+}
+
+void validate_totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
+	printf("TOTP VALIDATE EVENT CALLBACK INVOKED.");
+}
+
+void new_read_cb(struct bufferevent *bev, void *ctx) {
+	printf("New Read Callback invoked\n");
+	if (ctx != NULL)
+		printf("Context Not defined for new_read_cb\n");
+
+	struct evbuffer *input = bufferevent_get_input(bev);
+	size_t recv_len = evbuffer_get_length(input);
+	char* first_byte = NULL;
+	int request_num = -1;
+    void *req_ctx = NULL;
+
+	if (recv_len >= 1) {
+		bufferevent_read(bev, first_byte, 1);
+		if (isdigit(first_byte)) {
+			request_num = atoi(first_byte);
+		} else {
+			printf("Bad Request. First byte is not a number: %s\n", first_byte);
+			// close connection
+		}
+
+		switch (request_num) {
+			case 0:
+				req_ctx = create_totp_ctx(NULL);
+				// set callback to otp_request
+				bufferevent_setcb(bev, totp_read_cb, NULL, totp_event_cb, req_ctx);
+				printf("Updated callback to totp req\n");
+				break;
+			case 1:
+				req_ctx = create_validate_totp_ctx(NULL);
+				// set callback to validation
+				bufferevent_setcb(bev, validate_totp_read_cb, NULL, validate_totp_event_cb, req_ctx);
+				printf("Updated callback to validate totp\n");
+				break;
+			case 2:
+				req_ctx = create_csr_ctx(NULL);
+				// set callback to CSR
+				bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, req_ctx);
+				printf("Updated callback to csr\n");
+				break;
+			default:
+				printf("Bad Request. First Byte is not a number between 0 and 2: %s\n");
+				// close connection
+		}
+		if (ctx != NULL)
+			free(ctx);
+        if (first_byte != NULL)
+            free(first_byte);
+	}
+}
+
