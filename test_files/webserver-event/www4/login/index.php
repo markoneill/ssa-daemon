@@ -2,6 +2,7 @@
 session_start();
 $cert_string = "No one";
 if (isset($_SERVER['SSA_ID'])) {
+	$_SERVER['FIRST_LOGIN'] = 'true';
 	$cert_string = $_SERVER['SSA_ID'];
 
 	$string_arr = explode('/',$cert_string);

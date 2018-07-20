@@ -68,18 +68,26 @@ session_start();
 if (isset($_POST["logout"])) {
 	session_unset();
 	unset($_SERVER['SSA_ID']);
+	$_SERVER['FIRST_LOGIN'] = 'true';
+	$_SESSION['FIRST_LOGIN'] = 'true';
 }
 require('../items.php');
 require('../header.php');
 if (isset($_SESSION['name'])) {
 ?>
-<div class="container"> 
-  <div class="row">
-    <div class="col-md-12">
-      <div class="panel">
-	<h1>Welcome, <?php echo $_SESSION['name']; ?></h1>
-	<h2>You are logged in securely!</h2>
-	<form class="form-inline pad-butt" method="post" action="/account/">
+<div class="container">
+<div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px;">
+  <h1 align="center">Account Page</h1>
+  <hr>
+  <br>
+
+  <div class="row" style="background:transparent !important">
+    <div class="col-md-12" style="background:transparent !important">
+	<h2>Welcome, <?php echo $_SESSION['name']; ?></h2>
+	<h3>You are logged in securely!</h3>
+        <br>
+        <br>
+	<form class="form-inline" align="center" method="post" action="/account/">
 		<div class="btn-group btn-grou-lg center-text">
 			<button type="submit" class="btn btn-primary" name='logout' value="true"><font size="5">Logout</font></button>
 		</div>
@@ -89,25 +97,47 @@ if (isset($_SESSION['name'])) {
 else {
 ?>
 <div class="container">
-<div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px">
+<div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px;">
   <h1 align="center">Sign in</h1>
  
   <hr>
   <br>
   <div class="row" style="background:transparent !important">
     <div class="col-md-12" style="background:transparent !important">
-	<h3><b>This site uses strong encryption for logging in. That means you can securely sign in with keys stored on your phone!</b></h3>
+	<h3><b>This site uses strong encryption for logging in. That means you can securely sign in with account information stored on your phone!</b></h3>
+	
+<?php
+if (!isset($_SESSION['FIRST_LOGIN'])) {
+?>
 	<h3>Please click the button below to register an account with your phone:</h3>
-	<br>
+<?php
+}
+else {
+?>
+	<h3>Please click the button below to log back into your account:</h3>
+<?php
+}
+?>
+<br>
         <br>
 	<form class="form-inline" align="center" method="post" action="/login/">
 		<div class="btn-group btn-grou-lg gradient-background">
 			<button type="submit" class="btn" style="background:transparent !important;">
 
                           <img id="securely-icon" src="securely_compact_transparent_icon.png">
-                          
+
+<?php
+if (!isset($_SESSION['FIRST_LOGIN'])) {
+?>
 			  <font size="5" style="vertical-align: middle;">Register with Securely</font>
-                          
+<?php
+}
+else {
+?>
+                          <font size="5" style="vertical-align: middle;">Login with Securely</font>
+<?php
+}
+?>	
 			</button>
 		</div>
 	</form>
