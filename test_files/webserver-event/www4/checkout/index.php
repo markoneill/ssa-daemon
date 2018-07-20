@@ -143,13 +143,19 @@ function checkout() {
 					</div>
 				</div>
 				</div>
+				<br>
 				<hr class="mb-4">
+
+				<h3 class="mb-4">Billing Information</h3>
 				<div class="text-center">
 					<h4 class="mb-3">Quickly check out with:</h4>		
 					<input class="btn btn-primary" type="image" src="../visa_checkout.png" id="secure_purchase" width="240" height="136"/>
-					<h2 class="mb-3"> OR</h2>
-					<div class="btn mb-3" id="normal_checkout" style="color:blue; text-decoration:underline; -webkit-text-decoration-color:blue; text-decoration-color:blue;font-size:23px;">checkout normally </div>
+					<!--<h2 class="mb-3"> OR</h2>-->
+					<!--<div class="btn mb-3" id="normal_checkout" style="color:blue; text-decoration:underline; -webkit-text-decoration-color:blue; text-decoration-color:blue;font-size:23px;">checkout normally </div>-->
 				</div>
+
+
+				<!--
 				<div id="billingInfo" style="display:none">
 				<h3 class="mb-4">Billing address</h3>
 				<div class="row">
@@ -221,9 +227,13 @@ function checkout() {
 						<input type="text" class="form-control" id="cc-cvv" name="cc-cvv" placeholder="" onchange="checkBothPurchase();" required>
 					</div>
 				</div>
+				-->
+				
+				
+				<br>
 				<hr class="mb-4">
 				<!--<button class="btn btn-primary btn-lg btn-block" name="purchase" type="submit">Purchase</button>-->
-				<input class="btn btn-primary btn-lg btn-block" type="submit" id="submitBtn" value="Purchase" disabled="disabled">
+				<!--<input class="btn btn-primary btn-lg btn-block" type="submit" id="submitBtn" value="Purchase" disabled="disabled">-->
 				</div>
 				<input type="hidden" id="purchase" name="purchase" value="success" />
 			</form>

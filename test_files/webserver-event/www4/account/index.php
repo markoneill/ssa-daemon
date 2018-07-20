@@ -12,10 +12,39 @@
     justify-content: center;
 }
 
+.center-vertical {
+
+}
+
 .pad-butt{
     padding-top:2em;
     padding-bottom:2em;
     padding-left:15em;
+}
+
+.gradient-background {
+    background: #35cfad;
+    background: linear-gradient(135deg, #2da2b7 0%, #35cfad 100%);
+    border-radius: 5px;
+}
+.gradient-background:hover {
+    filter: brightness(85%);  
+}
+.gradient-background:active {
+    filter: brightness(70%);
+}
+
+#securely-icon {
+    height:40px;
+    width:auto;
+    padding-right:10px;
+}
+
+.jumbotron {
+
+    padding-left: 0;
+    padding-right: 0;
+
 }
 
 .animate {
@@ -60,16 +89,28 @@ if (isset($_SESSION['name'])) {
 else {
 ?>
 <div class="container">
-  <div class="row">
-    <div class="col-md-12">
-      <div class="panel">
-	<h2>This site uses strong encryption for logging in.<br>That means you can securely sign in with keys stored on your phone!</h2>
-	<h3>Please click the button below to register an account with your phone</h3>
-	<form class="form-inline pad-butt" method="post" action="/login/">
-		<div class="btn-group btn-grou-lg">
-			<button type="submit" class="btn btn-primary"><font size="5">Register</font></button>
+<div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px">
+  <h1 align="center">Sign in</h1>
+ 
+  <hr>
+  <br>
+  <div class="row" style="background:transparent !important">
+    <div class="col-md-12" style="background:transparent !important">
+	<h3><b>This site uses strong encryption for logging in. That means you can securely sign in with keys stored on your phone!</b></h3>
+	<h3>Please click the button below to register an account with your phone:</h3>
+	<br>
+        <br>
+	<form class="form-inline" align="center" method="post" action="/login/">
+		<div class="btn-group btn-grou-lg gradient-background">
+			<button type="submit" class="btn" style="background:transparent !important;">
+
+                          <img id="securely-icon" src="securely_compact_transparent_icon.png">
+                          
+			  <font size="5" style="vertical-align: middle;">Register with Securely</font>
+                          
+			</button>
 		</div>
-        </form>
+	</form>
 <?php
 }
 ?>
