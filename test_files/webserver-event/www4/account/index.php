@@ -47,6 +47,11 @@
 
 }
 
+.equalspace {
+    display: flex;
+    justify-content: space-between;
+}
+
 .animate {
     animation-name: grow;
     animation-duration: 5s;
@@ -77,21 +82,30 @@ if (isset($_SESSION['name'])) {
 ?>
 <div class="container">
 <div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px;">
-  <h1 align="center">Account Page</h1>
+<h1 align="center">Welcome, <?php echo $_SESSION['name']; ?></h1>
   <hr>
   <br>
 
   <div class="row" style="background:transparent !important">
-    <div class="col-md-12" style="background:transparent !important">
-	<h2>Welcome, <?php echo $_SESSION['name']; ?></h2>
-	<h3>You are logged in securely!</h3>
+    <div class="col-md-12" align="center" style="background:transparent !important">
+	<h2>You are logged in securely!</h2>
         <br>
-        <br>
-	<form class="form-inline" align="center" method="post" action="/account/">
+	<br>
+
+	<div class="equalspace">
+
+          
+	  <form class="form-inline"  method="post" action="/account/">
 		<div class="btn-group btn-grou-lg center-text">
 			<button type="submit" class="btn btn-primary" name='logout' value="true"><font size="5">Logout</font></button>
 		</div>
-	</form>
+	  </form>
+          
+          <form class="form-inline" action="/">
+	    <button type="submit" class="btn btn-info"><font size="5">Take Me Shopping</font></button>
+          </form>
+          
+        </div>
 <?php
 }
 else {

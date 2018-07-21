@@ -8,6 +8,26 @@
     margin-right: auto;
 }
 
+
+.gradient-background {
+    background: #35cfad;
+    background: linear-gradient(135deg, #2da2b7 0%, #35cfad 100%);
+    border-radius: 5px;
+}
+.gradient-background:hover {
+    filter: brightness(85%);
+}
+.gradient-background:active {
+    filter: brightness(70%);
+}
+
+#securely-icon {
+    height:40px;
+    width:auto;
+    padding-right:10px;
+}
+
+
 .animate {
     animation-name: grow;
     animation-duration: 5s;
@@ -47,6 +67,18 @@ function checkout() {
 			echo '                           <img class="center animate" src="check5.png" alt="Purchase Complete" width="150" height="150">';
 			echo '				 <h1 class="text-center"><font size="7" color="#1bdc71"><b>Thank You! Your order has been placed</b></font></h1>';
 			echo '				 <h2 class="text-center">Come back anytime to PayMore!</h2>';
+			echo '                           <br>';
+			echo '                           <br>';
+			echo '                           <div align="center">';
+			echo '                             <div class="btn-group gradient-background">';
+			echo '                               <button class="btn gradient-background"';
+			echo '                                 onclick="window.open(\'https://byu.az1.qualtrics.com/jfe/form/SV_9ZT7LS9FzvRCGeF\')">';
+			//echo '                                 <a href="https://byu.az1.qualtrics.com/jfe/form/SV_9ZT7LS9FzvRCGeF"></a>';
+			echo '                                 <img id="securely-icon" src="../account/securely_compact_transparent_icon.png">';
+			echo '                                 <font size="5" style="vertical-align: middle;">Tell us about your experience!</font>';
+			echo '                               </button>';
+			echo '                             </div>';
+			echo '                           </div>';
 			echo '            </div>';
 			echo '		</div>';
 			echo '	</div>';
