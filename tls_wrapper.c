@@ -1058,6 +1058,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 
+				char msg[] = {"YOLO_YOLO_YOLO\0"};
+
+				tls_early_data(ctx->tls , &msg , 14 );
+				
+
 			if (SSL_session_reused( ctx->tls)) 
 				log_printf(LOG_INFO, "Resumed session from cache \n");
 

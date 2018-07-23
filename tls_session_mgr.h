@@ -51,6 +51,13 @@ int custom_new_session_cb(SSL *ssl, SSL_SESSION *sess)
 
 		cached_session = sess;
 		
+		uint32_t max_bytes = SSL_SESSION_get_max_early_data(ssl);
+		
+		if(max_bytes == 0)
+			log_printf(LOG_INFO , "NO EARLY DATA Possible\n");
+		else
+			log_printf(LOG_INFO , " EARLY DATA : Max bytes %d\n" , max_bytes );
+		
 
 	}
 

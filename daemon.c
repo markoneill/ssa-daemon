@@ -892,7 +892,7 @@ void connect_and_send_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockadd
 		log_printf(LOG_INFO, "Nonblocking connect requested\n");
 		netlink_notify_kernel(ctx, id, -EINPROGRESS);
 	}
-	tls_early_data(sock_ctx->tls_conn,msg,size);
+	//tls_early_data(sock_ctx->tls_conn,msg,size);
 	return;
 }
 
