@@ -11,22 +11,19 @@
 int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
+
+
 int main(int argc, char* argv[]) {
 	int sock_fd;
-	char http_request[2048];
-	char http_response[2048];
 
 	if (argc < 2) {
 		printf("USAGE: %s <host name>\n", argv[0]);
 		return 0;
 	}
-	sock_fd = connect_to_host(argv[1], "44330");
-	sprintf(http_request,"GET /login/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 
-	memset(http_response, 0, 2048);
-	send(sock_fd, http_request, strlen(http_request), 0);
-	recv(sock_fd, http_response, 750, 0);
-	printf("Received:\n%s\n", http_response);
+
+	sock_fd = connect_to_host( "127.0.0.1", "44330");
+
 	close(sock_fd);
 	return 0;
 }
@@ -41,6 +38,7 @@ int connect_to_host(char* host, char* service) {
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_family = AF_INET;
+
 	ret = getaddrinfo(host, service, &hints, &addr_list);
 	if (ret != 0) {
 		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
@@ -59,16 +57,35 @@ int connect_to_host(char* host, char* service) {
 			continue;
 		}
 
-		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
-			perror("connect");
-			close(sock);
-			continue;
-		}
+
+		char http_request[2048];
+		char http_response[2048];
+	
+
+		printf("sdasdasdas\n");
+
+	sprintf(http_request,"GET /login/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", host);
+
+
+		memset(http_response, 0, 2048);
+		sendto(sock, http_request, strlen(http_request), MSG_FASTOPEN, addr_ptr->ai_addr, addr_ptr->ai_addrlen );
+
+		// if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
+		// 	perror("connect");
+		// 	close(sock);
+		// 	continue;
+		// }
 
 		print_identity(sock);
 		break;
 	}
-	freeaddrinfo(addr_list);
+
+
+//	freeaddrinfo(addr_list);
+
+
+
+
 	if (addr_ptr == NULL) {
 		fprintf(stderr, "failed to find a suitable address for connection\n");
 		exit(EXIT_FAILURE);

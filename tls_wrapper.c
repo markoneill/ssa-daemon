@@ -99,6 +99,7 @@ int auth_daemon_connect(void);
 #endif
 
 
+
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
 	
@@ -123,8 +124,6 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 			log_printf(LOG_ERROR, "Fail : Set up TLS (SSL*) Session\n");
 		else
 			log_printf(LOG_INFO , "Success : Set up TLS (SSL*) Session\n");
-
-
 
 
 	}
@@ -181,6 +180,8 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 		return;
 	}*/
 	//SSL_connect(ctx->tls);
+				
+
 	return ctx;
 }
 
@@ -1058,9 +1059,9 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 
-				char msg[] = {"YOLO_YOLO_YOLO\0"};
+				// char msg[] = {"YOLO_YOLO_YOLO\0"};
 
-				tls_early_data(ctx->tls , &msg , 14 );
+				// tls_early_data(ctx->tls , &msg , 14 );
 				
 
 			if (SSL_session_reused( ctx->tls)) 
@@ -1473,82 +1474,60 @@ void send_all(int fd, char* msg, int bytes_to_send) {
 
 #endif
 
-void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size){
+
+void tls_early_data(tls_conn_ctx_t* tls_ctx, char * data, size_t size)
+{
 	int written;
 	int ret;
-	data[size-1] = '\0'; //For printing only
-	printf("%s\n", data);
-	//BIO_set_tcp_ndelay(efd, 0);
+	data[size-1] = '\0'; 
 
-	//SSL_write(tls_ctx->tls, data, size);
-
-	ret = SSL_is_init_finished(tls_ctx->tls);
+	ret = SSL_is_init_finished( tls_ctx->tls );
 
 	if(ret)
-		printf("SSL_is_init_finished gives 1\n");
+		log_printf(LOG_DEBUG , "SSL_is_init_finished gives 1\n");
 
+	ret = SSL_write_early_data( tls_ctx->tls, data , size, &written);
 
-	ret = SSL_write_early_data(tls_ctx->tls, data, size, &written);
 	if (ret == 0)
 	{
-		switch (SSL_get_error(tls_ctx->tls, ret))
+		switch (SSL_get_error( tls_ctx->tls ,  ret))
 		{
 			case SSL_ERROR_ZERO_RETURN:
-			printf("SSL_ERROR_ZERO_RETURN\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_ZERO_RETURN\n");
 
 			
 			case SSL_ERROR_WANT_WRITE:
-			printf("SSL_ERROR_WANT_WRITE\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_WRITE\n");
 			
 			case SSL_ERROR_WANT_READ:
-			printf("SSL_ERROR_WANT_READ\n");
-			
-
-
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_READ\n");
+		
 			case SSL_ERROR_WANT_CONNECT:
-			printf("SSL_ERROR_WANT_CONNECT\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_CONNECT\n");
 			
 			case SSL_ERROR_WANT_ACCEPT:
-			printf("SSL_ERROR_WANT_ACCEPT\n");
-			
-
-
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_ACCEPT\n");
+	
 			
 			case SSL_ERROR_WANT_X509_LOOKUP:
-			printf("SSL_ERROR_WANT_X509_LOOKUP\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_X509_LOOKUP\n");
 			
 			case SSL_ERROR_WANT_ASYNC:
-			printf("SSL_ERROR_WANT_ASYNC\n");
-			
-
-
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_ASYNC\n");
+	
 			case SSL_ERROR_WANT_CLIENT_HELLO_CB:
-			printf("SSL_ERROR_WANT_CLIENT_HELLO_CB\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_WANT_CLIENT_HELLO_CB\n");
 			
 			case SSL_ERROR_SYSCALL:
-			printf("SSL_ERROR_SYSCALL\n");
-
-			
+			log_printf(LOG_DEBUG , "SSL_ERROR_SYSCALL\n");
+		
 			case SSL_ERROR_SSL:
-			printf("SSL_ERROR_SSL\n");
+			log_printf(LOG_DEBUG , "SSL_ERROR_SSL\n");
 
 			break;
 			
 		}
 	}
-	printf("tls_early_data function END\n");
+	else if(ret == 1)
+		log_printf(LOG_INFO , "EARLY Data returned Success\n");
 }
-
-// Debugging only
-// TODO : Must Remove later
-void keylog_cb(const SSL *ssl, const char *line){
-
-	FILE *fp;
-	fp = fopen("keylog.pem", "a");
-	fprintf(fp, "%s\n", line);
-	fclose(fp);
-
-
-	//printf("%s\n", line);
-}
-

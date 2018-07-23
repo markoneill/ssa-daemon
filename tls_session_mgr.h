@@ -47,7 +47,7 @@ int custom_new_session_cb(SSL *ssl, SSL_SESSION *sess)
 
 	if (cached_session == NULL) 
 	{
-		printf("custom_new_session_cb invokved\n");
+		log_printf( LOG_INFO , "custom_new_session_cb invokved\n");
 
 		cached_session = sess;
 		
