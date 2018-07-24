@@ -1,6 +1,6 @@
 #! /bin/bash
 HOST_FILE=/etc/hosts
-DOMAIN_NAME="www.testshop.com testshop.com"
+DOMAIN_NAME="www.paymore.com paymore.com"
 
 if [ -z "$1"]; then
 	echo "hosts will not be reset"
@@ -15,7 +15,7 @@ pkill sslsplit
 pkill tls_wrapper
 
 if [ ${RESET_HOSTS} == "true" ]; then
-	let count=$(grep -c "$$[0-9.]* ${DOMAIN_NAME}" $HOST_FILE)
+	let count=$(grep -c "\$[0-9.]*[\s]*${DOMAIN_NAME}" $HOST_FILE)
 	if [ $count > "0" ]; then
 		echo "removing redirect on ${DOMAIN_NAME}"
 		sed -i "0,/${DOMAIN_NAME}/ d" $HOST_FILE

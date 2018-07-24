@@ -33,7 +33,7 @@ int main() {
 	char response[4096];
 	/*char* query_again;
 	int query_again_len;*/
-	char hostname[] = "testshop.com";
+	char hostname[] = "paymore.com";
 
 	printf("Connecting to %s\n", hostname);
 	memset(response, 0, 4096);
@@ -41,7 +41,7 @@ int main() {
 	sock = connect_to_host(hostname, "443", SOCK_STREAM);
 	tls = openssl_connect_to_host(sock, hostname, CLIENT_CERT);
 
-	query = "GET /login/index.php HTTP/1.1\r\nHost: testshop.com\r\n\r\n";
+	query = "GET /login/index.php HTTP/1.1\r\nHost: paymore.com\r\n\r\n";
 	query_len = strlen(query);
 	while (SSL_write(tls, query, query_len) <= 0) {}
 	while (SSL_read(tls, response, sizeof(response)) <= 0) {}

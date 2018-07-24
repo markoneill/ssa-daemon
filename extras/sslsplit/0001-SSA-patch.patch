@@ -100,7 +100,7 @@ index 0b58143..007c154 100644
  	}
 -	ctx->dst.bev = pxy_bufferevent_setup(ctx, -1, ctx->dst.ssl);
 +
-+	if (strstr(ctx->sni, "testshop.com") != NULL) {
++	if (strstr(ctx->sni, "paymore.com") != NULL) {
 +		ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
 +		setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
 +

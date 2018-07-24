@@ -1,12 +1,14 @@
 #! /bin/bash
 
 # This script will build and run the programs necisery to 
-# use Client Auth with Securly at the testshop.com domain.
+# use Client Auth with Securly at the paymore.com domain.
 # If a Client Auth server is curently running remotly you
 # may specify the servers IP in the TESTSHOP_SERVER_IP
-# environment verialble to route testshop.com to that server
+# environment verialble to route paymore.com to that server
 # otherwise localhost will be used and a server will run
 # on your machine.
+# NOTE: some browsers will cash the hosts file on start up.
+
 HOME_DIR=${PWD}
 SSA_DIR=${HOME_DIR}/../ssa
 WRAPPER_DIR=${HOME_DIR}
@@ -17,13 +19,21 @@ LOG_DIR=${HOME_DIR}/logs
 HOST_FILE=/etc/hosts
 SSA_KO=ssa.ko
 LOCAL_IP="127.0.0.1"
-DOMAIN_NAME=" www.testshop.com testshop.com"
+DOMAIN_NAME="www.paymore.com paymore.com"
 
 if [ $TESTSHOP_SERVER_IP ]; then
 	SERVER_IP=$TESTSHOP_SERVER_IP
 else
 	SERVER_IP=$LOCAL_IP
 fi
+
+if [ -z "$1"]; then
+	MODE="default"
+else
+	MODE=${1}
+fi
+echo "bild mode = $MODE"
+
 
 # Check permissions
 if [[ $EUID -ne 0 ]]; then
@@ -36,8 +46,11 @@ fi
 pkill testShopServer
 pkill sslsplit
 pkill tls_wrapper
+sleep .3
 
 # Make sure we are in the right directory
+echo ""
+echo ""
 echo "checking direcotry dependencies..."
 let missing=false
 if [ ! -d ${WRAPPER_DIR} ]; then
@@ -69,6 +82,19 @@ elif [ $SSA_SOURCE == false ]; then
 	echo -e "\tcritical dependancys availible"
 else
 	echo -e "\tno missing dependancy"
+fi
+
+
+# If clean moad execure make clean in each directory
+if [ $MODE = "clean" ]; then
+	echo "clean: cleaning directorys..."
+	echo -e "\t$SSA_DIR"
+	make -s -C $SSA_DIR clean
+	rm $SSA_DIR/ssa.ko
+	echo -e "\t$WRAPPER_DIR"
+	make -s -C $WRAPPER_DIR clean
+	echo -e "\t$SERVER_DIR"
+	make -s -C $SERVER_DIR clean
 fi
 
 
@@ -106,8 +132,17 @@ fi
 # Verify kernel moduel is present
 echo "checking for kernel ssa support..."
 let count=$(kmod list | grep -c ssa)
-if [ $count = "0" ]; then
-	echo -e "\tssa module not found"
+if [ "$MODE" = "clean" ] && [ "$count" > "0" ]; then
+	if [ $SSA_SOURCE == true ]; then
+		rmmod ssa
+		count="0"
+		echo -e "\tclean: ssa module removed"
+	else
+		echo -e "\tkernel modual not updated: ssa source unavalible"
+	fi
+fi
+if [ $count == "0" ]; then
+	echo -e "\tno ssa module in kernel"
 	if [ $MAKE_SSA_KO == true ]; then
 		echo -e "\tbuilding ssa.ko"
 		cd ${SSA_DIR}
@@ -128,28 +163,31 @@ echo "building dependencies: wrapper(${MAKE_WRAPPER}) server(${MAKE_SERVER})"
 if [ ${MAKE_WRAPPER} == true ]; then
 	echo -e "\ttls_wrapper..."
 	make -s -C ${WRAPPER_DIR} clean
-	make -s -C ${WRAPPER_DIR} clientauth
+	make -s -C ${WRAPPER_DIR} clientauth || (echo -e "\ttls_wrapper build error.\nexiting" ; exit 1)
 fi
 if [ ${MAKE_SERVER} == true ]; then
 	echo -e "\ttestShopServer..."
-	make -s -C ${SERVER_DIR}
+	make -s -C ${SERVER_DIR} || (echo -e "\tserver build error.\nexiting" ; exit 1)
 fi
+echo -e "\tdone"
 
 
-#adding line to host file so that testshop.com gets forwarded to localhost
-echo "redirecting testshop.com to ${SERVER_IP}"
-let count=$(grep -c "${DOMAIN_NAME}" ${HOST_FILE})
-if [ $count == "0" ]; then
+#adding line to host file so that paymore.com gets forwarded to localhost
+echo "redirecting paymore.com to ${SERVER_IP}"
+let count=$(grep -c "^[0-9.]*[[:space:]]\+${DOMAIN_NAME}" ${HOST_FILE})
+echo -e "\t${count} rederects for paymore.com in ${HOST_FILE}"
+if [ $count = "0" ]; then
 	echo -e "\tadding redirect"
 	sed -i "1 i\\${SERVER_IP} ${DOMAIN_NAME}" ${HOST_FILE}
 else
-	let corect_ip=(grep -c "$$${SERVER_IP} ${DOMAIN_NAME}" ${HOST_FILE})	
-	if [ $corect_ip != 0 ]; then
-		echo -e "\tredirect already exists"
-	else
+	let corect_ip=$(grep -c "^${SERVER_IP}[[:space:]]\+${DOMAIN_NAME}" ${HOST_FILE})
+	echo -e "\tnumber to ${SERVER_IP}=${corect_ip}"
+	if [ $corect_ip = "0" ]; then
 		echo -e "\tupdating hostfile with new ip"
 		sed -i "0,/${DOMAIN_NAME}/ d" $HOST_FILE
 		sed -i "1 i\\${SERVER_IP} ${DOMAIN_NAME}" ${HOST_FILE}
+	else
+		echo -e "\tredirect already exists"
 	fi
 fi
 
