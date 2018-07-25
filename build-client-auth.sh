@@ -3,15 +3,22 @@ set -e
 
 OPENSSL_INSTALL_DIR=$PWD/openssl
 LIBEVENT_INSTALL_DIR=$PWD/libevent
+SSLSPLIT_INSTALL_DIR=$PWD/sslsplit
+TMP_DIR=$PWD/tmp
+
+make clean
+
+rm -rf $OPENSSL_INSTALL_DIR $LIBEVENT_INSTALL_DIR $SSLSPLIT_INSTALL_DIR
 
 mkdir -p tmp
 cd tmp
 
-if [ ! -d "openssl" ] ; then
-	echo "Cloning OpenSSL repo"
-	git clone https://github.com/openssl/openssl.git
-	echo "Done"
-fi
+# we'll just clone it new every thme
+#if [ ! -d "openssl" ] ; then
+echo "Cloning OpenSSL repo"
+git clone https://github.com/openssl/openssl.git
+echo "Done"
+#fi
 
 echo "Applying OpenSSL patches"
 cd openssl
