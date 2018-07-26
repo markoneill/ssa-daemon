@@ -82,15 +82,25 @@ if (isset($_SESSION['name'])) {
 ?>
 <div class="container">
 <div class="jumbotron center" style="width:80%; padding-left:60px; padding-right:60px;">
-<h1 align="center">Welcome, <?php echo $_SESSION['name']; ?></h1>
+  <h1 align="center">Welcome, 
+    <?php 
+	if ($_SESSION['firstname'] != "") {
+		echo $_SESSION['firstname'], ' ', $_SESSION['lastname'];
+	}
+        else{
+		echo $_SESSION['name'];
+	}	
+    ?>
+  </h1>
   <hr>
   <br>
 
   <div class="row" style="background:transparent !important">
     <div class="col-md-12" align="center" style="background:transparent !important">
 	<h2>You are logged in securely!</h2>
-        <br>
 	<br>
+        <h2></h2>
+        <br>
 
 	<div class="equalspace">
 
@@ -119,7 +129,8 @@ else {
   <div class="row" style="background:transparent !important">
     <div class="col-md-12" style="background:transparent !important">
 	<h3><b>This site uses strong encryption for logging in. That means you can securely sign in with account information stored on your phone!</b></h3>
-	
+	<h3>After creating an account with Securely, no other credentials are required to sign into this site! Talk about convenient!</h3>
+
 <?php
 if (!isset($_SESSION['FIRST_LOGIN'])) {
 ?>
@@ -162,6 +173,14 @@ else {
     </div>
   </div>
 </div><br /><br />
+
+
+<div class="container">
+  <div class="row">
+
+  </div>
+</div>
+
 <?php
 	require('../footer.php');
 ?>

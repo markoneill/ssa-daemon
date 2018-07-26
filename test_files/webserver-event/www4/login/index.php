@@ -11,6 +11,8 @@ if (isset($_SERVER['SSA_ID'])) {
 	$_SESSION['location'] = NULL;
 	$_SESSION['phone'] = NULL;
 	$_SESSION['email'] = NULL;
+	$_SESSION['firstname'] = NULL;
+	$_SESSION['lastname'] = NULL;
 
 	for ($i = 0; $i < sizeof($string_arr); $i++) {
 	    $abbr = explode('=', $string_arr[$i]);
@@ -26,7 +28,14 @@ if (isset($_SERVER['SSA_ID'])) {
 			break;
 	        case "emailAddress":
 		        $_SESSION['email'] = $abbr[1];
-		        break;
+			break;
+		case "GN":
+			$_SESSION['firstname'] = $abbr[1];
+                        break;
+                case "SN":
+                        $_SESSION['lastname'] = $abbr[1];
+                        break;
+
 	    }
 	}
 }
