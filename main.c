@@ -159,7 +159,7 @@ void* create_nsd_daemon(void* arg) {
 
 void* create_csr_daemon(void* arg) {
 	int csr_daemon_port = (int)arg;
-	csr_server_create(csr_daemon_port);
+	//csr_server_create(csr_daemon_port);
 	return NULL;
 }
 

@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/un.h>
+#include <semaphore.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
@@ -928,11 +929,16 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
 	if (events & BEV_EVENT_CONNECTED) {
 		log_printf(LOG_DEBUG, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
+ 
+        sem_t *sem_connect = sem_open("/mysem", 0);
+        int post_number = sem_post(sem_connect); // unlock the locked area
+        //printf("Unlock the message with post number: %d\n", post_number);
+
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
-				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
+				unix_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
 			else {
 				bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
@@ -985,7 +991,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
 		if (bufferevent_getfd(ctx->plain.bev) == -1) {
-			netlink_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
+			unix_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
 		}
 		shutdown_tls_conn_ctx(ctx);
 	}
@@ -998,15 +1004,15 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
-	auth_info_t* ai;
+	//auth_info_t* ai;
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL) {
-		ai = SSL_get_ex_data(ctx->tls, auth_info_index);
-		if (ai != NULL) {
+		//ai = SSL_get_ex_data(ctx->tls, auth_info_index);
+		//if (ai != NULL) {
 			/* free client auth data */
-			free(ai);
-		}
+			//free(ai);
+		//}
 		SSL_shutdown(ctx->tls);
 	}
 	return;
