@@ -1,3 +1,6 @@
+<?php
+session_start();
+?>
 <html>
 <style>
 
@@ -69,7 +72,6 @@
 
 
 <?php 
-session_start();
 if (isset($_POST["logout"])) {
 	session_unset();
 	unset($_SERVER['SSA_ID']);
