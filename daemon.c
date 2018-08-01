@@ -572,8 +572,6 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		unix_notify_kernel(ctx, id, response);
 		return;
 	}
-	printf("%s\n", value);
-	printf("%d\n", len);
 	switch (option) {
 	case SO_REMOTE_HOSTNAME:
 		/* The kernel validated this data for us */
@@ -781,14 +779,12 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 		 * we might already be connected due to a
 		 * socket upgrade */
 		get_addr_string(rem_addr);
-		printf("rem_addrlen: %d\n", rem_addrlen);
 		if (sock_ctx->is_connected == 0) {
 			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
 		}
 		else {
 			ret = 0;
 		}
-		printf("ret in connect cb: %d\n", ret);
 		if (ret == -1) {
 			perror("connect error");
 			response = -errno;
@@ -910,7 +906,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	if (sock_ctx == NULL) {
 		return;
 	}
-	/* close things here */
+	/* close things here */ 
 	if (sock_ctx->is_accepting == 1) {
 		/* This is an ophan server connection.
 		 * We don't host its corresponding listen socket
@@ -927,7 +923,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * clean up themselves as a result of the close event
 		 * received from one of the endpoints. In this case we
 		 * only need to clean up the sock_ctx */
-		//netlink_notify_kernel(ctx, id, 0);
+		unix_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
 		tls_opts_free(sock_ctx->tls_opts);
 		free_tls_conn_ctx(sock_ctx->tls_conn);
@@ -939,13 +935,13 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		evconnlistener_free(sock_ctx->listener);
 		tls_opts_free(sock_ctx->tls_opts);
 		free(sock_ctx);
-		//netlink_notify_kernel(ctx, id, 0);
+		unix_notify_kernel(ctx, id, 0);
 		return;
 	}
 	hashmap_del(ctx->sock_map, id);
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	free(sock_ctx);
-	//netlink_notify_kernel(ctx, id, 0);
+	unix_notify_kernel(ctx, id, 0);
 	return;
 }
 

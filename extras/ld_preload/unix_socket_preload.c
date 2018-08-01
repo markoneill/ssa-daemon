@@ -33,8 +33,10 @@ typedef int (*orgi_bind_type)(int sockfd, const struct sockaddr *addr, socklen_t
 int global_id = 0;
 int global_fd = 0;
 int global_tcp_fd = 0;
+int is_bind = 0;
 hmap_t* sock_map;
-struct sockaddr_in local_address_global;
+struct sockaddr_in local_address;
+struct sockaddr_in* addr_external;
 
 unsigned long concatenate(unsigned long x, int y) { //combine two int
     unsigned long pow = 10;
@@ -91,7 +93,9 @@ int createUnixSocket(){
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, SOCKET_PRELOAD_FILE);
     ret = unlink(SOCKET_PRELOAD_FILE);
-    ret = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    orgi_bind_type bind_orgi;
+    bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
+    ret = bind_orgi(fd, (struct sockaddr *)&addr, sizeof(addr));
     if (ret < 0) {
         perror("bind failed");
         return -1;
@@ -132,6 +136,11 @@ int socket(int domain, int type, int protocol){
         printf("Error opening socket\n");
         return -1;
     }
+    
+    // create a local address
+    local_address.sin_family = AF_INET;
+    local_address.sin_port = 0; // choose a random port
+    local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); 
 
     process_id = getpid();
     id  = concatenate(process_id, tcp_fd);
@@ -297,7 +306,6 @@ int make_connection(int sockfd){
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     if(hashmap_get(sock_map, global_id) != NULL){
     int bind_result;
-    struct sockaddr_in local_address;
     struct nl_msg* msg;
     int fd;
     int len;
@@ -307,23 +315,20 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     void* msg_head;
     int blocking = 1;
 
-    local_address.sin_family = AF_INET;
-    local_address.sin_port = 0; // choose a random port
-    local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK); 
-    local_address_global = local_address;
-
-    bind_result = bind(sockfd, (struct sockaddr*) &local_address, sizeof(local_address));
-    if (bind_result == -1) {
-      printf("Failed in bind\n");
-      return -1;
+    if(is_bind == 0){
+        orgi_bind_type bind_orgi;
+        bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
+        bind_result = bind_orgi(sockfd, (struct sockaddr*) &local_address, sizeof(local_address));
+        if (bind_result == -1) {
+         printf("Failed in bind\n");
+         return -1;
+        }
+        socklen_t size = sizeof(local_address);
+        getsockname(sockfd, (struct sockaddr *) &local_address, &size);
     }
-    socklen_t size = sizeof(local_address);
-    getsockname(sockfd, (struct sockaddr *) &local_address, &size);
-
+    
     // ------------------send message ------------------
-
     fd = createUnixSocket();
-
     // send connection notify
     strcpy(buff, "3 ssa connection notify");
     ret = send(fd, buff, strlen(buff)+1, 0);
@@ -380,7 +385,6 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
         perror("send blocking failed");
         return -1;
     }
-
     if ((len = recv(fd, buff, 8192, 0)) < 0) {
         perror("recv error");
         return -1;
@@ -391,18 +395,15 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     int unlink = sem_unlink(SNAME);
     sem_t *sem_connect = sem_open(SNAME, O_CREAT, 0644, 0);
     int sem_value = sem_wait(sem_connect);
-    int connection_check = make_connection(sockfd);
-    
+    int connection_check = make_connection(sockfd); 
     if(connection_check == -1){
       return -1;
     }
-
     if ((len = recv(fd, buff, 8192, 0)) < 0) {
         perror("recv error");
         return -1;
      }
     printf("receive message for connection: %s\n", buff);
-
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
@@ -422,7 +423,6 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 }
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen){
-
   if(optname == SO_PEER_CERTIFICATE || optname == SO_PEER_IDENTITY){
     int fd;
     int len;
@@ -480,10 +480,8 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
         perror("recv error");
         return -1;
     }
-    //printf("the messgae received: %s\n", buff);
 
     strcpy(optval, buff);
-
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
@@ -499,19 +497,18 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
 int close(int fd){
   if(hashmap_get(sock_map, global_id) != NULL){
     int ret;
+    int len;
     int unix_fd;
     unsigned long id;
     char buff[8192];
 
     unix_fd = createUnixSocket();
-    // send ssa socket notify
     strcpy(buff, "5 ssa close notify");
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    ret = send(unix_fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
         perror("send failed in close");
         return -1;
     }
-
     // send id numeber
     char idString[256];
     char resultMark[256];
@@ -519,19 +516,23 @@ int close(int fd){
     sprintf(idString, "%ld", global_id);
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
-    ret = send(fd, buff, strlen(buff)+1, 0);
+    ret = send(unix_fd, buff, strlen(buff)+1, 0);
     if (ret == -1) { // send can be used when a socket is in a connected state
         perror("send id failed in setsockopt");
         return -1;
     }
 
+    if ((len = recv(unix_fd, buff, 8192, 0)) < 0) {
+        perror("recv error");
+        return -1;
+    }
+    printf("the messgae received: %s\n", buff);
+
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
-
     unlink(SOCKET_PRELOAD_FILE);
-
-      return 0;
+    return 0;
   }
   else{
     printf("establishing normal close...\n");
@@ -541,25 +542,222 @@ int close(int fd){
   }
 }
 
-/*
+int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
+    if(hashmap_get(sock_map, global_id) != NULL){
+    int fd;
+    int len;
+    int ret;
+    char buff[8192];
+    unsigned long id;
+
+    fd = createUnixSocket();
+    strcpy(buff, "6 ssa listen notify");
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send connection message failed");
+        return -1;
+    }
+
+    // send id numeber
+    char idString[256];
+    char resultMark[256];
+    strcpy(resultMark, "6id");
+    sprintf(idString, "%ld", global_id);
+    strcat(resultMark, idString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) { // send can be used when a socket is in a connected state
+        perror("send id failed in setsockopt");
+        return -1;
+    }
+
+    // send local address
+    char localAddressString[256];
+    strcpy(localAddressString, get_addr_string((struct sockaddr*)&local_address));
+    strcpy(resultMark, "6la");
+    strcat(resultMark, localAddressString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send local address failed");
+        return -1;
+    }
+
+    if ((len = recv(fd, buff, 8192, 0)) < 0) {
+        perror("recv error");
+        return -1;
+    }
+
+    printf("the messgae received: %s\n", buff);
+
+    orgi_close_type close_orgi;
+    close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
+    close_orgi(fd);
+    }
+    else{
+        orgi_accept_type accept_orgi;
+        accept_orgi = (orgi_accept_type)dlsym(RTLD_NEXT,"accept");
+        return accept_orgi(sockfd, addr, addrlen);
+    }
+}
+
 int listen(int sockfd, int backlog){
-    printf("inject code on listen\n");
+    if(hashmap_get(sock_map, global_id) != NULL){
+    int fd;
+    int len;
+    int ret;
+    char buff[8192];
+    unsigned long id;
+    struct sockaddr* addr;
+
+    fd = createUnixSocket();
+    strcpy(buff, "7 ssa listen notify");
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send connection message failed");
+        return -1;
+    }
+
+    // send id numeber
+    char idString[256];
+    char resultMark[256];
+    strcpy(resultMark, "7id");
+    sprintf(idString, "%ld", global_id);
+    strcat(resultMark, idString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) { // send can be used when a socket is in a connected state
+        perror("send id failed in setsockopt");
+        return -1;
+    }
+
+    // send local address
+    char localAddressString[256];
+    strcpy(localAddressString, get_addr_string((struct sockaddr*)&local_address));
+    strcpy(resultMark, "7la");
+    strcat(resultMark, localAddressString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send local address failed");
+        return -1;
+    }
+
+    // send external address
+    char addrString[256];
+    strcpy(addrString, get_addr_string((struct sockaddr*) addr_external));
+    strcpy(resultMark, "7ea");
+    strcat(resultMark, addrString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send remote address failed");
+        return -1;
+    }
+    
+    if ((len = recv(fd, buff, 8192, 0)) < 0) {
+        perror("recv error");
+        return -1;
+    }
+
+    printf("the messgae received: %s\n", buff);
+
+    orgi_close_type close_orgi;
+    close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
+    close_orgi(fd);
+  }
+  else{
     orgi_listen_type listen_orgi;
     listen_orgi = (orgi_listen_type)dlsym(RTLD_NEXT,"listen");
     return listen_orgi(sockfd, backlog);
-}
-
-int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
-    printf("inject code on accept\n");
-    orgi_accept_type accept_orgi;
-    accept_orgi = (orgi_accept_type)dlsym(RTLD_NEXT,"accept");
-    return accept_orgi(sockfd, addr, addrlen);
+  }
 }
 
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
-     printf("ssa bind is called\n");
-     orgi_bind_type bind_orgi;
-     bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
-     return bind_orgi(sockfd, addr, addrlen);
+    if(hashmap_get(sock_map, global_id) != NULL){
+        printf("preload bind is called!!!!!!!!!!!!!!\n");
+        int bind_result;
+        int fd;
+        int ret;
+        int len;
+        char buff[8192];
+        is_bind = 1;
+
+        // bind on the local adress that was created in the socket preload
+        orgi_bind_type bind_orgi;
+        bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
+        bind_result = bind_orgi(sockfd, (struct sockaddr*) &local_address, sizeof(local_address));
+        if (bind_result == -1) {
+         printf("Failed in bind\n");
+         return -1;
+        }
+        socklen_t size = sizeof(local_address);
+        getsockname(sockfd, (struct sockaddr *) &local_address, &size);
+
+        if(addr->sa_family == AF_INET){
+            addr_external = (struct sockaddr_in*) addr;
+        }
+        
+        //after binding send the message
+        fd = createUnixSocket();
+        strcpy(buff, "8 ssa close notify");
+        ret = send(fd, buff, strlen(buff)+1, 0);
+        if (ret == -1) {
+            perror("send failed in close");
+            return -1;
+        }
+
+        // send id numeber
+        char idString[256];
+        char resultMark[256];
+        strcpy(resultMark, "8id");
+        sprintf(idString, "%ld", global_id);
+        strcat(resultMark, idString);
+        strcpy(buff, resultMark);
+        ret = send(fd, buff, strlen(buff)+1, 0);
+        if (ret == -1) { // send can be used when a socket is in a connected state
+            perror("send id failed in setsockopt");
+            return -1;
+        }
+
+        // send local address
+        char localAddressString[256];
+        strcpy(localAddressString, get_addr_string((struct sockaddr*)&local_address));
+        strcpy(resultMark, "8la");
+        strcat(resultMark, localAddressString);
+        strcpy(buff, resultMark);
+        ret = send(fd, buff, strlen(buff)+1, 0);
+        if (ret == -1) {
+            perror("send local address failed");
+            return -1;
+        }
+
+        // send external address
+        char addrString[256];
+        strcpy(addrString, get_addr_string((struct sockaddr*) addr_external));
+        strcpy(resultMark, "8ea");
+        strcat(resultMark, addrString);
+        strcpy(buff, resultMark);
+        ret = send(fd, buff, strlen(buff)+1, 0);
+        if (ret == -1) {
+            perror("send external address failed");
+            return -1;
+        }
+
+        if ((len = recv(fd, buff, 8192, 0)) < 0) {
+        perror("recv error");
+        return -1;
+        }
+
+        printf("the messgae received: %s\n", buff);
+
+        orgi_close_type close_orgi;
+        close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
+        close_orgi(fd);
+    }
+    else{
+        orgi_bind_type bind_orgi;
+        bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
+        return bind_orgi(sockfd, addr, addrlen);
+    }
 }
-*/

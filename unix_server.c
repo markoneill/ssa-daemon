@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
+#include <dlfcn.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <assert.h>
@@ -15,7 +18,10 @@ int global_optname;
 unsigned long global_id;
 struct sockaddr_in addr_internal;
 struct sockaddr_in addr_remote;
+struct sockaddr_in addr_external;
 struct sockaddr_un destination_address;
+
+typedef int (*orgi_bind_type)(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 
 char* get_addr_string(struct sockaddr *addr) {
     /* Make sure there's enough room for IPv6 addresses */
@@ -71,7 +77,10 @@ int create_unix_socket(){
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path, SERVER_SOCK_FILE);
-	if (bind(global_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+	orgi_bind_type bind_orgi;
+    bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
+    ret = bind_orgi(global_fd, (struct sockaddr *)&addr, sizeof(addr));
+	if (ret < 0) {
 	perror("bind failed");
 	return -1;
 	}
@@ -247,8 +256,137 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 			printf("Received getsockopt notification\n");
 		}
 	}
+	else if(buff[0] == '5'){
+	   if(buff[1] == 'i' && buff[2] == 'd'){
+			chopString(buff, 3);
+			global_id = strtoul(buff, &id_ptr, 10);
+			close_cb(ctx, global_id);
+	   }
+	   else{
+	   	   printf("Received close notification\n");
+	   }
+	}
+	else if(buff[0] == '6'){ // accept
+		if(buff[1] == 'i' && buff[2] == 'd'){
+			chopString(buff, 3);
+			global_id = strtoul(buff, &id_ptr, 10);
+		}
+		else if(buff[1] == 'l' && buff[2] == 'a'){
+            chopString(buff, 3);
+			char* address;
+			char* port_string;
+			char *port_ptr;
+			int port_number;
+			memset(&addr_internal, '\0', sizeof(addr_internal));
+			address = strtok(buff, ":");
+			port_string = strtok(NULL, ":");
+            port_number = strtoul(port_string, &port_ptr, 10);
+
+			addr_internal.sin_family = AF_INET;
+			addr_internal.sin_port = htons(port_number);
+			inet_aton(address, &addr_internal.sin_addr.s_addr);
+
+			addr_internal_len = sizeof(addr_internal);
+
+            associate_cb(ctx, global_id, (struct sockaddr*)&addr_internal, addr_internal_len);
+		}
+		else{
+			printf("Received accept notification\n");
+		}
+	}
+	else if(buff[0] == '7'){// listen
+        if(buff[1] == 'i' && buff[2] == 'd'){
+			chopString(buff, 3);
+			global_id = strtoul(buff, &id_ptr, 10);
+		}
+		else if(buff[1] == 'l' && buff[2] == 'a'){
+			chopString(buff, 3);
+			char* address;
+			char* port_string;
+			char *port_ptr;
+			int port_number;
+			memset(&addr_internal, '\0', sizeof(addr_internal));
+			address = strtok(buff, ":");
+			port_string = strtok(NULL, ":");
+            port_number = strtoul(port_string, &port_ptr, 10);
+
+			addr_internal.sin_family = AF_INET;
+			addr_internal.sin_port = htons(port_number);
+			inet_aton(address, &addr_internal.sin_addr.s_addr);
+		}
+		else if(buff[1] == 'e' && buff[2] == 'a'){
+			chopString(buff, 3);
+			char* address;
+			char* port_string;
+			char *port_ptr;
+			int port_number;
+			memset(&addr_external, '\0', sizeof(addr_external));
+			address = strtok(buff, ":");
+			port_string = strtok(NULL, ":");
+            port_number = strtoul(port_string, &port_ptr, 10);
+
+            addr_external.sin_family = AF_INET;
+			addr_external.sin_port = htons(port_number);
+			inet_aton(address, &addr_external.sin_addr.s_addr);
+
+			addr_internal_len = sizeof(addr_internal);
+			addr_external_len = sizeof(addr_external);
+
+			listen_cb(ctx, global_id, (struct sockaddr*)&addr_internal, addr_internal_len,
+			(struct sockaddr*)&addr_external, addr_external_len);
+		}
+		else{
+			printf("Received listen notification\n");
+		}
+	}
+	else if(buff[0] == '8'){
+		if(buff[1] == 'i' && buff[2] == 'd'){
+			chopString(buff, 3);
+			global_id = strtoul(buff, &id_ptr, 10);
+		}
+		else if(buff[1] == 'l' && buff[2] == 'a'){
+			chopString(buff, 3);
+			char* address;
+			char* port_string;
+			char *port_ptr;
+			int port_number;
+			memset(&addr_internal, '\0', sizeof(addr_internal));
+			address = strtok(buff, ":");
+			port_string = strtok(NULL, ":");
+            port_number = strtoul(port_string, &port_ptr, 10);
+
+			addr_internal.sin_family = AF_INET;
+			addr_internal.sin_port = htons(port_number);
+			inet_aton(address, &addr_internal.sin_addr.s_addr);
+		}
+		else if(buff[1] == 'e' && buff[2] == 'a'){
+			chopString(buff, 3);
+			char* address;
+			char* port_string;
+			char *port_ptr;
+			int port_number;
+			memset(&addr_external, '\0', sizeof(addr_external));
+			address = strtok(buff, ":");
+			port_string = strtok(NULL, ":");
+            port_number = strtoul(port_string, &port_ptr, 10);
+
+            addr_external.sin_family = AF_INET;
+			addr_external.sin_port = htons(port_number);
+			inet_aton(address, &addr_external.sin_addr.s_addr);
+
+			addr_internal_len = sizeof(addr_internal);
+			addr_external_len = sizeof(addr_external);
+
+			bind_cb(ctx, global_id, (struct sockaddr*)&addr_internal, addr_internal_len,
+			(struct sockaddr*)&addr_external, addr_external_len);
+		}
+		else{
+			printf("Received bind notification\n");
+		}
+	}
 	else{
-	   printf("Received close notification\n");
+		printf("unkonw message: %s\n", buff);
+		return -1;
 	}
 
 	return 0;
@@ -275,9 +413,9 @@ void unix_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int response) {
     strcpy(result, "1,");
     sprintf(idString, "%ld", id);
     sprintf(responseString, "%ld", response);
-    strcat(result, responseString); // append response
+    strcat(result, responseString);
     strcat(result, ",");
-    strcat(result, idString); // append id 
+    strcat(result, idString);
     strcpy(buff, result);
     ret = sendto(fd, buff, strlen(buff)+1, 0, (struct sockaddr *)&destination_address, len);
     if (ret < 0) {
@@ -303,9 +441,9 @@ void unix_send_and_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, char* 
 
     memset(result, 0, sizeof(result));
     sprintf(idString, "%ld", id);
-    strcat(result, idString); // append id
+    strcat(result, idString);
     strcat(result, ",");
-    strcat(result, data); // append data
+    strcat(result, data);
     strcpy(buff, result);
 
     ret = sendto(fd, buff, strlen(buff)+1, 0, (struct sockaddr *)&destination_address, address_len);
@@ -334,9 +472,9 @@ void unix_handshake_notify_kernel(tls_daemon_ctx_t* ctx, unsigned long id, int r
     strcpy(result, "3,");
     sprintf(idString, "%ld", id);
     sprintf(responseString, "%ld", response);
-    strcat(result, responseString); // append response
+    strcat(result, responseString);
     strcat(result, ",");
-    strcat(result, idString); // append id 
+    strcat(result, idString);
     strcpy(buff, result);
     ret = sendto(fd, buff, strlen(buff)+1, 0, (struct sockaddr *)&destination_address, len);
     if (ret < 0) {
