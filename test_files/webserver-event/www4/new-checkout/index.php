@@ -301,7 +301,7 @@ function showCart() {
 	echo '        <h3 style="margin-top:10px;"><b>Total ', $totalStr, '</b></h3>';
         echo '        <h3 class="mb-3">Quickly check out with:</h3>';
         echo '        <form class="needs-validation" method="post" id="submitform" action="/purchase/" novalidate>';
-        echo '          <input class="btn btn-primary" type="image" src="../securely_checkout.png" id="secure_purchase" width="240" height="136"/>';
+        echo '          <input class="btn btn-primary" type="image" src="../securely_checkout_2.png" id="secure_purchase" width="240" height="136"/>';
         echo '        </form>';
 	echo '      </div>';
 	echo '    </div>';
