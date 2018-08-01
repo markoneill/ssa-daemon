@@ -1,8 +1,8 @@
-<?php 
+<?php
 session_start();
 $cert_string = "No one";
 if (isset($_SERVER['SSA_ID'])) {
-	$_SERVER['FIRST_LOGIN'] = 'true';
+	#$_SERVER['FIRST_LOGIN'] = 'true';
 	$cert_string = $_SERVER['SSA_ID'];
 
 	$string_arr = explode('/',$cert_string);
@@ -41,7 +41,7 @@ if (isset($_SERVER['SSA_ID'])) {
 }
 if (isset($_POST['checkout']) && $_POST['checkout'] == 1 && isset($_SERVER['SSA_ID'])) {
 	unset($_POST['checkout']);
-	header('Location: https://'.$_SERVER["SERVER_NAME"].'/checkout/');
+	header('Location: https://'.$_SERVER["SERVER_NAME"].'/new-checkout/');
 }
 else {
 	header('Location: https://'.$_SERVER["SERVER_NAME"].'/account/');

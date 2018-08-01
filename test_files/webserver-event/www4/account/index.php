@@ -73,7 +73,7 @@ session_start();
 if (isset($_POST["logout"])) {
 	session_unset();
 	unset($_SERVER['SSA_ID']);
-	$_SERVER['FIRST_LOGIN'] = 'true';
+	#$_SERVER['FIRST_LOGIN'] = 'true';
 	$_SESSION['FIRST_LOGIN'] = 'true';
 }
 require('../items.php');

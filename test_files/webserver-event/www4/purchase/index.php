@@ -4,7 +4,7 @@
 
 <html>
     <body onload="document.forms[0].submit()">
-        <form action="/checkout/" method="post">
+        <form action="/new-checkout/" method="post">
                 <input type="hidden" name="purchase" value="success">
         </form>
     </body>
@@ -14,7 +14,7 @@
 	?>
 <html>
     <body onload="document.forms[0].submit()">
-        <form action="/checkout/" method="post">
+        <form action="/new-checkout/" method="post">
                 <input type="hidden" name="purchase" value="failed">
         </form>
     </body>

@@ -1,21 +1,43 @@
 
 <html>
 <style>
+
+/*
 td{
     font-size: 18px;
     position: relative;
     vertical-align: middle;
 }
+
 tr{
     font-size: 20px;
 }
+*/
 
-input[type="text"] {
+input[type="number"] {
     font-size: 18px;
+    
 }
 button[type="submit"] {
     font-size: 18px;
 }
+.form-inline {
+     
+}
+.form-control-mason {
+    width: 70px;
+    height: 34px;
+    padding-top: 6px;
+    padding-right: 6px;
+    padding-bottom: 6px;
+    padding-left: 6px;
+    color: #555;
+    background-color: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.075);
+}
+
 .center-vertical {
     position: absolute;
     top: 25%;
@@ -90,6 +112,14 @@ function updateCart() {
 	//*/
 }
 
+function showTitle() {
+	echo '<div class="jumbotron" align="center" style="margin-bottom:50px; padding-bottom:30px; padding-top:30px; position:relative;">';
+	echo '  <img src="../cart2.png" alt="Cart" style="width:200px; height:200px; float:left;"></img>';
+	echo '  <h1 style="margin-top:10px; position:absolute; top:35%; left: 40%;">Your Cart</h1>';
+	echo '  <h1 style="clear:left"></h1>';
+	echo '</div>';
+}
+
 function showCart() {
 	setlocale(LC_MONETARY, 'en_US.UTF-8');
 	global $items;
@@ -98,6 +128,7 @@ function showCart() {
 	echo '  <thead>';
 	echo '    <tr>';
 	echo '      <th>Item</th>';
+	echo '      <th></th>';
 	echo '      <th>Unit Price</th>';
 	echo '      <th>Quantity</th>';
 	echo '      <th>Subtotal</th>';
@@ -117,13 +148,16 @@ function showCart() {
 				$subtotal = floatval($item['Price']) * floatval($quantity);
 				$total += $subtotal;
 				echo '<tr>';
+				echo '  <td align="center">';
+				echo '         <img src="../', $item['Image_URL'], '" alt="Shoe" style="max-height:188px;">';
+				echo '  </td>';
 				echo '  <td>', $item['Name'], '</td>';
 				echo '  <td>', money_format('%.2n', $item['Price']), '</td>';
 				echo '  <td>';
-				echo '	        <form class="form-inline marginalbot" method="post" action="/cart/">';
+				echo '	        <form class="form-inline marginalbot" style="min-width:160px;" method="post" action="/cart/">';
 				//echo '          <div class="form-group"">';
 				//echo '          <div class="col-xs-3">';
-				echo '	        <input type="text" name="q" size="2" class="form-control" value="', $quantity ,'" />';
+				echo '	        <input type="number" name="q" size="2" class="form-control-mason" value="', $quantity ,'" />';
 				echo '	        <input type="hidden" name="p" value="', $i ,'" />';
 				echo '	        <input type="hidden" name="s" value="', $category ,'" />';
 				echo '	        <input type="hidden" name="update" value="1" />';
@@ -151,10 +185,10 @@ function showCart() {
 	$totalStr = money_format('%.2n', $total);
     
 	echo '    <tr>';
-	echo '      <td colspan="4" class="total">Total: ', $totalStr, '</td>';
+	echo '      <td colspan="5" class="total">Total: ', $totalStr, '</td>';
 	echo '      <td>';
 	if (isset($_SESSION['name'])) {
-	    	echo '	        <form class="form-inline" method="post" action="/checkout/">';
+	    	echo '	        <form class="form-inline" method="post" action="/new-checkout/">';
 	    	echo '	        <input type="hidden" name="checkout" value="1" />';
 		echo '	        <button type="submit" class="btn btn-success"';
 		if ($emptycart == true) {
@@ -183,7 +217,10 @@ function showCart() {
 <div class="container">    
   <div class="row">
     <div class="col-sm-12">
-	<?php showCart(); ?>
+        <?php
+          showTitle();
+          showCart(); 
+        ?>
     </div>
   </div>
 <hr>
