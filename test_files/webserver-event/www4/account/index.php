@@ -163,6 +163,11 @@ if (!isset($_SESSION['FIRST_LOGIN'])) {
 <?php
 }
 else {
+	if (isset($_POST['checkout']) && $_POST['checkout'] == 1) {
+?>
+                          <input type="hidden" name="checkout" value="1" />
+<?php
+	}
 ?>
                           <font size="5" style="vertical-align: middle;">Login with Securely</font>
 <?php
