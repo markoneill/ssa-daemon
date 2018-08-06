@@ -198,7 +198,8 @@ function showCart() {
 	    	echo '	        </form>';
 	}
         else {
-	        echo '          <form class="form-inline" method="post" action="/login/">';
+		//echo '          <form class="form-inline" method="post" action="/login/">';
+		echo '          <form class="form-inline" method="post" action="/account/">';
 	        echo '          <input type="hidden" name="checkout" value="1" />';
 		echo '          <button type="submit" class="btn btn-success"';
 		if ($emptycart == true) {

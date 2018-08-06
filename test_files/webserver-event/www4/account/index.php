@@ -153,6 +153,11 @@ else {
 
 <?php
 if (!isset($_SESSION['FIRST_LOGIN'])) {
+	if (isset($_POST['checkout']) && $_POST['checkout'] == 1) {
+?>
+			  <input type="hidden" name="checkout" value="1" />
+<?php
+	}
 ?>
 			  <font size="5" style="vertical-align: middle;">Register with Securely</font>
 <?php
