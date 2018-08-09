@@ -621,7 +621,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		}
 		return;
 		break;
-	case TCP_PEER_CERTIFICATE:
+	case TCP_PEER_CERTIFICATE_CHAIN:
 		response = -ENOPROTOOPT; /* get only */
 		break;
 	case TCP_ID:
@@ -703,7 +703,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 	case TCP_REQUEST_PEER_AUTH:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case TCP_PEER_CERTIFICATE:
+	case TCP_PEER_CERTIFICATE_CHAIN:
 		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
 		}
