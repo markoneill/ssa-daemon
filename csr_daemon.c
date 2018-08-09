@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
+#include <ctype.h>
 
 #include <event2/event.h>
 #include <event2/listener.h>
@@ -13,12 +15,13 @@
 
 #include "log.h"
 #include "issue_cert.h"
+#include "totp.h"
+#include "twilio.h"
 
 #define FAIL_MSG "SIGNING REQUEST FAILED"
 #define CERT_DAYS 365
 #define CERT_PATH "test_files/certificate_a.pem"
 #define KEY_PATH "test_files/key_a.pem"
-
 
 typedef struct csr_ctx {
 	struct event_base* ev_base;
@@ -37,8 +40,14 @@ typedef struct con_ctx {
 } con_ctx_t;
 
 typedef struct totp_ctx {
-	int phone_num_len;
+	// The expected length of the characters in the phone num
+	int expected_phone_len;
+	// The length of the read characters
+	int phone_length;
 	char* phone_num;
+	int expected_email_len;
+    int email_length;
+    char* email;
 } totp_ctx_t;
 
 typedef struct validate_totp_ctx {
@@ -139,8 +148,13 @@ totp_ctx_t* create_totp_ctx(struct event_base* ev_base) {
 	totp_ctx_t* ctx;
 
 	ctx = (totp_ctx_t*)malloc(sizeof(totp_ctx_t));
-	ctx->phone_num_len = 0;
+	ctx->expected_phone_len = 0;
+	ctx->phone_length = 0;
 	ctx->phone_num = NULL;
+
+    ctx->expected_email_len = 0;
+	ctx->email_length = 0;
+	ctx->email = NULL;
 
 	return ctx;
 }
@@ -203,7 +217,7 @@ void free_csr_ctx(csr_ctx_t* ctx) {
 }
 
 static SSL_CTX * ssl_ctx_init(void) {
-	SSL_CTX  *tls_ctx;
+	SSL_CTX *tls_ctx;
 
 	SSL_load_error_strings();
 	SSL_library_init();
@@ -218,22 +232,6 @@ static SSL_CTX * ssl_ctx_init(void) {
 	SSL_CTX_set_options(tls_ctx, SSL_OP_NO_SSLv2);
 
 	return tls_ctx;
-}
-
-
-char* otp_request(char *request, struct bufferenvent *bev, void *con) {
-	long length = request[1];
-	char* phone_number;
-	// read phone number from request
-	char* totp = generate_totp();
-	const char* error;
-	// add totp to cache
-	// hashmap_create
-	// hashmap_add(totp);
-	twilio_send_message(phone_number, totp, error);
-	// send back the access code
-	bufferevent_write(bev, "santi", 8);
-	return totp;
 }
 
 /**
@@ -337,7 +335,7 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 	csr_ctx_t* ctx = (csr_ctx_t*)arg;
 	SSL* ssl = SSL_new(ctx->tls_ctx);
-	con_ctx_t* con = NULL;
+	//con_ctx_t* con = NULL;
 
 	struct event_base *ev_base = evconnlistener_get_base(listener);
 	struct bufferevent *bev = bufferevent_openssl_socket_new(ev_base, fd, ssl, BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE);
@@ -374,23 +372,132 @@ void csr_signal_cb(evutil_socket_t fd, short event, void* arg) {
 
 void new_event_cb(struct bufferevent *bev, short events, void *ctx) {
 	printf("New Event Callback invoked\n");
+	if (events & BEV_EVENT_ERROR)
+		perror("Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+        free(ctx);
+		printf("Freeing the bufferevent\n");
+		bufferevent_free(bev);
+	}
 }
 
 void totp_read_cb(struct bufferevent *bev, void *ctx) {
-	printf("TOTP READ CALLBACK INVOKED.");
+	printf("TOTP READ CALLBACK INVOKED.\n");
+	struct evbuffer *input = bufferevent_get_input(bev);
+	size_t recv_len = evbuffer_get_length(input);
+	totp_ctx_t *totp_ctx = (totp_ctx_t*)ctx;
+    char *totp = NULL;
+	char single_byte[1];
+    char twilio_error[100];
+    
+    // read the length of the phone number field
+	if (totp_ctx->expected_phone_len == 0 && recv_len > 0) {
+		// the first byte of the request is the length of the phone number in bytes
+		bufferevent_read(bev, single_byte, 1);
+		recv_len--;
+		totp_ctx->expected_phone_len = single_byte[0];
+		if (totp_ctx->expected_phone_len <= 0) {
+			printf("Bad Request: Phone number length is: %i\n", totp_ctx->expected_phone_len);
+			// close connection...
+            free(totp_ctx);
+			return;
+		} else { 
+			totp_ctx->phone_num = (char*)calloc(totp_ctx->expected_phone_len+1, sizeof(char));
+		}
+	}
+
+    if (totp_ctx->phone_length < totp_ctx->expected_phone_len && recv_len > 0) {
+        int read_len = recv_len;
+		if (recv_len > (totp_ctx->expected_phone_len - totp_ctx->phone_length)) {
+			// If we received more chars than we want to store
+			// Set the read amount to the remaining length of the expected phone number
+			read_len = (totp_ctx->expected_phone_len - totp_ctx->phone_length);
+		}
+		bufferevent_read(bev, totp_ctx->phone_num, read_len);
+        totp_ctx->phone_length += read_len;
+        recv_len -= read_len;
+	}
+
+    if (totp_ctx->email_length == totp_ctx->expected_email_len && recv_len > 0) {
+        if (totp_ctx->expected_email_len == 0) {
+            // read the byte for the length of the email
+            bufferevent_read(bev, single_byte, 1);
+            recv_len--;
+            totp_ctx->expected_email_len = single_byte[0];
+            printf("The single byte of the email string: %s\n", single_byte);
+            printf("single byte as an int");
+            printf("expec: %i", totp_ctx->expected_email_len);
+            if (totp_ctx->expected_email_len <= 0) {
+                printf("Bad Request: Email length is: %i\n", totp_ctx->expected_email_len);
+                // close connection...
+                free(totp_ctx);
+                return;
+            } else { 
+                totp_ctx->email = (char*)calloc(totp_ctx->expected_email_len+1, sizeof(char));
+            }
+        }
+    }
+
+    if (totp_ctx->email_length < totp_ctx->expected_email_len && recv_len > 0) {
+        printf("Reading Email...\n");
+        int read_len = recv_len;
+        printf("readlen before adjust: %i\n", read_len);
+        printf("expec: %i\n", totp_ctx->expected_email_len);
+        printf("email len: %i\n", totp_ctx->email_length);
+		if (recv_len > (totp_ctx->expected_email_len - totp_ctx->email_length)) {
+			// If we received more chars than we want to store
+			// Set the read amount to the remaining length of the expected email
+			read_len = (totp_ctx->expected_email_len - totp_ctx->email_length);
+		}
+        printf("reading email read_len: %i\n", read_len);
+		bufferevent_read(bev, totp_ctx->email, read_len);
+        totp_ctx->email_length += read_len;
+        recv_len -= read_len;
+	}
+
+    if (totp_ctx->phone_length == totp_ctx->expected_phone_len && totp_ctx->email_length == totp_ctx->expected_email_len) {
+        printf("TOTP endpoint got all fields\n");
+        printf("Phone Number Gotted: %s\nEmail gotted: %s\n", totp_ctx->phone_num, totp_ctx->email);
+        // Get a TOTP and then send it to the specified number and email...
+        totp = generate_totp();
+        printf("TOTP GENERATED: %s\n", totp);
+        int sms_response_code = twilio_send_message(totp_ctx->phone_num, totp, twilio_error);
+        if (sms_response_code != 0) {
+            printf("Error sending totp.\n");
+            printf("%s\n", twilio_error);
+        }
+        printf("Would send email here..\n");
+        free(totp_ctx->phone_num);
+        free(totp_ctx);
+        if (totp != NULL) free(totp);
+    }
 }
 
 void totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
-	printf("TOTP EVENT CALLBACK INVOKED.");
+	printf("TOTP EVENT CALLBACK INVOKED.\n");
+	if (events & BEV_EVENT_ERROR)
+		perror("Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+        free(ctx);
+		printf("Freeing the bufferevent\n");
+		bufferevent_free(bev);
+	}
 }
 
 
 void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {
-	printf("TOTP VALIDATE READ CALLBACK INVOKED.");
+	printf("TOTP VALIDATE READ CALLBACK INVOKED.\n");
 }
 
 void validate_totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
-	printf("TOTP VALIDATE EVENT CALLBACK INVOKED.");
+	printf("TOTP VALIDATE EVENT CALLBACK INVOKED.\n");
+	if (events & BEV_EVENT_ERROR)
+		perror("Error from bufferevent");
+	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
+        free(ctx);
+		printf("Freeing the bufferevent\n");
+		bufferevent_free(bev);
+	}
 }
 
 void new_read_cb(struct bufferevent *bev, void *ctx) {
@@ -400,14 +507,15 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	char* first_byte = NULL;
+	char first_byte[1];
 	int request_num = -1;
-    void *req_ctx = NULL;
+	void *req_ctx = NULL;
 
 	if (recv_len >= 1) {
 		bufferevent_read(bev, first_byte, 1);
-		if (isdigit(first_byte)) {
+		if (isdigit(first_byte[0])) {
 			request_num = atoi(first_byte);
+            recv_len--;
 		} else {
 			printf("Bad Request. First byte is not a number: %s\n", first_byte);
 			// close connection
@@ -419,6 +527,11 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 				// set callback to otp_request
 				bufferevent_setcb(bev, totp_read_cb, NULL, totp_event_cb, req_ctx);
 				printf("Updated callback to totp req\n");
+                if (recv_len > 0) {
+                    printf("Calling totp read to get rest of message\n");
+                    totp_read_cb(bev, req_ctx);
+                    printf("return\n");
+                }
 				break;
 			case 1:
 				req_ctx = create_validate_totp_ctx(NULL);
@@ -433,13 +546,11 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 				printf("Updated callback to csr\n");
 				break;
 			default:
-				printf("Bad Request. First Byte is not a number between 0 and 2: %s\n");
+				printf("Bad Request. First Byte is not a number between 0 and 2: %s\n", first_byte);
 				// close connection
 		}
 		if (ctx != NULL)
 			free(ctx);
-        if (first_byte != NULL)
-            free(first_byte);
 	}
 }
 

@@ -4,21 +4,29 @@
 
 #define MAX_MSG_LEN 1600
 
+/**
+ * Only a return value of 0 signals that there were no errors.
+ */
 int twilio_send_message(char* to_number, char* msg, const char* error) {
     // message is over the max length
     if (strlen(msg) > 1600)  {
+        printf("Twilio: Invalid Message length.\n");
         return 1;
-        printf("Invalid Message length.");
     }
 
     char* ACCOUNT_SID = getenv("TWILIO_ACCOUNT_SID");
     char* AUTH_TOKEN = getenv("TWILIO_AUTH_TOKEN");
     char* TWILIO_NUMBER = getenv("TWILIO_FROM_NUMBER");
+    if (ACCOUNT_SID == NULL || AUTH_TOKEN == NULL || TWILIO_NUMBER == NULL) {
+        printf("Twilio: Could not load twilio credentials from environment.\n");
+        return 1;
+    }
+    printf("SID: %s AUTHTOKEN %s NUML: %s\n", ACCOUNT_SID, AUTH_TOKEN, TWILIO_NUMBER);
 
     curl_global_init(CURL_GLOBAL_ALL);
     CURL* curl = curl_easy_init();
     if (!curl) {
-        printf("Error initializing cURL");
+        printf("Twilio: Error initializing cURL.\n");
         return 1;
     }
 
@@ -29,7 +37,7 @@ int twilio_send_message(char* to_number, char* msg, const char* error) {
     int chars_copied = sprintf(url, "https://api.twilio.com/2010-04-01/Accounts/%s/Messages", ACCOUNT_SID);
 
     if (chars_copied <= 0)  {
-        printf("Error creating twilio request url.\n");
+        printf("Twilio: Error creating twilio request url.\n");
         return 1;
     }
 
@@ -38,7 +46,7 @@ int twilio_send_message(char* to_number, char* msg, const char* error) {
 
     if (params_copied <= 0) {
         // verify the amount of parameters copied
-        printf("Error creating twilio request url.");
+        printf("Twilio: Error creating twilio request url.\n");
         return 1;
     }
 
@@ -58,10 +66,10 @@ int twilio_send_message(char* to_number, char* msg, const char* error) {
         error = curl_easy_strerror(res);
         return 1;
     } else if (http_code != 200 && http_code != 201) {
-        printf("Error %li sending sms to %s\n", http_code, to_number);
+        printf("Twilio: Error %li sending sms to %s\n", http_code, to_number);
         return 1;
     } else {
-        printf("Success sending sms to %s\n", to_number);
+        printf("Twilio: Success sending sms to %s\n", to_number);
         return 0;
     }
 }

@@ -1,5 +1,3 @@
-#include <curl/curl.h>
-
 #ifndef TWILIO_H
 #define TWILIO_H
 
