@@ -200,8 +200,8 @@ void run_test(FILE* fp){
 				perror("failed to create a socket");
 				exit(EXIT_FAILURE);
 			}
-			if (setsockopt(t_params[i].sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
-				perror("setsockopt: SO_REMOTE_HOSTNAME");
+			if (setsockopt(t_params[i].sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
+				perror("setsockopt: TLS_REMOTE_HOSTNAME");
 				exit(EXIT_FAILURE);
 			}
 			//printf("creating sock %d for thread %d\n", t_params[i].sock, i);
