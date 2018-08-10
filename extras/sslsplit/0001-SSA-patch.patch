@@ -43,8 +43,8 @@ index 0b58143..007c154 100644
  	                   SSL_get0_session(origssl));
  
 -	ctx->origcrt = SSL_get_peer_certificate(origssl);
-+	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, tmp_cert, &tmp_cert_len) == -1) {
-+		//perror("getsockopt: SO_PEER_CERTIFICATE:");
++	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_CERTIFICATE_CHAIN, tmp_cert, &tmp_cert_len) == -1) {
++		//perror("getsockopt: TLS_PEER_CERTIFICATE_CHAIN:");
 +		ctx->origcrt = SSL_get_peer_certificate(origssl);
 +	}
 +	else {
@@ -102,7 +102,7 @@ index 0b58143..007c154 100644
 +
 +	if (strstr(ctx->sni, "paymore.com") != NULL) {
 +		ssa_socket = socket(AF_INET,SOCK_STREAM,IPPROTO_TLS);
-+		setsockopt(ssa_socket, IPPROTO_TLS, SO_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
++		setsockopt(ssa_socket, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, ctx->sni, strlen(ctx->sni)+1);
 +
 +		ctx->dst.bev = pxy_bufferevent_setup(ctx, ssa_socket, NULL);
 +	}

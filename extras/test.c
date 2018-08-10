@@ -42,8 +42,8 @@ int upgrade_sock(int fd) {
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK)
 	};
 	int new_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TLS);
-	if (getsockopt(new_fd, IPPROTO_TLS, SO_ID, &id, &id_len) == -1) {
-		perror("getsockopt: SO_ID");
+	if (getsockopt(new_fd, IPPROTO_TLS, TLS_ID, &id, &id_len) == -1) {
+		perror("getsockopt: TLS_ID");
 		exit(EXIT_FAILURE);
 	}
 	printf("socket ID is %lu\n", id);

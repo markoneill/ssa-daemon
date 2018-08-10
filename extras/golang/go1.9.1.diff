@@ -162,25 +162,25 @@ diff -Nur go1.9.1/src/net/ssasockopt.go go_mod/src/net/ssasockopt.go
 +type TLSConn = TCPConn
 +
 +const (
-+	// IPPROTO_TLS int = 175 % 255
-+	IPPROTO_TLS          int = 205
-+	SO_HOSTNAME          int = 85
-+	SO_PEER_CERTIFICATE  int = 86
-+	SO_CERTIFICATE_CHAIN int = 87
-+	SO_PRIVATE_KEY       int = 88
-+	SO_ID                int = 89
++	// IPPROTO_TLS              int = 175 % 255
++	IPPROTO_TLS                 int = 205
++	TLS_HOSTNAME                 int = 85
++	TLS_PEER_CERTIFICATE_CHAIN  int = 86
++	TLS_CERTIFICATE_CHAIN        int = 87
++	TLS_PRIVATE_KEY              int = 88
++	TLS_ID                       int = 89
 +)
 +
 +func (c *TLSConn) SetHostname(hostname string) error {
-+	return c.tls_setSockoptString(hostname, SO_HOSTNAME)
++	return c.tls_setSockoptString(hostname, TLS_HOSTNAME)
 +}
 +
 +func (c *TLSConn) SetCertificateChain(chain string) error {
-+	return c.tls_setSockoptString(chain, SO_CERTIFICATE_CHAIN)
++	return c.tls_setSockoptString(chain, TLS_CERTIFICATE_CHAIN)
 +}
 +
 +func (c *TLSConn) SetPrivateKey(key string) error {
-+	return c.tls_setSockoptString(key, SO_PRIVATE_KEY)
++	return c.tls_setSockoptString(key, TLS_PRIVATE_KEY)
 +}
 +
 +func (c *TLSConn) tls_setSockoptString(arg string, opt int) error {
@@ -208,7 +208,7 @@ diff -Nur go1.9.1/src/net/ssasockopt.go go_mod/src/net/ssasockopt.go
 +
 +	fd := c.fd.pfd.Sysfd
 +
-+	ret, err := syscall.GetsockoptHostname(fd, IPPROTO_TLS, SO_HOSTNAME)
++	ret, err := syscall.GetsockoptHostname(fd, IPPROTO_TLS, TLS_HOSTNAME)
 +
 +	err = wrapSyscallError("getsockopt", err)
 +
@@ -225,7 +225,7 @@ diff -Nur go1.9.1/src/net/ssasockopt.go go_mod/src/net/ssasockopt.go
 +
 +	fd := c.fd.pfd.Sysfd
 +
-+	ret, err := syscall.GetsockoptString(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, 4098)
++	ret, err := syscall.GetsockoptString(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE_CHAIN, 4098)
 +
 +	err = wrapSyscallError("getsockopt", err)
 +
@@ -242,7 +242,7 @@ diff -Nur go1.9.1/src/net/ssasockopt.go go_mod/src/net/ssasockopt.go
 +
 +	fd := c.fd.pfd.Sysfd
 +
-+	ret, err := syscall.GetsockoptUint64(fd, IPPROTO_TLS, SO_ID)
++	ret, err := syscall.GetsockoptUint64(fd, IPPROTO_TLS, TLS_ID)
 +
 +	err = wrapSyscallError("getsockopt", err)
 +
