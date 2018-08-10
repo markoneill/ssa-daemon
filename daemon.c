@@ -569,7 +569,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 	}
 
 	switch (option) {
-	case SO_REMOTE_HOSTNAME:
+	case TCP_REMOTE_HOSTNAME:
 		/* The kernel validated this data for us */
 		memcpy(sock_ctx->rem_hostname, value, len);
 		log_printf(LOG_INFO, "Assigning %s to socket %lu\n", sock_ctx->rem_hostname, id);
@@ -577,54 +577,54 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 			response = -EINVAL;
 		}
 		break;
-	case SO_HOSTNAME:
+	case TCP_HOSTNAME:
 		response = -ENOPROTOOPT; /* get only */
 		break;
-	case SO_TRUSTED_PEER_CERTIFICATES:
+	case TCP_TRUSTED_PEER_CERTIFICATES:
 		if (set_trusted_peer_certificates(sock_ctx->tls_opts, sock_ctx->tls_conn, value, len) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_CERTIFICATE_CHAIN:
+	case TCP_CERTIFICATE_CHAIN:
 
 		if (set_certificate_chain(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_PRIVATE_KEY:
+	case TCP_PRIVATE_KEY:
 		if (set_private_key(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_ALPN:
+	case TCP_ALPN:
 		if (set_alpn_protos(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_SESSION_TTL:
+	case TCP_SESSION_TTL:
 		if (set_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_DISABLE_CIPHER:
+	case TCP_DISABLE_CIPHER:
 		if (set_disbled_cipher(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_PEER_IDENTITY:
+	case TCP_PEER_IDENTITY:
 		response = -ENOPROTOOPT; /* get only */
 		break;
-	case SO_REQUEST_PEER_AUTH:
+	case TCP_REQUEST_PEER_AUTH:
 		set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
 		if (send_peer_auth_req(sock_ctx->tls_opts, sock_ctx->tls_conn, value) == 0) {
 			response = -EINVAL;
 		}
 		return;
 		break;
-	case SO_PEER_CERTIFICATE:
+	case TCP_PEER_CERTIFICATE_CHAIN:
 		response = -ENOPROTOOPT; /* get only */
 		break;
-	case SO_ID:
+	case TCP_ID:
 		response = -ENOPROTOOPT; /* get only */
 		break;
 	default:
@@ -651,7 +651,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		return;
 	}
 	switch (option) {
-	case SO_REMOTE_HOSTNAME:
+	case TCP_REMOTE_HOSTNAME:
 		if (sock_ctx->rem_hostname != NULL) {
 			netlink_send_and_notify_kernel(ctx, id, sock_ctx->rem_hostname, strlen(sock_ctx->rem_hostname)+1);
 			return;
@@ -660,28 +660,28 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 			response = -EINVAL;
 		}
 		break;
-	case SO_HOSTNAME:
+	case TCP_HOSTNAME:
 		if(get_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_TRUSTED_PEER_CERTIFICATES:
+	case TCP_TRUSTED_PEER_CERTIFICATES:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case SO_CERTIFICATE_CHAIN:
+	case TCP_CERTIFICATE_CHAIN:
 		if (get_certificate_chain(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_PRIVATE_KEY:
+	case TCP_PRIVATE_KEY:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case SO_ALPN:
+	case TCP_ALPN:
 		if (get_alpn_proto(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -EINVAL;
 		}
 		break;
-	case SO_SESSION_TTL:
+	case TCP_SESSION_TTL:
 		value = get_session_ttl(sock_ctx->tls_opts, sock_ctx->tls_conn);
 		if (value < 0) {
 			response = EINVAL;
@@ -689,10 +689,10 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		data = (char*)&value;
 		len = sizeof(value);
 		break;
-	case SO_DISABLE_CIPHER:
+	case TCP_DISABLE_CIPHER:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case SO_PEER_IDENTITY:
+	case TCP_PEER_IDENTITY:
 		if (get_peer_identity(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
 		}
@@ -700,16 +700,16 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 			need_free = 1;
 		}
 		break;
-	case SO_REQUEST_PEER_AUTH:
+	case TCP_REQUEST_PEER_AUTH:
 		response = -ENOPROTOOPT; /* set only */
 		break;
-	case SO_PEER_CERTIFICATE:
+	case TCP_PEER_CERTIFICATE_CHAIN:
 		if (get_peer_certificate(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
 			response = -ENOTCONN;
 		}
 		need_free = 1;
 		break;
-	case SO_ID:
+	case TCP_ID:
 		/* This case is handled directly by the kernel.
 		 * If we want to change that, uncomment the lines below */
 		/* data = &id;

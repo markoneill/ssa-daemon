@@ -18,13 +18,13 @@ LOG_DIR=${HOME_DIR}/logs
 
 HOST_FILE=/etc/hosts
 SSA_KO=ssa.ko
-LOCAL_IP="127.0.0.1"
+LOCAL_HOST="127.0.0.1"
 DOMAIN_NAME="www.paymore.com paymore.com"
 
 if [ $TESTSHOP_SERVER_IP ]; then
 	SERVER_IP=$TESTSHOP_SERVER_IP
 else
-	SERVER_IP=$LOCAL_IP
+	SERVER_IP=$LOCAL_HOST
 fi
 
 if [ -z "$1"]; then
@@ -196,16 +196,16 @@ fi
 echo "starting programs"
 echo -e "\ttls_wrapper..."
 cd ${WRAPPER_DIR}
-./tls_wrapper  >${LOG_DIR}/tls_wrapper.log 2>&1  || echo -e "\ntls_wrapper died" &
+./tls_wrapper  1>${LOG_DIR}/tls_wrapper.log 2>&1 || echo -e "\ntls_wrapper died" &
 
 echo -e "\tsslsplit..."
 cd ${SSL_SPLIT_DIR}
 ./start.sh 1>${LOG_DIR}/sslsplit.log 2>&1 || echo -e "\nsslsplit died" &
 sleep .5
 
-if [ ${SERVER_IP} == ${LOCAL_IP} ]; then
+if [ ${SERVER_IP} == ${LOCAL_HOST} ]; then
 	echo -e "\ttestShopServer..."
 	cd ${SERVER_DIR}
-	./testShopServer -v -p 443 >$LOG_DIR/server.log 2>&1 || echo -e "\ntestShopServer died" &
+	./testShopServer -v -p 443 1>${LOG_DIR}/server.log 2>&1 || echo -e "\ntestShopServer died" &
 fi
 echo "done"
