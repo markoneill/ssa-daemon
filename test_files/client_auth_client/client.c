@@ -127,19 +127,19 @@ int connect_to_host(char* host, char* service, char* cert_path, char* key_path) 
 			continue;
 		}
 
-	    if (setsockopt(sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
-			perror("setsockopt: SO_REMOTE_HOSTNAME");
+	    if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
+			perror("setsockopt: TLS_REMOTE_HOSTNAME");
 			close(sock);
 			continue;
 		}
 
-		if (setsockopt(sock, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, cert_path, sizeof(CERT_PATH)) == -1) {
-			printf("setsockopt: SO_CERTIFICATE_CHAIN");
+		if (setsockopt(sock, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, cert_path, sizeof(CERT_PATH)) == -1) {
+			printf("setsockopt: TLS_CERTIFICATE_CHAIN");
 			continue;
 		}
 
-		if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, key_path, sizeof(KEY_PATH)) == -1) {
-			printf("setsockopt: SO_PRIVATE_KEY");
+		if (setsockopt(sock, IPPROTO_TLS, TLS_PRIVATE_KEY, key_path, sizeof(KEY_PATH)) == -1) {
+			printf("setsockopt: TLS_PRIVATE_KEY");
 			continue;
 		}
 		
@@ -163,12 +163,12 @@ int connect_to_host(char* host, char* service, char* cert_path, char* key_path) 
 void print_identity(int fd) {
 	char data[2048];
 	socklen_t data_len = sizeof(data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, data, &data_len) == -1) {
-		perror("SO_PEER_CERTIFICATE");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_CERTIFICATE_CHAIN, data, &data_len) == -1) {
+		perror("TLS_PEER_CERTIFICATE_CHAIN");
 	}
 	printf("Peer certificate:\n%s\n", data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_IDENTITY, data, &data_len) == -1) {
-		perror("SO_PEER_IDENTITY");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_IDENTITY, data, &data_len) == -1) {
+		perror("TLS_PEER_IDENTITY");
 	}
 	printf("Peer identity:\n%s\n", data);
 	return;

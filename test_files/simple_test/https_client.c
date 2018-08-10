@@ -53,8 +53,8 @@ int connect_to_host(char* host, char* service) {
 			perror("socket");
 			continue;
 		}
-	        if (setsockopt(sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
-			perror("setsockopt: SO_REMOTE_HOSTNAME");
+	        if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
+			perror("setsockopt: TLS_REMOTE_HOSTNAME");
 			close(sock);
 			continue;
 		}
@@ -79,12 +79,12 @@ int connect_to_host(char* host, char* service) {
 void print_identity(int fd) {
 	char data[4096];
 	socklen_t data_len = sizeof(data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, data, &data_len) == -1) {
-		perror("SO_PEER_CERTIFICATE");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_CERTIFICATE_CHAIN, data, &data_len) == -1) {
+		perror("TLS_PEER_CERTIFICATE_CHAIN");
 	}
 	printf("Peer certificate:\n%s\n", data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_IDENTITY, data, &data_len) == -1) {
-		perror("SO_PEER_IDENTITY");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_IDENTITY, data, &data_len) == -1) {
+		perror("TLS_PEER_IDENTITY");
 	}
 	printf("Peer identity:\n%s\n", data);
 	return;

@@ -417,14 +417,14 @@ int create_http_response(client_t* client, http_request_t* request) {
 
 	if (strstr(resolved_path, PROTECTED_PATH) != NULL) {
 		printf("Requesting normal cert\n");
-		if (setsockopt(client->fd, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, NORMAL_CA_FILE, sizeof(NORMAL_CA_FILE)) == -1) {
+		if (setsockopt(client->fd, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, NORMAL_CA_FILE, sizeof(NORMAL_CA_FILE)) == -1) {
 			perror("ca cert");
 		}
 		send_pha_req(client, host);
 	}
 	if (strstr(resolved_path, CART_PROTECTED_PATH) != NULL) {
 		printf("Requesting visa cert\n");
-		if (setsockopt(client->fd, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, VISA_CA_FILE, sizeof(VISA_CA_FILE)) == -1) {
+		if (setsockopt(client->fd, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, VISA_CA_FILE, sizeof(VISA_CA_FILE)) == -1) {
 			perror("visa ca cert");
 		}
 		send_pha_req(client, "hax0r.online");
@@ -850,19 +850,19 @@ int create_server_socket(char* port, int protocol) {
 	}
 
 
-        if (setsockopt(sock, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
                 perror("cert a");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
                 perror("key a");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
                 perror("cert b");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
-	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+	if (setsockopt(sock, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
 		perror("ca cert");
 	}
 
@@ -1029,8 +1029,8 @@ char* get_peer_identity(client_t* client) {
 	char* id;
 	socklen_t id_len = 255;
 	id = malloc(256);
-	if (getsockopt(client->fd, IPPROTO_TLS, SO_PEER_IDENTITY, id, &id_len) == -1) {
-		perror("getsockopt: SO_PEER_IDENTITY");
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_PEER_IDENTITY, id, &id_len) == -1) {
+		perror("getsockopt: TLS_PEER_IDENTITY");
 		free(id);
 		return NULL;
 	}
@@ -1047,8 +1047,8 @@ void send_pha_req(client_t* client, char* hostname) {
 	char* data;
 	data = hostname;
 	socklen_t data_len = strlen(hostname)+1;
-	if (setsockopt(client->fd, IPPROTO_TLS, SO_REQUEST_PEER_AUTH, data, data_len) == -1) {
-		perror("setsockopt: SO_REQUEST_PEER_AUTH");
+	if (setsockopt(client->fd, IPPROTO_TLS, TLS_REQUEST_PEER_AUTH, data, data_len) == -1) {
+		perror("setsockopt: TLS_REQUEST_PEER_AUTH");
 	}
 	return;
 }
@@ -1071,8 +1071,8 @@ char* strnstr(char* haystack, char* needle, int length) {
 void set_alpn(int fd) {
 	char protos[] = "http/1.1";
 	socklen_t protos_len = sizeof(protos);
-	if (setsockopt(fd, IPPROTO_TLS, SO_ALPN, protos, protos_len) == -1) {
-		perror("setsockopt: SO_ALPN");
+	if (setsockopt(fd, IPPROTO_TLS, TLS_ALPN, protos, protos_len) == -1) {
+		perror("setsockopt: TLS_ALPN");
 	}
 	return;
 }

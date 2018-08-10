@@ -193,8 +193,8 @@ void get_alpn(client_t* client) {
 	char alpn[255];
 	memset(alpn, 0, 255);
 	socklen_t alpn_len = sizeof(alpn);
-	if (getsockopt(client->fd, IPPROTO_TLS, SO_ALPN, alpn, &alpn_len) == -1) {
-		perror("getsockopt: SO_ALPN");
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_ALPN, alpn, &alpn_len) == -1) {
+		perror("getsockopt: TLS_ALPN");
 	}
 	if (alpn_len > 0) {
 		printf("Protocol negotiatated: %s\n", alpn);
@@ -208,8 +208,8 @@ void get_alpn(client_t* client) {
 void get_hostname(client_t* client) {
 	char servername[255];
 	socklen_t servername_len = sizeof(servername);
-	if (getsockopt(client->fd, IPPROTO_TLS, SO_HOSTNAME, servername, &servername_len) == -1) {
-		perror("getsockopt: SO_HOSTNAME");
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_HOSTNAME, servername, &servername_len) == -1) {
+		perror("getsockopt: TLS_HOSTNAME");
 	}
 	if (servername_len > 0) {
 		printf("Client requested host %s\n", servername);
@@ -223,8 +223,8 @@ void get_hostname(client_t* client) {
 void get_identity(client_t* client) {
 	char id[255];
 	socklen_t id_len = sizeof(id);
-	if (getsockopt(client->fd, IPPROTO_TLS, SO_PEER_IDENTITY, id, &id_len) == -1) {
-		perror("getsockopt: SO_PEER_IDENTITY");
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_PEER_IDENTITY, id, &id_len) == -1) {
+		perror("getsockopt: TLS_PEER_IDENTITY");
 	}
 	if (id_len > 0) {
 		printf("Client ID is %s\n", id);
@@ -239,8 +239,8 @@ void send_auth_req(client_t* client) {
 	int data;
 	data = 0;
 	socklen_t data_len = sizeof(data);
-	if (setsockopt(client->fd, IPPROTO_TLS, SO_REQUEST_PEER_AUTH, &data, data_len) == -1) {
-		perror("setsockopt: SO_REQUEST_PEER_AUTH");
+	if (setsockopt(client->fd, IPPROTO_TLS, TLS_REQUEST_PEER_AUTH, &data, data_len) == -1) {
+		perror("setsockopt: TLS_REQUEST_PEER_AUTH");
 	}
 	return;
 }
@@ -249,8 +249,8 @@ void set_session_ttl(client_t* client) {
 	long ttl;
 	ttl = 400;
 	socklen_t ttl_len = sizeof(ttl);
-	if (setsockopt(client->fd, IPPROTO_TLS, SO_SESSION_TTL, &ttl, ttl_len) == -1) {
-		perror("setsockopt: SO_SESSION_TTL");
+	if (setsockopt(client->fd, IPPROTO_TLS, TLS_SESSION_TTL, &ttl, ttl_len) == -1) {
+		perror("setsockopt: TLS_SESSION_TTL");
 	}
 	return;
 }
@@ -258,8 +258,8 @@ void set_session_ttl(client_t* client) {
 void get_session_ttl(client_t* client) {
 	long ttl;
 	socklen_t ttl_len = sizeof(ttl);
-	if (getsockopt(client->fd, IPPROTO_TLS, SO_SESSION_TTL, &ttl, &ttl_len) == -1) {
-		perror("getsockopt: SO_SESSION_TTL");
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_SESSION_TTL, &ttl, &ttl_len) == -1) {
+		perror("getsockopt: TLS_SESSION_TTL");
 	}
 	if (ttl_len > 0) {
 		printf("Session ttl is %ld\n", ttl);
