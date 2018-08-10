@@ -8,7 +8,15 @@ TMP_DIR=$PWD/tmp
 
 make clean
 
-rm -rf $OPENSSL_INSTALL_DIR $LIBEVENT_INSTALL_DIR $SSLSPLIT_INSTALL_DIR
+echo "rm -rf ${OPENSSL_INSTALL_DIR}"
+rm -r ${OPENSSL_INSTALL_DIR} || echo -e "\tfailed to remove file"
+echo "rm -rf ${LIBEVENT_INSTALL_DIR}"
+rm -r ${LIBEVENT_INSTALL_DIR} || echo -e "\tfailed to remove file"
+echo "rm -rf ${SSLSPLIT_INSTALL_DIR}"
+rm -r ${SSLSPLIT_INSTALL_DIR} || echo -e "\tfailed to remove file"
+echo "rm -rf ${TMP_DIR}"
+rm -r ${TMP_DIR} || echo -e "\tfailed to remove file"
+sleep 5
 
 mkdir -p tmp
 cd tmp
