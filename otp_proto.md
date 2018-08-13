@@ -13,15 +13,16 @@
     X bits - the email as a string
 
 ## OTP Validate Request
-    8 bits(1 Byte) - for endpoint specifier
+    8 bits (1 Byte) - for endpoint specifier
     64 bits (8 Bytes) - Access Code
-    48 bits (6 Bytes) - OTP
-    16 bits (2 Bytes) - length of message recvd in bytes (Max 65535)
+    48 bits (6 Bytes) - first OTP
+    64 bits (8 Bytes) - second OTP
+    16 bits (2 Bytes) - length of public key in bytes (Max 65535)
     X bits - Their public key
 
 ## CSR without validation Request
     8 bits(1 Byte) - for endpoint specifier
-    16 bits (2 Bytes) - length of message recvd in bytes (Max 65535)
+    16 bits (2 Bytes) - length of public key in bytes (Max 65535)
     X bits - Their public key
 
 # Outgoing messages

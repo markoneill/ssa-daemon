@@ -3,29 +3,54 @@
 
 #include "baseencode.h"
 #include "otp.h"
+#include "totp.h"
 
-#define DIGITS 8
-#define PERIOD 30
+#define PERIOD 60
+#define SECRET_LENGTH 32
 #define SHA1 GCRY_MD_SHA1
 #define SHA256 GCRY_MD_SHA256
 #define SHA512 GCRY_MD_SHA512
 
-char* generate_totp() {
-    cotp_error_t err;
-    char* totp = NULL;
-    const char *secret = "123456789012345678905465413546513541651966543216543543212";
-
+totps_t* generate_totp() {
+	int i;
+    FILE *fp;
     baseencode_error_t base_err;
-    char *secret_base32 = base32_encode(secret, strlen(secret)+1, &base_err);
-    totp = get_totp(secret_base32, DIGITS, PERIOD, SHA256, &err);
+    cotp_error_t err;
+    totps_t* totps = malloc(sizeof(totps_t));
+    char secret[SECRET_LENGTH+1] = {0};
 
-    free(secret_base32);
-    return totp;
+    if ((fp = fopen("/dev/urandom", "r")) == NULL) { 
+        fprintf(stderr, "[TOTP.C]: Error! Could not open /dev/urandom for read\n"); 
+        return NULL;
+    }
+    for(i = 0; i < SECRET_LENGTH; i++){
+        do {
+            secret[i] = fgetc(fp);
+        } while (secret[i] == '\0');        
+    }
+
+    totps->access_code = base32_encode(secret, SECRET_LENGTH+1, &base_err);
+    totps->email_totp = get_totp(totps->access_code, EMAIL_TOTP_LENGTH, PERIOD, SHA256, &err);
+    totps->phone_totp = get_totp(totps->access_code, PHONE_TOTP_LENGTH, PERIOD, SHA256, &err);
+
+    return totps;
 }
 
-char* validate_totp(char* key, char* totp, char* crypto) {
+char* validate_totp(char* key, char* totp) {
     printf("Validate Otp Not implemented\n");
     //int is_valid = totp_verify(secret_base32, user_totp, DIGITS, PERIOD, SHA256);
     return NULL;
+}
+
+void free_totps(totps_t* totps) {
+    if (totps != NULL) {
+        if (totps->access_code != NULL)
+            free(totps->access_code);
+        if (totps->phone_totp != NULL)
+            free(totps->phone_totp);
+        if (totps->email_totp != NULL)
+            free(totps->email_totp);
+        free(totps);
+    }
 }
 
