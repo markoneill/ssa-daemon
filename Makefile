@@ -7,37 +7,35 @@ CXX_CLIENTAUTH_FLAGS= -g -DCLIENT_AUTH
 EXEC = tls_wrapper
 SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
-STD_INCLUDES = -I/usr/include/libnl3
+STD_INCLUDES = `pkg-config --cflags libnl-3.0`
 NEW_INCLUDES = \
 	-I/usr/include/libnl3 \
 	-Iopenssl/include \
 	-Ilibevent/include
-LIBS = 	-lnl-3 \
-	-lnl-genl-3 \
-	-levent_openssl \
-	-levent -lcrypto \
-	-lssl \
-	-lconfig \
-	-lavahi-client \
-	-lavahi-common \
-	-lpthread
+LIBS = 	-lpthread \
+	`pkg-config --libs \
+		libconfig \
+		libevent_openssl \
+		libnl-genl-3.0 \
+	       	avahi-client \
+	       	openssl \
+		`
 LIBS_EX = \
-	-Lopenssl/lib \
 	-Llibevent/lib \
-	-lnl-3 -lnl-genl-3 \
-	-levent_openssl \
-	-levent \
-	-lcrypto \
-	-lssl \
-	-lconfig \
-	-lavahi-client \
-	-lavahi-common \
-	-lpthread \
+	-Lopenssl/lib \
 	-Wl,-rpath \
 	-Wl,libevent/lib \
 	-Wl,-rpath \
 	-Wl,openssl/lib \
-	`pkg-config --libs libnotify`
+	-lpthread \
+	`pkg-config --libs \
+		libconfig \
+		libevent_openssl \
+		libnl-genl-3.0 \
+		libnotify \
+	       	avahi-client \
+	       	openssl \
+		`
   
 INCLUDES= \
 	`pkg-config --cflags libnotify`
