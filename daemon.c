@@ -532,6 +532,7 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
+	int ret;
 	int response = 0;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
@@ -557,6 +558,12 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 			hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
 		}
 	}
+	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+	}
+
 	log_printf(LOG_INFO, "Socket created on behalf of application %s\n", comm);
 	netlink_notify_kernel(ctx, id, response);
 	return;
@@ -779,7 +786,6 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	
 	int ret;
 	sock_ctx_t* sock_ctx;
-	int response = 0;
 	int port;
 
 	if (int_addr->sa_family == AF_UNIX) {
@@ -792,47 +798,40 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
-		response = -EBADF;
-	}
-	else {
-		/* only connect if we're not already.
-		 * we might already be connected due to a
-		 * socket upgrade */
-		if (sock_ctx->is_connected == 0) {
-			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
-		}
-		else {
-			ret = 0;
-		}
-		if (ret == -1) {
-			response = -errno;
-		}
-		else {
-			if (sock_ctx->has_bound == 0) {
-				sock_ctx->int_addr = *int_addr;
-				sock_ctx->int_addrlen = int_addrlen;
-			}
-			log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
-			hashmap_add(ctx->sock_map_port, port, sock_ctx);
-			sock_ctx->rem_addr = *rem_addr;
-			sock_ctx->rem_addrlen = rem_addrlen;
-			sock_ctx->is_connected = 1;
-			tls_opts_client_setup(sock_ctx->tls_opts);
-		}
-	}
-	if (response != 0) {
-		netlink_notify_kernel(ctx, id, response);
+		netlink_notify_kernel(ctx, id, -EBADF);
 		return;
 	}
-	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
-	if (ret == -1) {
-		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
-			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-	}
 
+	tls_opts_client_setup(sock_ctx->tls_opts);
 	sock_ctx->tls_conn = tls_client_wrapper_setup(sock_ctx->fd, ctx, 
 				sock_ctx->rem_hostname, sock_ctx->is_accepting, sock_ctx->tls_opts);
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, sock_ctx->id);
+	/* only connect if we're not already.
+	 * we might already be connected due to a
+	 * socket upgrade */
+	if (sock_ctx->is_connected == 0) {
+		//ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		ret = bufferevent_socket_connect(sock_ctx->tls_conn->secure.bev, rem_addr, rem_addrlen);
+	}
+	else {
+		ret = 0;
+	}
+
+	if (ret != 0) {
+		netlink_notify_kernel(ctx, id, -EINVAL);
+		return;
+	}
+
+	if (sock_ctx->has_bound == 0) {
+		sock_ctx->int_addr = *int_addr;
+		sock_ctx->int_addrlen = int_addrlen;
+	}
+	log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
+	hashmap_add(ctx->sock_map_port, port, sock_ctx);
+	sock_ctx->rem_addr = *rem_addr;
+	sock_ctx->rem_addrlen = rem_addrlen;
+	sock_ctx->is_connected = 1; /* is this a lie? */
+
 	if (blocking == 0) {
 		log_printf(LOG_INFO, "Nonblocking connect requested\n");
 		netlink_notify_kernel(ctx, id, -EINPROGRESS);
