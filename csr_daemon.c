@@ -369,8 +369,6 @@ void csr_accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	// 	return;
 	// }
 
-    if (bev == NULL)
-        printf("BEV NULL");
 	bufferevent_setcb(bev, new_read_cb, NULL, new_event_cb, NULL);
 	bufferevent_enable(bev, EV_READ|EV_WRITE);
 
