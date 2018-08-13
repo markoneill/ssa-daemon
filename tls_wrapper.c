@@ -398,9 +398,11 @@ int verify_dummy(int preverify, X509_STORE_CTX* store) {
 int client_verify(X509_STORE_CTX* store, void* arg) {
 	/*tls_conn_ctx_t* ctx = arg;*/
 	X509* cert;
-	X509_NAME* subject_name;
 	STACK_OF(X509)* chain;
+#ifndef NO_LOG
+	X509_NAME* subject_name;
 	char* identity;
+#endif
 
 	if (X509_verify_cert(store) != 1) {
 		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
@@ -420,9 +422,11 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
 		return 0;
 	}
+#ifndef NO_LOG
 	subject_name = X509_get_subject_name(cert);
 	identity = X509_NAME_oneline(subject_name, NULL, 0);
 	log_printf(LOG_INFO, "User \"%s\" is authenticated\n", identity);
+#endif
 	sk_X509_pop_free(chain, X509_free);
 
 	/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
@@ -486,7 +490,7 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 			return 0;
 		}
 		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
-		printf("size of Cert stack = %d\n", sk_X509_num(cert_names));
+//		printf("size of Cert stack = %d\n", sk_X509_num(cert_names));
 		return 1;
 	}
 	while (tls_opts != NULL) {
@@ -849,8 +853,8 @@ int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, 
 }
 
 long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
-	long timeout;
 	SSL_CTX* tls_ctx;
+	long timeout = 0;
 	if (conn_ctx != NULL) {
 		timeout = SSL_SESSION_get_timeout(SSL_get0_session(conn_ctx->tls));
 		return timeout;

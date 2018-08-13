@@ -248,9 +248,11 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 
 void csr_accept_error_cb(struct evconnlistener *listener, void *arg) {
 	struct event_base *base = evconnlistener_get_base(listener);
+#ifndef NO_LOG
 	int err = EVUTIL_SOCKET_ERROR();
 	log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n", 
 			err, evutil_socket_error_to_string(err));
+#endif
 	event_base_loopexit(base, NULL);
 	return;
 }

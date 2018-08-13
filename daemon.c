@@ -113,14 +113,16 @@ int server_create(int port) {
 	evutil_socket_t server_sock;
 	evutil_socket_t upgrade_sock;
 	struct evconnlistener* listener;
-
-        const char* ev_version = event_get_version();
-	struct event_base* ev_base = event_base_new();
 	struct event* sev_pipe;
 	struct event* sev_int;
 	struct event* nl_ev;
 	struct event* upgrade_ev;
 	struct nl_sock* netlink_sock;
+	struct event_base* ev_base = event_base_new();
+
+#ifndef NO_LOG
+        const char* ev_version = event_get_version();
+#endif
 	if (ev_base == NULL) {
                 perror("event_base_new");
                 return 1;
@@ -426,9 +428,11 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 
 void accept_error_cb(struct evconnlistener *listener, void *ctx) {
         struct event_base *base = evconnlistener_get_base(listener);
+#ifndef NO_LOG
         int err = EVUTIL_SOCKET_ERROR();
         log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n", 
 				err, evutil_socket_error_to_string(err));
+#endif
         event_base_loopexit(base, NULL);
 	return;
 }
@@ -500,9 +504,11 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 
 void listener_accept_error_cb(struct evconnlistener *listener, void *ctx) {
         struct event_base *base = evconnlistener_get_base(listener);
+#ifndef NO_LOG
         int err = EVUTIL_SOCKET_ERROR();
         log_printf(LOG_ERROR, "Got an error %d (%s) on a server listener\n", 
 				err, evutil_socket_error_to_string(err));
+#endif
         event_base_loopexit(base, NULL);
 	return;
 }
@@ -989,7 +995,7 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 	unsigned long id;
 	int is_accepting;
 	struct sockaddr_un addr = {};
-	/* Why the 5? Because that's what linux uses for autobinds*/
+	/* Why the 5? Because that's what linux uses for autobinds */
 	/* Why the 1? Because of the null byte in front of abstract names */
 	int addr_len = sizeof(sa_family_t) + 5 + 1;
 	log_printf(LOG_INFO, "Someone wants an upgrade!\n");
@@ -1055,6 +1061,8 @@ ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct socka
 	msg.msg_iovlen = 1;
 
 	if ((n = recvmsg(fd, &msg, 0)) <= 0) {
+		// message length of error or 0
+		*recvfd = -1;
 		return n;
 	}
 
@@ -1062,10 +1070,12 @@ ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct socka
 	    cmptr->cmsg_len == CMSG_LEN(sizeof(int))) {
 		if (cmptr->cmsg_level != SOL_SOCKET) {
 			log_printf(LOG_ERROR, "control level != SOL_SOCKET\n");
+			*recvfd = -1;
 			return -1;
 		}
 		if (cmptr->cmsg_type != SCM_RIGHTS) {
 			log_printf(LOG_ERROR, "control type != SCM_RIGHTS\n");
+			*recvfd = -1;
 			return -1;
 		}
 		*recvfd = *((int *) CMSG_DATA(cmptr));

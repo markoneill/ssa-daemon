@@ -55,24 +55,26 @@ typedef struct daemon_param {
 } daemon_param_t;
 
 int main(int argc, char* argv[]) {
-	long cpus_on;
-	long cpus_conf;
 	int i;
 	pid_t pid;
 	struct sigaction sigact;
 	int status;
 	int ret;
 	int starting_port = 8443;
+#ifdef CLIENT_AUTH
 	pthread_t csr_daemon;
 	daemon_param_t csr_params = {
 		.port = 8040
 	};
-	#ifdef CLIENT_AUTH
 	daemon_param_t auth_params = {
 		.port = 6666
 	};
 	pthread_t auth_daemon;
-	#endif
+#endif
+#ifndef NO_LOG
+	long cpus_conf;
+	long cpus_on;
+#endif
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -85,9 +87,11 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+#ifndef NO_LOG
 	cpus_on = sysconf(_SC_NPROCESSORS_ONLN);
 	cpus_conf = sysconf(_SC_NPROCESSORS_CONF);
 	log_printf(LOG_INFO, "Detected %ld/%ld active CPUs\n", cpus_on, cpus_conf);
+#endif
 
 
 	memset(&sigact, 0, sizeof(sigact));
@@ -120,8 +124,8 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	pthread_create(&csr_daemon, NULL, create_csr_daemon, (void*)&csr_params);
 	#ifdef CLIENT_AUTH
+	pthread_create(&csr_daemon, NULL, create_csr_daemon, (void*)&csr_params);
 	pthread_create(&auth_daemon, NULL, create_auth_daemon, (void*)&auth_params);
 	#endif
 
