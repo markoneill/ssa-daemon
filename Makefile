@@ -37,7 +37,9 @@ LIBS_EX = \
 		libnotify \
 	       	avahi-client \
 	       	openssl \
-		`
+		` \
+	$(shell curl-config --libs) \
+	-lgcrypt
   
 INCLUDES= \
 	`pkg-config --cflags libnotify`
