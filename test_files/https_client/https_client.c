@@ -12,7 +12,7 @@ int main() {
 	struct sockaddr_host addr;
 	addr.sin_family = AF_HOSTNAME;
 	strcpy((char*)addr.sin_addr.name, "www.google.com");
-	addr.sin_port = htons(443);
+	addr.sin_port = htons(8000);
 
 	int sock_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
 	connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr));

@@ -584,9 +584,11 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 	}
 	cur_opts = tls_opts;
 	/* There is no cert set yet on the first SSL_CTX so we'll use that */
+	printf("the file path: %s\n", filepath);
 	if (SSL_CTX_get0_certificate(cur_opts->tls_ctx) == NULL) {
 		if (SSL_CTX_use_certificate_chain_file(cur_opts->tls_ctx, filepath) != 1) {
 			log_printf(LOG_ERROR, "Unable to assign certificate chain\n");
+			perror("something wrong with chain file.");
 			return 0;
 		}
 		log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
@@ -617,6 +619,7 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	tls_opts_t* cur_opts;
 
+    printf("the path for set key: %s\n", filepath);
 	/* If an active connection exists, just set the key for that session */
 	if (conn_ctx != NULL) {
 		if (SSL_use_PrivateKey_file(conn_ctx->tls, filepath, SSL_FILETYPE_PEM) == 1) {
@@ -930,9 +933,13 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	if (events & BEV_EVENT_CONNECTED) {
 		log_printf(LOG_DEBUG, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
  
-        sem_t *sem_connect = sem_open("/mysem", 0);
+        sem_t *sem_connect = sem_open("/mysem", O_CREAT, 0664, 0);
+        //sem_t *sem_connect = sem_open("/mysem", 0);
         int post_number = sem_post(sem_connect); // unlock the locked area
-        //printf("Unlock the message with post number: %d\n", post_number);
+        if(post_number == -1){
+        	perror("error on sem post");
+        	return;
+        }
 
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {

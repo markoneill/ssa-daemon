@@ -47,6 +47,8 @@ char* get_addr_string(struct sockaddr *addr) {
     strcat(str, semicolon);
     strcat(str, portString);
 
+    printf("The Address: %s\n", str);
+
     char *result = malloc(sizeof(str));
     memcpy(result, str, sizeof(str));
 
@@ -161,7 +163,6 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 			}
 		else if(buff[1] == 'p' && buff[2] == 'a'){ // last message to receive
             chopString(buff, 3);
-            //printf("Received client path: %s\n", buff);
             memcpy(comm, buff, sizeof(buff));
             socket_cb(ctx, global_id, comm);
 		}
@@ -258,6 +259,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 	}
 	else if(buff[0] == '5'){
 	   if(buff[1] == 'i' && buff[2] == 'd'){
+	   	printf("close id number: %s\n", buff);
 			chopString(buff, 3);
 			global_id = strtoul(buff, &id_ptr, 10);
 			close_cb(ctx, global_id);
@@ -272,6 +274,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 			global_id = strtoul(buff, &id_ptr, 10);
 		}
 		else if(buff[1] == 'l' && buff[2] == 'a'){
+			printf("accept local address: %s\n", buff);
             chopString(buff, 3);
 			char* address;
 			char* port_string;
@@ -339,7 +342,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 			printf("Received listen notification\n");
 		}
 	}
-	else if(buff[0] == '8'){
+	else if(buff[0] == '8'){ // bind
 		if(buff[1] == 'i' && buff[2] == 'd'){
 			chopString(buff, 3);
 			global_id = strtoul(buff, &id_ptr, 10);
@@ -376,7 +379,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
 			addr_internal_len = sizeof(addr_internal);
 			addr_external_len = sizeof(addr_external);
-
+            
 			bind_cb(ctx, global_id, (struct sockaddr*)&addr_internal, addr_internal_len,
 			(struct sockaddr*)&addr_external, addr_external_len);
 		}
