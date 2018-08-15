@@ -9,7 +9,7 @@ SOURCES = $(wildcard *.c)
 OBJECTS = $(SOURCES:.c=.o)
 STD_INCLUDES = `pkg-config --cflags libnl-3.0`
 NEW_INCLUDES = \
-	-I/usr/include/libnl3 \
+	`pkg-config --cflags libnl-3.0` \
 	-Iopenssl/include \
 	-Ilibevent/include
 LIBS = 	-lpthread \
@@ -40,7 +40,11 @@ LIBS_EX = \
 INCLUDES= \
 	`pkg-config --cflags libnotify`
 
-.PHONY: clean qrwindow run
+PRELOAD_PATH=$(PWD)/extras
+QRVIEWR_PATH=./qrdisplay
+BASHRC=$(HOME)/.bashrc
+
+.PHONY: clean qrwindow preload unload
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: INCLUDES=$(STD_INCLUDES)
@@ -57,6 +61,8 @@ clientauth: $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS_EX)
 
 # Main target
+$(EXEC): shairedobject
+$(EXEC): preload
 $(EXEC): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS)
  
@@ -65,10 +71,56 @@ $(EXEC): $(OBJECTS)
 	$(CC) -c $(CXXFLAGS) $< $(INCLUDES) -o $@
  
 # To remove generated files
+clean:	unload
 clean:
 	rm -f $(EXEC) $(OBJECTS)
-	$(MAKE) -C ./qrdisplay clean
+	$(MAKE) -C $(QRVIEWR_PATH) clean
 
 qrwindow:
-	$(MAKE) -C ./qrdisplay
+	$(MAKE) -C $(QRVIEWR_PATH)
+
+shairedobject:
+	$(MAKE) -C $(PRELOAD_PATH)
+
+preload: 
+ifeq (0, $(shell grep -c addons.so $(BASHRC)))
+	@test -z $(LD_PRELOAD) && EMPTY_PRELOAD=1 || EMPTY_PRELOAD=0
+ifneq	(0, $(shell grep -c LD_PRELOAD $(BASHRC)))
+		@echo "adding addons.so to LD_PRELOAD"
+		$(shell test -e $(BASHRC) || echo "# .bashrc" > $(BASHRC))
+ifneq		(1,$(EMPTY_PRELOAD))
+			# LD_PRELOAD in .bashrc only
+			@sed -i -e "s|^\(export LD_PRELOAD=\)\([.:\/a-zA-z0-9 ]*\)|\0\n\1$(PRELOAD_PATH)/addons.so:\2|g" $(BASHRC)
+else
+			# LD_PRELOAD is in bash & .bashrc			
+ifeq 			(1, $(shell grep -c "LD_PRELOAD=$(LD_PRELOAD)" $(BASHRC)))
+				# LD_PRELOAD in bash matches .bashrc
+				@echo "amending ~/.bashrc to include .so in LD_PRELOAD."
+				@sed -i -e "\$$aexport LD_PRELOAD=$(PRELOAD_PATH)/addons.so:$(LD_PRELOAD)" $(BASHRC)
+else
+				# LD_PRELOAD in bash is differant than in .bashrc
+				@echo "amending ~/.bashrc to include .so in LD_PRELOAD(along with this sessions LD_PRELOAD)."
+				@sed -i -e "\$$aexport LD_PRELOAD=$(PRELOAD_PATH)/addons.so:$(LD_PRELOAD)" $(BASHRC)
+endif 			#   $(shell grep -c "LD_PRELOAD=$(LD_PRELOAD)" $(BASHRC))
+		@echo "please source your .bashrc file to import the updated LD_PRELOAD variable"
+endif		#  $(EMPTY_PRELOAD)
+else	#   $(shell grep -c LD_PRELOAD $(BASHRC))
+ifneq		(1,$(EMPTY_PRELOAD))
+			# LD_PRELOAD absent from bash and .bashrc
+			@echo "LD_PRELOAD was absent. Adding .so to LD_PRELOAD in ~/.bashrc"
+			@sed -i -e "\$$aexport LD_PRELOAD=$(PRELOAD_PATH)/addons.so" $(BASHRC)
+else
+			# LD_PRELOAD is in bash only			
+			@echo "LD_PRELOAD is set in bash. Adding .so and saving to ~/.bashrc"
+			@sed -i -e "\$$aexport LD_PRELOAD=$(PRELOAD_PATH)/addons.so:$(LD_PRELOAD)" $(BASHRC)
+endif		#  $(EMPTY_PRELOAD)
+endif	#   $(shell grep -c LD_PRELOAD $(BASHRC))
+	@echo -e "\nLD_PRELOAD modifyed!\nplease source your .bashrc file\n\n"
+endif
+
+unload:
+ifneq (0, $(shell grep -c addons.so $(BASHRC)))
+	@echo "removing addons.so from LD_PRELOAD"
+	@sed -i -e ':a;N;$$!ba;s|\nexport LD_PRELOAD=$(PRELOAD_PATH)/addons\.so\(:.*\)*||g' $(BASHRC)
+endif
 
