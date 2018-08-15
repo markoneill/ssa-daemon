@@ -44,7 +44,7 @@ PRELOAD_PATH=$(PWD)/extras
 QRVIEWR_PATH=./qrdisplay
 BASHRC=$(HOME)/.bashrc
 
-.PHONY: clean qrwindow preload unload
+.PHONY: clean qrwindow shairedobject hostname-support hostname-support-remove
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: INCLUDES=$(STD_INCLUDES)
@@ -61,8 +61,6 @@ clientauth: $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS_EX)
 
 # Main target
-$(EXEC): shairedobject
-$(EXEC): preload
 $(EXEC): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $(EXEC) $(LIBS)
  
@@ -71,7 +69,6 @@ $(EXEC): $(OBJECTS)
 	$(CC) -c $(CXXFLAGS) $< $(INCLUDES) -o $@
  
 # To remove generated files
-clean:	unload
 clean:
 	rm -f $(EXEC) $(OBJECTS)
 	$(MAKE) -C $(QRVIEWR_PATH) clean
@@ -82,7 +79,8 @@ qrwindow:
 shairedobject:
 	$(MAKE) -C $(PRELOAD_PATH)
 
-preload: 
+hostname-support: shairedobject
+hostname-support: 
 ifeq (0, $(shell grep -c addons.so $(BASHRC)))
 	@test -z $(LD_PRELOAD) && EMPTY_PRELOAD=1 || EMPTY_PRELOAD=0
 ifneq	(0, $(shell grep -c LD_PRELOAD $(BASHRC)))
@@ -118,7 +116,7 @@ endif	#   $(shell grep -c LD_PRELOAD $(BASHRC))
 	@echo -e "\nLD_PRELOAD modifyed!\nplease source your .bashrc file\n\n"
 endif
 
-unload:
+hostname-support-remove:
 ifneq (0, $(shell grep -c addons.so $(BASHRC)))
 	@echo "removing addons.so from LD_PRELOAD"
 	@sed -i -e ':a;N;$$!ba;s|\nexport LD_PRELOAD=$(PRELOAD_PATH)/addons\.so\(:.*\)*||g' $(BASHRC)
