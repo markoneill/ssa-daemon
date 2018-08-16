@@ -23,9 +23,9 @@ fi
 if [[ "${DISTRO}" == '"Ubuntu"' ]]; then
 	echo 'Installing Ubuntu libraries for tls_wrapper'
 	sudo apt install \
-						  elfutils \
 						  libavahi-client-dev \
 						  libconfig-dev \
+						  libelf-dev \
 						  libevent-dev \
 						  libglib2.0-dev \
 						  libnl-3-dev \
