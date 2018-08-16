@@ -908,10 +908,9 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 
 	sock_ctx->id = id;
 	sock_ctx->is_connected = 1;
-	hashmap_print(ctx->sock_map);
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
-	hashmap_print(ctx->sock_map);
-	printf("the connect in associate_cb: %d\n", ((sock_ctx_t*)hashmap_get(ctx->sock_map, id))->is_connected);
+	//hashmap_print(ctx->sock_map);
+	//printf("the connect in associate_cb: %d\n", ((sock_ctx_t*)hashmap_get(ctx->sock_map, id))->is_connected);
 	
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
 	//log_printf(LOG_INFO, "Socket %lu accepted\n", id);
@@ -923,10 +922,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	int ret;
 	sock_ctx_t* sock_ctx;
 
-	printf("here in close cb with id: %d\n", id);
-
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
-	hashmap_print(ctx->sock_map);
 	if (sock_ctx == NULL) {
 		printf("nothing find in map\n");
 		return;
@@ -943,7 +939,6 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		free(sock_ctx);
 		return;
 	}
-	printf("the connect number in clsoe: %d\n", sock_ctx->is_connected);
 	if (sock_ctx->is_connected == 1) {
 		/* connections under the control of the tls_wrapper code
 		 * clean up themselves as a result of the close event
@@ -957,7 +952,6 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		return;
 	}
 	if (sock_ctx->listener != NULL) {
-		printf("here in listener\n");
 		hashmap_del(ctx->sock_map, id);
 		evconnlistener_free(sock_ctx->listener); // this will close the server socket
 		tls_opts_free(sock_ctx->tls_opts);
@@ -966,7 +960,6 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		return;
 	}
 	hashmap_del(ctx->sock_map, id);
-	printf("the EVUTIL CLOSESOCKET number: %d\n", sock_ctx->fd);
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	free(sock_ctx);
 	unix_notify_kernel(ctx, id, 0);

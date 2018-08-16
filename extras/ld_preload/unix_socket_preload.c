@@ -71,7 +71,7 @@ char* get_addr_string(struct sockaddr *addr) {
     strcat(str, semicolon);
     strcat(str, portString);
 
-    printf("the address is: %s\n", str);
+    //printf("the address is: %s\n", str);
 
     char *result = malloc(sizeof(str));
     memcpy(result, str, sizeof(str));
@@ -543,9 +543,9 @@ int close(int fd){
         perror("recv error");
         return -1;
     }
-    printf("the messgae received in close: %s\n", buff);
+    //printf("the messgae received in close: %s\n", buff);
 
-    printf("the closed fd number: %d\n", fd);
+    //printf("the closed fd number: %d\n", fd);
 
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
@@ -575,12 +575,12 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
     orgi_accept_type accept_orgi;
     accept_orgi = (orgi_accept_type)dlsym(RTLD_NEXT,"accept");
 
-    printf("here in accept with sockfd: %d\n", sockfd);
     new_tcp_fd = accept_orgi(sockfd, addr, addrlen);
     if(new_tcp_fd == -1){
         perror("error in accept");
     }
-    printf("new_tcp_fd number: %d\n", new_tcp_fd);
+    
+    //printf("new_tcp_fd number: %d\n", new_tcp_fd);
 
     struct sockaddr_in peer_address;
     int peer_len;
@@ -590,18 +590,16 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
         perror("getpeername() failed");
         return -1;
     }
-    printf("Peer's IP address is: %s\n", inet_ntoa(peer_address.sin_addr));
-    printf("Peer's port is: %d\n", (int) ntohs(peer_address.sin_port));
-
-    struct sockaddr_in current_address;
-    int current_len;
-    current_len = sizeof(current_address);
-    if (getsockname(new_tcp_fd, &current_address, &current_len) == -1) {
-    perror("getsockname");
-    return -1;
-    }
-    get_addr_string((struct sockaddr*)&current_address);
-
+    //printf("Peer's IP address is: %s\n", inet_ntoa(peer_address.sin_addr));
+    //printf("Peer's port is: %d\n", (int) ntohs(peer_address.sin_port));
+    //struct sockaddr_in current_address;
+    //int current_len;
+    //current_len = sizeof(current_address);
+    //if (getsockname(new_tcp_fd, &current_address, &current_len) == -1) {
+    //perror("getsockname");
+    //return -1;
+    //}
+    //get_addr_string((struct sockaddr*)&current_address);
     //need to find out the port that it is connected to(the one get listened on) and send back the address with the port number that it is connected to. 
 
     fd = createUnixSocket();
@@ -647,13 +645,13 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
         return -1;
     }
 
-    printf("the messgae received in accept: %s\n", buff);
+    //printf("the messgae received in accept: %s\n", buff);
 
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
 
-    printf("the new fd number: %d\n", new_tcp_fd);
+    //printf("the new fd number: %d\n", new_tcp_fd);
 
     return new_tcp_fd;
     }
@@ -753,8 +751,8 @@ int listen(int sockfd, int backlog){
     perror("getsockname");
     return -1;
     }
-    printf("Current IP address is in listen: %s\n", inet_ntoa(current_address.sin_addr));
-    printf("Current port is in listen: %d\n", (int) ntohs(current_address.sin_port));
+    //printf("Current IP address is in listen: %s\n", inet_ntoa(current_address.sin_addr));
+    //printf("Current port is in listen: %d\n", (int) ntohs(current_address.sin_port));
 
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");

@@ -55,18 +55,15 @@ int main() {
 			exit(EXIT_FAILURE);
 		}
 		printf("Client requested host %d %s\n", servername_len,  servername);
-		printf("c_fd: %d\n", c_fd);
-		recv(c_fd, request, BUFFER_SIZE, 0);
+		int length = recv(c_fd, request, BUFFER_SIZE, 0);
 		handle_req(request, response);
-		send(c_fd, response, BUFFER_SIZE, 0);
+		send(c_fd, response, length, 0);
 		close(c_fd);
 	}
 	return 0;
 }
 
 void handle_req(char* req, char* resp) {
-	printf("the request is: %s\n", req);
 	memcpy(resp, req, BUFFER_SIZE);
-	printf("the response is: %s\n", resp);
 	return;
 }
