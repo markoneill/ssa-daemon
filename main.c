@@ -86,8 +86,8 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	if (geteuid() != 0) {
-		log_printf(LOG_ERROR, "Please run as root\n");
+	if (geteuid() == 0) {
+		log_printf(LOG_ERROR, "Please run as user\n");
 		exit(EXIT_FAILURE);
 	}
 

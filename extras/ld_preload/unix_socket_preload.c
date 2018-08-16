@@ -433,9 +433,9 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 
 // need to look at the getsockopt in the tls_common the different iotname have different things need to do
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen){
-  if(optname == SO_REMOTE_HOSTNAME || optname == SO_HOSTNAME || optname == SO_TRUSTED_PEER_CERTIFICATES || optname == SO_CERTIFICATE_CHAIN
-     || optname == SO_PRIVATE_KEY || optname == SO_ALPN || optname == SO_SESSION_TTL || optname == SO_DISABLE_CIPHER || optname == SO_PEER_IDENTITY
-     || optname == SO_PEER_CERTIFICATE || optname == SO_ID){
+  if(optname == TLS_REMOTE_HOSTNAME || optname == TLS_HOSTNAME || optname == TLS_TRUSTED_PEER_CERTIFICATES || optname == TLS_CERTIFICATE_CHAIN
+     || optname == TLS_PRIVATE_KEY || optname == TLS_ALPN || optname == TLS_SESSION_TTL || optname == TLS_DISABLE_CIPHER || optname == TLS_PEER_IDENTITY
+     || optname == TLS_PEER_CERTIFICATE_CHAIN || optname == TLS_ID){
     int fd;
     int len;
     int ret;
