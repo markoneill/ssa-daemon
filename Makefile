@@ -44,7 +44,7 @@ PRELOAD_PATH=$(PWD)/extras
 QRVIEWR_PATH=./qrdisplay
 BASHRC=$(HOME)/.bashrc
 
-.PHONY: clean qrwindow shairedobject hostname-support hostname-support-remove
+.PHONY: clean qrwindow shairedobject hostname-support preload hostname-support-remove
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: INCLUDES=$(STD_INCLUDES)
@@ -53,6 +53,10 @@ all: $(EXEC)
 release: CXXFLAGS+=$(CXX_RELEASE_FLAGS)
 release: INCLUDES+=$(STD_INCLUDES)
 release: $(EXEC)
+
+hostname-support: shairedobject
+hostname-support: preload
+hostname-support: release
 
 clientauth: CXXFLAGS+=$(CXX_CLIENTAUTH_FLAGS)
 clientauth: INCLUDES+=$(NEW_INCLUDES)
@@ -79,8 +83,7 @@ qrwindow:
 shairedobject:
 	$(MAKE) -C $(PRELOAD_PATH)
 
-hostname-support: shairedobject
-hostname-support: 
+preload: 
 ifeq (0, $(shell grep -c addons.so $(BASHRC)))
 	@test -z $(LD_PRELOAD) && EMPTY_PRELOAD=1 || EMPTY_PRELOAD=0
 ifneq	(0, $(shell grep -c LD_PRELOAD $(BASHRC)))
