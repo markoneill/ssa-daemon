@@ -38,3 +38,6 @@ This feature will be included by default soon.
 Configuration is currently in the process of being better-integrated into the userspace daemon.
 When we finalize the configuration API, it will be specified here and on [owntrust.org](https://owntrust.org).
 See our paper (linked above) for a preview of the types of configuration options administrastors will have.
+
+## Notices
+The SSA is still undergoing large changes as we finalize the interface between it TrustBase, and other certificate validation strategies. Some commits may disable certificate validation temporarily while we work out the kinks between using TrustBase for traffic interception and using its API for certificate validation.
