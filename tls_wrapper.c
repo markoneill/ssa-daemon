@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
@@ -47,7 +48,6 @@
 #include "auth_daemon.h"
 #include "log.h"
 #include "config.h"
-#include "netlink.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
@@ -687,9 +687,11 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 	}
 	cur_opts = tls_opts;
 	/* There is no cert set yet on the first SSL_CTX so we'll use that */
+	printf("the file path: %s\n", filepath);
 	if (SSL_CTX_get0_certificate(cur_opts->tls_ctx) == NULL) {
 		if (SSL_CTX_use_certificate_chain_file(cur_opts->tls_ctx, filepath) != 1) {
 			log_printf(LOG_ERROR, "Unable to assign certificate chain\n");
+			perror("something wrong with chain file.");
 			return 0;
 		}
 		log_printf(LOG_INFO, "Using cert located at %s\n", filepath);
@@ -720,6 +722,7 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
 	tls_opts_t* cur_opts;
 
+    printf("the path for set key: %s\n", filepath);
 	/* If an active connection exists, just set the key for that session */
 	if (conn_ctx != NULL) {
 		if (SSL_use_PrivateKey_file(conn_ctx->tls, filepath, SSL_FILETYPE_PEM) == 1) {
@@ -1031,12 +1034,21 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
 	if (events & BEV_EVENT_CONNECTED) {
 		log_printf(LOG_DEBUG, "%s endpoint connected\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
+ 
+        sem_t *sem_connect = sem_open("/mysem", O_CREAT, 0664, 0);
+        //sem_t *sem_connect = sem_open("/mysem", 0);
+        int post_number = sem_post(sem_connect); // unlock the locked area
+        if(post_number == -1){
+        	perror("error on sem post");
+        	return;
+        }
+
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
 			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
-				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
+				unix_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
 			else {
 				bufferevent_enable(ctx->plain.bev, EV_READ | EV_WRITE);
@@ -1090,7 +1102,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
 		if (bufferevent_getfd(ctx->plain.bev) == -1) {
-			netlink_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
+			unix_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
 		}
 		shutdown_tls_conn_ctx(ctx);
 	}
@@ -1103,6 +1115,7 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	//auth_info_t* ai;
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL && ctx->secure.closed == 1) {

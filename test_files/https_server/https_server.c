@@ -9,10 +9,10 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 
-#define CERT_FILE_A	"../certificate_a.pem"
-#define KEY_FILE_A	"../key_a.pem"
-#define CERT_FILE_B	"../certificate_b.pem"
-#define KEY_FILE_B	"../key_b.pem"
+#define CERT_FILE_A	"test_files/certificate_a.pem"
+#define KEY_FILE_A	"test_files/key_a.pem"
+#define CERT_FILE_B	"test_files/certificate_b.pem"
+#define KEY_FILE_B	"test_files/key_b.pem"
 #define BUFFER_SIZE	2048
 
 void handle_req(char* req, char* resp);
@@ -27,7 +27,7 @@ int main() {
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_addr.s_addr = inet_addr("0.0.0.0");
-	addr.sin_port = htons(443);
+	addr.sin_port = htons(8080);
 
 	int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
 	bind(fd, (struct sockaddr*)&addr, sizeof(addr));
@@ -43,7 +43,8 @@ int main() {
 	if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
 		perror("key b");
 	}
-	listen(fd, SOMAXCONN);
+	int ret;
+	ret = listen(fd, SOMAXCONN);
 
 	while (1) {	
 		struct sockaddr_storage addr;
@@ -54,9 +55,9 @@ int main() {
 			exit(EXIT_FAILURE);
 		}
 		printf("Client requested host %d %s\n", servername_len,  servername);
-		recv(c_fd, request, BUFFER_SIZE, 0);
+		int length = recv(c_fd, request, BUFFER_SIZE, 0);
 		handle_req(request, response);
-		send(c_fd, response, BUFFER_SIZE, 0);
+		send(c_fd, response, length, 0);
 		close(c_fd);
 	}
 	return 0;

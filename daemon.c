@@ -48,14 +48,15 @@
 #include <openssl/engine.h>
 #include <openssl/conf.h>
 
-#include <netlink/genl/genl.h>
-#include <netlink/genl/ctrl.h>
+//#include <netlink/genl/genl.h>
+//#include <netlink/genl/ctrl.h>
 
 #include "in_tls.h"
 #include "daemon.h"
 #include "hashmap.h"
 #include "tls_wrapper.h"
-#include "netlink.h"
+//#include "netlink.h"
+#include "unix_server.h"
 #include "log.h"
 
 #define MAX_UPGRADE_SOCKET  18
@@ -173,19 +174,20 @@ int server_create(int port) {
 	evconnlistener_set_error_cb(listener, accept_error_cb);
 
 	/* Set up netlink socket with event base */
-	netlink_sock = netlink_connect(&daemon_ctx);
-	if (netlink_sock == NULL) {
-		log_printf(LOG_ERROR, "Couldn't create Netlink socket\n");
+	int fd;
+	fd = create_unix_socket();
+	if(fd < 0){
+		log_printf(LOG_ERROR, "Couldn't create UNIX socket\n");
 		return 1;
 	}
-	ret = evutil_make_socket_nonblocking(nl_socket_get_fd(netlink_sock));
+	ret = evutil_make_socket_nonblocking(fd);
 	if (ret == -1) {
 		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
 			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 	}
-	nl_ev = event_new(ev_base, nl_socket_get_fd(netlink_sock), EV_READ | EV_PERSIST, netlink_recv, netlink_sock);
+	nl_ev = event_new(ev_base, fd, EV_READ | EV_PERSIST, unix_recv, &daemon_ctx);
 	if (event_add(nl_ev, NULL) == -1) {
-		log_printf(LOG_ERROR, "Couldn't add Netlink event\n");
+		log_printf(LOG_ERROR, "Couldn't add unix socket event\n");
 		return 1;
 	}
 
@@ -201,7 +203,11 @@ int server_create(int port) {
 	event_base_dispatch(ev_base);
 
 	log_printf(LOG_INFO, "Main event loop terminated\n");
-	netlink_disconnect(netlink_sock);
+	//netlink_disconnect(netlink_sock);
+	ret = close_unix_socket(fd);
+	if(ret < 0){
+		log_printf(LOG_ERROR, "Close unix server failed\n");
+	}
 
 	/* Cleanup */
 	evconnlistener_free(listener); /* This also closes the socket due to our listener creation flags */
@@ -391,7 +397,6 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
 
 void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
-	log_printf(LOG_INFO, "Received connection!\n");
 
 	int port;
 	sock_ctx_t* sock_ctx;
@@ -449,8 +454,7 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	evutil_socket_t ifd;
 	int port;
 	sock_ctx_t* new_sock_ctx;
-        //struct event_base *base = evconnlistener_get_base(listener);
-
+        //struct event_base *base = evconnlistener_get_base(listener); //XXX this may need to come back in????
 	//log_printf(LOG_DEBUG, "Got a connection on a vicarious listener\n");
 	//log_printf_addr(&sock_ctx->int_addr);
 	if (evutil_make_socket_nonblocking(efd) == -1) {
@@ -538,7 +542,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx != NULL) {
 		log_printf(LOG_ERROR, "We have created a socket with this ID already: %lu\n", id);
-		netlink_notify_kernel(ctx, id, response);
+		unix_notify_kernel(ctx, id, response);
 		return;
 	}
 
@@ -552,6 +556,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 			response = -ENOMEM;
 		}
 		else {
+			printf("the fd number be added in: %d\n", fd);
 			sock_ctx->id = id;
 			sock_ctx->fd = fd;
 			sock_ctx->tls_opts = tls_opts_create(comm);
@@ -565,7 +570,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 	}
 
 	log_printf(LOG_INFO, "Socket created on behalf of application %s\n", comm);
-	netlink_notify_kernel(ctx, id, response);
+	unix_notify_kernel(ctx, id, response);
 	return;
 }
 
@@ -577,10 +582,9 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
 		response = -EBADF;
-		netlink_notify_kernel(ctx, id, response);
+		unix_notify_kernel(ctx, id, response);
 		return;
 	}
-
 	switch (option) {
 	case TLS_REMOTE_HOSTNAME:
 		/* The kernel validated this data for us */
@@ -646,7 +650,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 		}
 		break;
 	}
-	netlink_notify_kernel(ctx, id, response);
+	unix_notify_kernel(ctx, id, response);
 	return;
 }
 
@@ -660,13 +664,13 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
-		netlink_notify_kernel(ctx, id, -EBADF);
+		unix_notify_kernel(ctx, id, -EBADF);
 		return;
 	}
 	switch (option) {
 	case TLS_REMOTE_HOSTNAME:
 		if (sock_ctx->rem_hostname != NULL) {
-			netlink_send_and_notify_kernel(ctx, id, sock_ctx->rem_hostname, strlen(sock_ctx->rem_hostname)+1);
+			unix_send_and_notify_kernel(ctx, id, sock_ctx->rem_hostname, strlen(sock_ctx->rem_hostname)+1);
 			return;
 		}
 		if (get_remote_hostname(sock_ctx->tls_opts, sock_ctx->tls_conn, &data, &len) == 0) {
@@ -734,10 +738,10 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 		break;
 	}
 	if (response != 0) {
-		netlink_notify_kernel(ctx, id, response);
+		unix_notify_kernel(ctx, id, response);
 		return;
 	}
-	netlink_send_and_notify_kernel(ctx, id, data, len);
+	unix_send_and_notify_kernel(ctx, id, data, len);
 	if (need_free == 1) {
 		free(data);
 	}
@@ -756,14 +760,16 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 		response = -EBADF;
 	}
 	else {
-		ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
-		if (ret == -1) {
-			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
-				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-			EVUTIL_CLOSESOCKET(sock_ctx->fd);
-			return;
-		}
+/*//////	ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
+////////	if (ret == -1) {
+////////		log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+////////			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+////////		EVUTIL_CLOSESOCKET(sock_ctx->fd);
+////////		return;
+////////	} 						 //xxx this may need to come back in */
 
+		get_addr_string(ext_addr);
+		printf("the sock_ctx fd in bind: %d\n", sock_ctx->fd);
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
 			perror("bind");
@@ -777,17 +783,18 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 			sock_ctx->ext_addrlen = ext_addrlen;
 		}
 	}
-	netlink_notify_kernel(ctx, id, response);
+	unix_notify_kernel(ctx, id, response);
 	return;
 }
 
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking) {
-	
+	int response;
 	int ret;
 	sock_ctx_t* sock_ctx;
 	int port;
 
+	response = 0;
 	if (int_addr->sa_family == AF_UNIX) {
 		port = strtol(((struct sockaddr_un*)int_addr)->sun_path+1, NULL, 16);
 		log_printf(LOG_INFO, "unix port is %05x", port);
@@ -795,11 +802,43 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 	else {
 		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
 	}
-
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
-		netlink_notify_kernel(ctx, id, -EBADF);
-		return;
+		response = -EBADF;
+	}
+	else {
+		/* only connect if we're not already.
+		 * we might already be connected due to a
+		 * socket upgrade */
+		get_addr_string(rem_addr);
+		if (sock_ctx->is_connected == 0) {
+			ret = connect(sock_ctx->fd, rem_addr, rem_addrlen);
+		}
+		else {
+			ret = 0;
+		}
+		if (ret == -1) {
+			perror("connect error");
+			response = -errno;
+			printf("Oh dear, something went wrong with connect()! %s\n", strerror(errno));
+		}
+		else {
+			if (sock_ctx->has_bound == 0) {
+				sock_ctx->int_addr = *int_addr;
+				sock_ctx->int_addrlen = int_addrlen;
+			}
+			log_printf(LOG_INFO, "Placing sock_ctx for port %d\n", port);
+			hashmap_add(ctx->sock_map_port, port, sock_ctx);
+			sock_ctx->rem_addr = *rem_addr;
+			sock_ctx->rem_addrlen = rem_addrlen;
+			sock_ctx->is_connected = 1;
+			tls_opts_client_setup(sock_ctx->tls_opts);
+		}
+	}
+	ret = evutil_make_socket_nonblocking(sock_ctx->fd);
+	if (ret == -1) {
+		log_printf(LOG_ERROR, "Failed in evutil_make_socket_nonblocking: %s\n",
+			 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
 	}
 
 	tls_opts_client_setup(sock_ctx->tls_opts);
@@ -834,8 +873,9 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 
 	if (blocking == 0) {
 		log_printf(LOG_INFO, "Nonblocking connect requested\n");
-		netlink_notify_kernel(ctx, id, -EINPROGRESS);
+		unix_notify_kernel(ctx, id, -EINPROGRESS);
 	}
+	unix_notify_kernel(ctx, id, 0); // send a connected message
 	return;
 }
 
@@ -851,12 +891,22 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 		response = -EBADF;
 	}
 	else {
+		printf("the fd number in listen_cb: %d\n", sock_ctx->fd);
 		ret = listen(sock_ctx->fd, SOMAXCONN);
 		if (ret == -1) {
 			response = -errno;
 		}
+
+	    struct sockaddr_in current_address;
+	    int current_len;
+	    current_len = sizeof(current_address);
+		if (getsockname(sock_ctx->fd, &current_address, &current_len) == -1) {
+		perror("getsockname");
+		return;
+		}
+		get_addr_string((struct sockaddr*)&current_address);
 	}
-	netlink_notify_kernel(ctx, id, response);
+	unix_notify_kernel(ctx, id, response);
 	if (response != 0) {
 		return;
 	}
@@ -872,6 +922,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 
 	tls_opts_server_setup(sock_ctx->tls_opts);
 	sock_ctx->daemon = ctx; /* XXX I don't want this here */
+	printf("in listen cb before listener_accept_cb\n");
 	sock_ctx->listener = evconnlistener_new(ctx->ev_base, listener_accept_cb, sock_ctx,
 		LEV_OPT_CLOSE_ON_FREE | LEV_OPT_THREADSAFE, 0, sock_ctx->fd);
 
@@ -880,6 +931,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 }
 
 void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen) {
+	printf("here in associate cb\n");
 	sock_ctx_t* sock_ctx;
 	int response = 0;
 	int port;
@@ -891,22 +943,28 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 	else {
 		port = (int)ntohs(((struct sockaddr_in*)int_addr)->sin_port);
 	}
+
 	sock_ctx = hashmap_get(ctx->sock_map_port, port);
+
 	hashmap_del(ctx->sock_map_port, port);
 	if (sock_ctx == NULL) {
-		log_printf(LOG_ERROR, "port provided in associate_cb not found");
+		log_printf(LOG_ERROR, "port provided in associate_cb not found\n");
 		response = -EBADF;
-		netlink_notify_kernel(ctx, id, response);
+		unix_notify_kernel(ctx, id, response);
 		return;
 	}
+
+	printf("the id number in associate_cb: %d\n", id);
 
 	sock_ctx->id = id;
 	sock_ctx->is_connected = 1;
 	hashmap_add(ctx->sock_map, id, (void*)sock_ctx);
+	//hashmap_print(ctx->sock_map);
+	//printf("the connect in associate_cb: %d\n", ((sock_ctx_t*)hashmap_get(ctx->sock_map, id))->is_connected);
 	
 	set_netlink_cb_params(sock_ctx->tls_conn, ctx, id);
 	//log_printf(LOG_INFO, "Socket %lu accepted\n", id);
-	netlink_notify_kernel(ctx, id, response);
+	unix_notify_kernel(ctx, id, response);
 	return;
 }
 
@@ -915,11 +973,12 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
 	if (sock_ctx == NULL) {
+		printf("nothing find in map\n");
 		return;
 	}
-	/* close things here */
+	/* close things here */ 
 	if (sock_ctx->is_accepting == 1) {
-		/* This is an ophan server connection.
+		/* This is an open server connection.
 		 * We don't host its corresponding listen socket
 		 * But we were given control of the remote peer
 		 * connection */
@@ -934,7 +993,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 		 * clean up themselves as a result of the close event
 		 * received from one of the endpoints. In this case we
 		 * only need to clean up the sock_ctx */
-		//netlink_notify_kernel(ctx, id, 0);
+		unix_notify_kernel(ctx, id, 0);
 		hashmap_del(ctx->sock_map, id);
 		tls_opts_free(sock_ctx->tls_opts);
 		free_tls_conn_ctx(sock_ctx->tls_conn);
@@ -943,16 +1002,16 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 	}
 	if (sock_ctx->listener != NULL) {
 		hashmap_del(ctx->sock_map, id);
-		evconnlistener_free(sock_ctx->listener);
+		evconnlistener_free(sock_ctx->listener); // this will close the server socket
 		tls_opts_free(sock_ctx->tls_opts);
 		free(sock_ctx);
-		//netlink_notify_kernel(ctx, id, 0);
+		unix_notify_kernel(ctx, id, 0);
 		return;
 	}
 	hashmap_del(ctx->sock_map, id);
 	EVUTIL_CLOSESOCKET(sock_ctx->fd);
 	free(sock_ctx);
-	//netlink_notify_kernel(ctx, id, 0);
+	unix_notify_kernel(ctx, id, 0);
 	return;
 }
 

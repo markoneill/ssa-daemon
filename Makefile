@@ -12,6 +12,7 @@ NEW_INCLUDES = \
 	`pkg-config --cflags libnl-3.0` \
 	-Iopenssl/include \
 	-Ilibevent/include
+#LIBS = -ldl -lcrypto -lssl
 LIBS = 	-lpthread \
 	`pkg-config --libs \
 		libconfig \

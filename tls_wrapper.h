@@ -29,7 +29,7 @@
 #include <event2/bufferevent.h>
 #include <event2/event.h>
 #include <event2/util.h>
-#include <netinet/in.h>
+//#include <netinet/in.h>
 
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
