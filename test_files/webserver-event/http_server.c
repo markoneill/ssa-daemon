@@ -81,7 +81,12 @@ int set_blocking(int sock, int blocking);
 
 /* SSA specific */
 static char* get_peer_identity(client_t* client);
+#ifdef CLIENT_AUTH
 static void send_pha_req(client_t* client, char* hostname);
+#else
+#define NOOP
+#define send_pha_req(...) NOOP
+#endif
 
 void handle_client(client_t* client);
 void signal_handler(int signum);
@@ -1043,6 +1048,7 @@ char* get_peer_identity(client_t* client) {
 	return id;
 }
 
+#ifdef CLIENT_AUTH
 void send_pha_req(client_t* client, char* hostname) {
 	char* data;
 	data = hostname;
@@ -1052,6 +1058,7 @@ void send_pha_req(client_t* client, char* hostname) {
 	}
 	return;
 }
+#endif
 
 char* strnstr(char* haystack, char* needle, int length) {
 	int i;
