@@ -24,26 +24,30 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
-#include <signal.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <wait.h>
+
+#include "auth_daemon.h"
+#include "config.h"
+#include "csr_daemon.h"
 #include "daemon.h"
 #include "log.h"
-#include "config.h"
-#include "auth_daemon.h"
-#include "csr_daemon.h"
 #include "nsd.h"
 #include "self_sign.h"
 
 void sig_handler(int signum);
-void* create_nsd_daemon(void* arg);
 void* create_csr_daemon(void* arg);
+
+#ifdef CLIENT_AUTH
+void* create_nsd_daemon(void* arg);
 void* create_auth_daemon(void* arg);
+#endif
 	
 pid_t* workers;
 int worker_count;
@@ -173,18 +177,19 @@ void sig_handler(int signum) {
 	return;
 }
 
+void* create_csr_daemon(void* arg) {
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int csr_daemon_port = params->port;
+	csr_server_create(csr_daemon_port);
+	return NULL;
+}
+
+#ifdef CLIENT_AUTH
 void* create_nsd_daemon(void* arg) {
 	daemon_param_t* params = (daemon_param_t*)arg;
 	int port = params->port;
 	EVP_PKEY *pub_key = params->pub_key;	
 	register_auth_service(port, pub_key);
-	return NULL;
-}
-
-void* create_csr_daemon(void* arg) {
-	daemon_param_t* params = (daemon_param_t*)arg;
-	int csr_daemon_port = params->port;
-	csr_server_create(csr_daemon_port);
 	return NULL;
 }
 
@@ -272,3 +277,4 @@ void* create_auth_daemon(void* arg) {
 	EVP_PKEY_free(pkey);
 	return NULL;
 }
+#endif

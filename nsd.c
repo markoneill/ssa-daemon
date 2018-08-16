@@ -24,6 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef CLIENT_AUTH
 #include "nsd.h"
 #include "log.h"
 
@@ -256,4 +257,4 @@ void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GC
 	}
 	return;
 }
-
+#endif
