@@ -24,7 +24,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 	int type;
 	int type_len;
 
-	printf("Connect overriden\n");
+	//printf("Connect overriden\n");
 
 	/* Determine location of original connect call */
 	real_connect = dlsym(RTLD_NEXT, "connect");
