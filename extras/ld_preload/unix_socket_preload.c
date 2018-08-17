@@ -147,7 +147,7 @@ int socket(int domain, int type, int protocol){
 
     get_addr_string((struct sockaddr*)&local_address);
 
-    process_id = getpid();
+    process_id = getpid(); // need to put a mutext around it
     id  = concatenate(process_id, tcp_fd);
     global_id = id;
     global_tcp_fd = tcp_fd;
@@ -590,18 +590,7 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
         perror("getpeername() failed");
         return -1;
     }
-    //printf("Peer's IP address is: %s\n", inet_ntoa(peer_address.sin_addr));
-    //printf("Peer's port is: %d\n", (int) ntohs(peer_address.sin_port));
-    //struct sockaddr_in current_address;
-    //int current_len;
-    //current_len = sizeof(current_address);
-    //if (getsockname(new_tcp_fd, &current_address, &current_len) == -1) {
-    //perror("getsockname");
-    //return -1;
-    //}
-    //get_addr_string((struct sockaddr*)&current_address);
-    //need to find out the port that it is connected to(the one get listened on) and send back the address with the port number that it is connected to. 
-
+  
     fd = createUnixSocket();
     strcpy(buff, "6 ssa listen notify");
     ret = send(fd, buff, strlen(buff)+1, 0);
@@ -671,7 +660,14 @@ int listen(int sockfd, int backlog){
     unsigned long id;
     struct sockaddr* addr;
 
+
+
     if(is_bind == 0){
+        //struct sockaddr_in new_local_address;
+        //new_local_address.sin_family = AF_INET;
+        //new_local_address.sin_port = 0;
+        //new_local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
         int bind_result;
         orgi_bind_type bind_orgi;
         bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
@@ -682,6 +678,8 @@ int listen(int sockfd, int backlog){
         }
         socklen_t size = sizeof(local_address);
         getsockname(sockfd, (struct sockaddr *) &local_address, &size);
+
+        is_bind == 1;
     }
 
     fd = createUnixSocket();
@@ -744,20 +742,11 @@ int listen(int sockfd, int backlog){
         return -1;
     }
 
-    struct sockaddr_in current_address;
-    int current_len;
-    current_len = sizeof(current_address);
-    if (getsockname(sockfd, &current_address, &current_len) == -1) {
-    perror("getsockname");
-    return -1;
-    }
-    //printf("Current IP address is in listen: %s\n", inet_ntoa(current_address.sin_addr));
-    //printf("Current port is in listen: %d\n", (int) ntohs(current_address.sin_port));
-
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
 
+    return ret;
   }
   else{
     orgi_listen_type listen_orgi;
