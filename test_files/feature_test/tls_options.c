@@ -1,10 +1,10 @@
-/* This test creates a client and a server, to test a varioty of TLS options.
- * It forks a server to listen for incomming connections and evaluate them for
- * corectness. If the ssa does not behave as expected the server will exit with
- * a non-zero return code and the sigchild handler will be called noatifying
+/* This test creates a client and a server, to test a variety of TLS options.
+ * It forks a server to listen for incomming connections and evaluates them for
+ * correctness. If the ssa does not behave as expected the server will exit with
+ * a non-zero return code and the sigchild handler will be called notifying
  * the test program that an error was discovered. The state of the program
- * may then be printed before termination, or loged depending on future
- * implementation desisions.
+ * may then be printed before termination, or logged depending on future
+ * implementation decisions.
  */
 
 #include <semaphore.h>
