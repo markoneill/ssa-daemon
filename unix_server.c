@@ -44,7 +44,7 @@ char* get_addr_string(struct sockaddr *addr) {
     char portString[256];
     char semicolon[2];
     strcpy(semicolon, ":");
-    sprintf(portString, "%ld", port);
+    sprintf(portString, "%d", port);
     strcat(str, semicolon);
     strcat(str, portString);
 
@@ -118,12 +118,8 @@ int create_unix_socket(){
 int unix_recv(evutil_socket_t fd, short events, void *arg) {
 	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
 	int unix_fd;
-	int ret;
 	int len;
-	int level;
-	int optname;
 	int blocking;
-	int optval;
 
     char messageBuff[8192];
 	struct sockaddr_un from;
@@ -133,7 +129,6 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 	char *id_ptr;
 	char *level_ptr;
 	char *optname_ptr;
-	char *optval_ptr;
 	char *blocking_ptr;
 	socklen_t optlen;
 
@@ -209,7 +204,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
 			addr_internal.sin_family = AF_INET;
 			addr_internal.sin_port = htons(port_number);
-			inet_aton(address, &addr_internal.sin_addr.s_addr);
+			inet_aton(address, &addr_internal.sin_addr);
 		}
 		else if(buff[1] == 'r' && buff[2] == 'a'){
 			chopString(buff, 3);
@@ -224,7 +219,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
             addr_remote.sin_family = AF_INET;
 			addr_remote.sin_port = htons(port_number);
-			inet_aton(address, &addr_remote.sin_addr.s_addr);
+			inet_aton(address, &addr_remote.sin_addr);
 		}
 		else if(buff[1] == 'b' && buff[2] == 'n'){
 			chopString(buff, 3);
@@ -286,7 +281,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
 			addr_internal.sin_family = AF_INET;
 			addr_internal.sin_port = htons(port_number);
-			inet_aton(address, &addr_internal.sin_addr.s_addr);
+			inet_aton(address, &addr_internal.sin_addr);
 
 			addr_internal_len = sizeof(addr_internal);
 
@@ -314,7 +309,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
 			addr_internal.sin_family = AF_INET;
 			addr_internal.sin_port = htons(port_number);
-			inet_aton(address, &addr_internal.sin_addr.s_addr);
+			inet_aton(address, &addr_internal.sin_addr);
 		}
 		else if(buff[1] == 'e' && buff[2] == 'a'){
 			chopString(buff, 3);
@@ -329,7 +324,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
             addr_external.sin_family = AF_INET;
 			addr_external.sin_port = htons(port_number);
-			inet_aton(address, &addr_external.sin_addr.s_addr);
+			inet_aton(address, &addr_external.sin_addr);
 
 			addr_internal_len = sizeof(addr_internal);
 			addr_external_len = sizeof(addr_external);
@@ -359,7 +354,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
 			addr_internal.sin_family = AF_INET;
 			addr_internal.sin_port = htons(port_number);
-			inet_aton(address, &addr_internal.sin_addr.s_addr);
+			inet_aton(address, &addr_internal.sin_addr);
 		}
 		else if(buff[1] == 'e' && buff[2] == 'a'){
 			chopString(buff, 3);
@@ -374,7 +369,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 
             addr_external.sin_family = AF_INET;
 			addr_external.sin_port = htons(port_number);
-			inet_aton(address, &addr_external.sin_addr.s_addr);
+			inet_aton(address, &addr_external.sin_addr);
 
 			addr_internal_len = sizeof(addr_internal);
 			addr_external_len = sizeof(addr_external);

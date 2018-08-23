@@ -663,11 +663,6 @@ int listen(int sockfd, int backlog){
 
 
     if(is_bind == 0){
-        //struct sockaddr_in new_local_address;
-        //new_local_address.sin_family = AF_INET;
-        //new_local_address.sin_port = 0;
-        //new_local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
         int bind_result;
         orgi_bind_type bind_orgi;
         bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
