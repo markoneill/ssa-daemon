@@ -214,7 +214,7 @@ size_t parse_config(char* filename) {
 		log_printf(LOG_ERROR, "Default configuration for AppCustomValidation not set.\n");
 		exit(-1);
 	}
-	
+
 	// Parse all the profiles
 
 	for(i = 0; i < num_profiles; i++) {
@@ -236,7 +236,7 @@ size_t parse_config(char* filename) {
 /* return NULL if the config has not been parsed 
  * If it has, get the requested application
  * If the requested application does not exist return
- * the defualt configuration
+ * the default configuration
 */
 ssa_config_t* get_app_config(char* app_path)
 {
