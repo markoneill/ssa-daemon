@@ -1,19 +1,21 @@
-/* This test creates a client and a server, to test a variety of TLS options.
- * It forks a server to listen for incomming connections and evaluates them for
- * correctness. If the ssa does not behave as expected the server will exit with
- * a non-zero return code and the sigchild handler will be called notifying
+/* This test creates a client and a server, to test a varioty of TLS options.
+ * It forks a server to listen for incomming connections and evaluate them for
+ * corectness. If the ssa does not behave as expected the server will exit with
+ * a non-zero return code and the sigchild handler will be called noatifying
  * the test program that an error was discovered. The state of the program
- * may then be printed before termination, or logged depending on future
- * implementation decisions.
+ * may then be printed before termination, or loged depending on future
+ * implementation desisions.
  */
 
+#include <arpa/inet.h>
+#include <netdb.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <netdb.h>
 #include "../../in_tls.h"
 
 #define CERT_FILE_A	"../certificate_a.pem"
@@ -76,13 +78,15 @@ int main(int argc, char* argv[]) {
 	}
  */
 	sem_init(&server_listens_sem, 1, 0);
+	server_init();
+	client_init();
 	if ((server_pid = fork())) {
-		server_init();
 		run_option_test_server();
+		server_destroy();
 		return 0;
 	}
-	client_init();
 	run_option_test_client(server_pid);
+	client_destroy();
 	return 0;
 }
 
@@ -173,7 +177,7 @@ int connect_test_client(void) {
 	struct addrinfo* addr_ptr;
 	struct addrinfo* addr_list;
 
-	memset(&addr_list, 0, sizeof(addr));
+	memset(&addr_list, 0, sizeof(hints));
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_family = AF_INET;
 
@@ -185,19 +189,19 @@ int connect_test_client(void) {
 	}
 
 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
-		sock = socket(addr.ai_family, addr.ai_socktype, IPPROTO_TLS);
+		sock = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, IPPROTO_TLS);
 		if (sock == -1) {
 			perror("socket");
 			continue;
 		}
 
-		if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, crt_host, strlen(crt_host)+1) == -1) {
-			perror("setsockopt: TLS_REMOTE_HOSTNAME");
-			close(sock);
-			continue;
-		}
+////////	if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, crt_host, strlen(crt_host)+1) == -1) {
+////////		perror("setsockopt: TLS_REMOTE_HOSTNAME");
+////////		close(sock);
+////////		continue;
+////////	}
 		
-		if (connect(sock, &addr, addr.ai_addrlen) == -1) {
+		if (connect(sock, (struct sockaddr*)addr_ptr, addr_ptr->ai_addrlen) == -1) {
 			perror("connect");
 			close(sock);
 			continue;
@@ -224,22 +228,22 @@ int connect_test_client(void) {
 
 int connect_test_server(void) {
 	char servername[255];
-	int servername_len = sizeof(servername);
+	socklen_t servername_len = sizeof(servername);
 	char request[BUFFER_SIZE];
-	char response[BUFFER_SIZE];
-	struct sockaddr_in addr;
-	struct sockaddr_storage addr;
-	socklen_t addr_len = sizeof(addr);
+//	char response[BUFFER_SIZE];
+	struct sockaddr_in in_addr;
+	struct sockaddr_storage s_addr;
+	socklen_t addr_len = sizeof(s_addr);
 	int c_fd;
 
 	memset(request, 0, BUFFER_SIZE);
 
-	addr.sin_family = AF_INET;
-	addr.sin_addr.s_addr = inet_addr("0.0.0.0");
-	addr.sin_port = htons(443);
+	in_addr.sin_family = AF_INET;
+	in_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
+	in_addr.sin_port = htons(443);
 
 	int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
-	bind(fd, (struct sockaddr*)&addr, sizeof(addr));
+	bind(fd, (struct sockaddr*)&in_addr, sizeof(in_addr));
 	if (setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
 		perror("cert a");
 	}
@@ -255,15 +259,15 @@ int connect_test_server(void) {
 	listen(fd, SOMAXCONN);
 	sem_post(&server_listens_sem);
 
-	c_fd = accept(fd, (struct sockaddr*)&addr, &addr_len);
+	c_fd = accept(fd, (struct sockaddr*)&s_addr, &addr_len);
 	if (getsockopt(c_fd, IPPROTO_TLS, TLS_HOSTNAME, servername, &servername_len) == -1) {
 		perror("getsockopt: TLS_HOSTNAME");
 		return FAIL;
 	}
 	printf("Client requested host %d %s\n", servername_len,  servername);
 	recv(c_fd, request, BUFFER_SIZE, 0);
-	handle_req(request, response);
-	send(c_fd, response, BUFFER_SIZE, 0);
+//	handle_req(request, response);
+	send(c_fd, request, BUFFER_SIZE, 0);
 	close(c_fd);
 
 	return PASS;
