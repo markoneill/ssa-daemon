@@ -12,7 +12,7 @@ The SSA has two components - a [kernel module](https://github.com/markoneill/ssa
 Both need to be installed and running to provide TLS as an operating system service.
 The kernel component has its own README with installation instructions, and you are encouraged to build and install and component first.
 
-The install_packages.sh script currently installs dependencies for Fedora and Ubuntu systems. You may be need to modify this script or install some packages manually if you are using a different Linux distribution.
+The install_packages.sh script currently installs dependencies for Fedora and Ubuntu systems. You may need to modify this script or install some packages manually if you are using a different Linux distribution.
 
 ## Compatibility
 The SSA is actively developed on Fedora, but may compile and run on other systems with some minor changes.
