@@ -100,12 +100,18 @@ function insert_ssa {
 function init_dir {
 	# Make sure we are in the right directory
 	echo "checking direcotry dependencies..."
+	missing=false
 	if [ ! -d ${WRAPPER_DIR} ]; then
 		echo -e "\terror: missing directory dependency ${WRAPPER_DIR}"
+		missing=true
 	fi
 	if [ ! -d ${LOG_DIR} ]; then
 		echo -e "\tmaking log directory"
 		mkdir ${LOG_DIR} || (echo "\tfailed to make ${LOG_DIR}" && $missing=true)
+		missing=true
+	fi
+	if [[ $missing = false ]]; then
+		echo -e "\tall directorys present"
 	fi
 	return 0
 }
@@ -139,7 +145,7 @@ function run_tests {
 	tests=($(find -maxdepth 1 -perm -111 -type f | grep -v run_tests.sh))
 	for ix in "${tests[@]}"
 	do
-		echo -e "\t$ix\n"
+		echo -e "\n\n\t$ix\n"
 		printf "%`tput cols`s\n" | tr ' ' '*'
 		$ix
 	done
@@ -153,9 +159,9 @@ function run_tests {
 
 
 function main {
-	test -n $1 && echo true || echo false 
 	if [ -n $1 ]; then
 		MODE="$1"
+		echo "mode = \"${MODE}\""
 	else
 		print_usage ${0}
 		return 0
@@ -163,7 +169,6 @@ function main {
 
 	init_dir
 
-	echo "mode = \"${MODE}\""
 	if [[ ${MODE} = all ]]; then
 		build_tests
 		run_tests
