@@ -421,6 +421,7 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 	totps_t *totps = NULL;
 	char single_byte[1];
 	char twilio_error[100];
+	char response[120];
 	
 	// read the length of the phone number field
 	if (totp_ctx->expected_phone_len == 0 && recv_len > 0) {
@@ -494,14 +495,18 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 		totps = generate_totp();
 		printf("TOTPS GENERATED: %s\n", totps->email_totp);
 		printf("TOTPS GENERATED: %s\n", totps->phone_totp);
-		printf("ACCESS CODE: %s\n", totps->access_code);
+		printf("ACCESS CODE: %s\n", totps->access_code_email);
+		printf("ACCESS CODE: %s\n", totps->access_code_phone);
 		int sms_response_code = twilio_send_message(totp_ctx->phone_num, totps->phone_totp, twilio_error);
 		if (sms_response_code != 0) {
 			printf("Error sending totp.\n");
 			printf("%s\n", twilio_error);
 		}
 		printf("Would send email here..\n");//##EMAIL TO BE SENT
-		bufferevent_write(bev, totps->access_code, strlen(totps->access_code+1));
+		snprintf(response, 120, "%i%s%i%s", strnlen(totps->access_code_email, 55), totps->access_code_email, 
+											strnlen(totps->access_code_phone, 55), totps->access_code_phone);
+		bufferevent_write(bev, response, strnlen(response, 120));
+		
 		free_totps(totps);
 	}
 }
