@@ -192,27 +192,27 @@ size_t parse_config(char* filename) {
 	//TODO failout if a default is not set 
 	if (config_lookup(&cfg, "Default.MinProtocol") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for MinProtocol not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}
 	if (config_lookup(&cfg, "Default.CipherSuite") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for CipherSuite not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}
 	if (config_lookup(&cfg, "Default.SessionCacheTimeout") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for SessionCacheTimeout not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}
 	if (config_lookup(&cfg, "Default.Validation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for Validation not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}
 	if (config_lookup(&cfg, "Default.TrustStoreLocation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for TrustStoreLocation not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}   
 	if (config_lookup(&cfg, "Default.AppCustomValidation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for AppCustomValidation not set.\n");
-		exit(-1);
+		EXIT_FAILURE
 	}
 
 	// Parse all the profiles
