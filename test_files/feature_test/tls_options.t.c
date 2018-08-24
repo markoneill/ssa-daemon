@@ -26,22 +26,26 @@
 
 #define LOREM_IPSUM "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
 
+#define NUM_TESTS 8
 #define PASS 0
 #define FAIL 1
 
-typedef int (*test_t)(void);
+typedef int (*test_func_t)(void);
+typedef struct {
+	test_func_t client_func;
+	test_func_t server_func;
+	char* name;
+} test_t;
 
 /* initialization */
-void server_init(void);
+void server_init(int* server_pid, test_t* tests, test_func_t start_funk);
 void server_destroy(void);
 void client_init(void);
 void client_destroy(void);
 
 /* test functions */
-void run_option_test_client(int server_pid);
-void run_option_test_server(void);
-int c_run_test(test_t test, char* name);
-int s_run_test(test_t test, char* name);
+void run_option_tests_client(int* server_pid, test_t* tests, int num);
+void run_option_tests_server(test_t* tests, int num, test_func_t start_func);
 
 int connect_test_client(void);
 int connect_test_server(void);
@@ -72,27 +76,46 @@ int status;
 
 int main(int argc, char* argv[]) {
 	int server_pid;
+	test_t tests[NUM_TESTS] =
+			{ {&connect_test_client, &connect_test_server, "connect_test_server"},
+			  {&hostname_test_client, &hostname_test_server, "hostname_test_server"},
+			  {&certificate_test_client, &certificate_test_server, "certificate_test_server"},
+			  {&ttl_test_client, &ttl_test_server, "ttl_test_server"},
+			  {&disable_cipher_test_client,
+				  &disable_cipher_test_server,
+				  "disable_cipher_test_server"},
+			  {&peer_identity_test_client,
+				  &peer_identity_test_server,
+				  "peer_identity_test_server"},
+			  {&request_peer_auth_test_client,
+				  &request_peer_auth_test_server,
+				  "request_peer_auth_test_server"},
+			  {&upgrade_test_client, &upgrade_test_server, "upgrade_test_server"} };
+
 /*	if (argc < 2) {
 	printf("USAGE: %s <host name>\n", argv[0]);
 	return 0;
 	}
  */
+
+	
 	sem_init(&server_listens_sem, 1, 0);
-	server_init();
+	sem_init(&server_ready_sem, 1, 0);
+	sem_init(&client_ready_sem, 1, 0);
+	server_init(&server_pid, tests, NULL);
 	client_init();
-	if ((server_pid = fork())) {
-		run_option_test_server();
-		server_destroy();
-		return 0;
-	}
-	run_option_test_client(server_pid);
+	run_option_tests_client(&server_pid, tests, NUM_TESTS);
 	client_destroy();
 	return 0;
 }
 
-void server_init(void) {
-	sem_init(&server_ready_sem, 1, 0);
-	printf("server ready\n");
+void server_init(int* server_pid, test_t* tests, test_func_t start_func) {
+	if ((*server_pid = fork())) {
+		printf("server ready\n");
+		run_option_tests_server(tests, NUM_TESTS, start_func);
+		server_destroy();
+		exit(EXIT_SUCCESS);
+	}
 	return;
 }
 
@@ -104,7 +127,6 @@ void server_destroy(void) {
 
 void client_init(void) {
 	signal(SIGCHLD, client_sigchld_handler);
-	sem_init(&client_ready_sem, 1, 0);
 	printf("client ready\n");
 	return;
 }
@@ -115,62 +137,54 @@ void client_destroy(void) {
 	return;
 }
 
-void run_option_test_client(int server_pid) {
-	int failcode = 0;
+void run_option_tests_client(int* server_pid, test_t* tests, int num) {
+	int failcode;
+	int i;
 
-	status = PASS;
-	if ((failcode = c_run_test(&connect_test_client, "connect")) ||
-			(failcode = c_run_test(hostname_test_client, "hostname")) ||
-			(failcode = c_run_test(certificate_test_client, "certificate")) ||
-			(failcode = c_run_test(ttl_test_client, "ttl")) ||
-			(failcode = c_run_test(disable_cipher_test_client, "disable cipher")) ||
-			(failcode = c_run_test(peer_identity_test_client, "peer identity")) ||
-			(failcode = c_run_test(request_peer_auth_test_client, "request peer auth")) ||
-			(failcode = c_run_test(upgrade_test_client, "upgrade")) ) {
-		printf("some test failed clientside with code %d", -failcode);
-		kill(server_pid, SIGINT);
+	for (i = 0; i < num; i++) {
+		printf("%s...\n", tests[i].name);
+		sem_post(&client_ready_sem);
+		sem_wait(&server_ready_sem);
+		printf("\tclient starts %s\n", tests[i].name);
+		failcode = (*(tests[i].client_func))();
+		if (~(failcode = failcode || status)) {
+			if (tests[i].name) printf("\t\tTEST PASSED\n");
+		}
+		else {
+			printf("\t\tTEST FAILED (code %d)", -failcode);
+			kill(*server_pid, SIGINT);
+			server_init(server_pid, tests, tests[i+1].server_func);
+		}
 	}
 }
 
-void run_option_test_server(void) {
-	int failcode = 0;
+void run_option_tests_server(test_t* tests, int num, test_func_t start_func) {
+	int failcode;
+	int i = 0;
 
-	if ((failcode = s_run_test(&connect_test_server, NULL)) ||
-			(failcode = s_run_test(hostname_test_server, NULL)) ||
-			(failcode = s_run_test(certificate_test_server, NULL)) ||
-			(failcode = s_run_test(ttl_test_server, NULL)) ||
-			(failcode = s_run_test(disable_cipher_test_server, NULL)) ||
-			(failcode = s_run_test(peer_identity_test_server, NULL)) ||
-			(failcode = s_run_test(request_peer_auth_test_server, NULL)) ||
-			(failcode = s_run_test(upgrade_test_server, NULL)) )
-		printf("some test failed serverside with code %d", -failcode);
-}
-
-int c_run_test(test_t test, char* name) {
-	int result;
-
-	sem_post(&client_ready_sem);
-	sem_wait(&server_ready_sem);
-	if (name) printf("running %s\n", name);
-	result = (*test)();
-	if (~(result = result || status)) {
-		if (name) printf("\t%s compleated\n", name);
+	if (start_func) {
+		while (tests[i].server_func != start_func) {
+			i++;
+			if (i > num) {
+				printf("Bad function pointer to server");
+				return;
+			}
+		}
 	}
 
-	return result;
-}
-
-int s_run_test(test_t test, char* name) {
-	int result;
-
-	sem_post(&server_ready_sem);
-	sem_wait(&client_ready_sem);
-	if (name) printf("running %s\n", name);
-	result = (*test)();
-	if (~result) {
-		if (name) printf("\t%s completed\n", name);
+	for (; i < num; i++) {
+		sem_post(&client_ready_sem);
+		sem_wait(&server_ready_sem);
+		printf("\tserver starts %s\n", tests[i].name);
+		failcode = (*(tests[i].server_func))();
+		if (~(failcode = failcode || status)) {
+			printf("\t%s compleated\n", tests[i].name);
+		}
+		else {
+			printf("test failed with code %d", -failcode);
+			exit(EXIT_FAILURE);
+		}
 	}
-	return result;
 }
 
 int connect_test_client(void) {
