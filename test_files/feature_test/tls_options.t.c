@@ -168,7 +168,7 @@ int s_run_test(test_t test, char* name) {
 	if (name) printf("running %s\n", name);
 	result = (*test)();
 	if (~result) {
-		if (name) printf("\t%s compleated\n", name);
+		if (name) printf("\t%s completed\n", name);
 	}
 	return result;
 }
