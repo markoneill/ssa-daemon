@@ -37,9 +37,7 @@ totps_t* generate_totp() {
 }
 
 char* validate_totp(char* key, char* totp) {
-    printf("Validate Otp Not implemented\n");
-    //int is_valid = totp_verify(secret_base32, user_totp, DIGITS, PERIOD, SHA256);
-    return NULL;
+    return totp_verify(key, totp, DIGITS, PERIOD, SHA256);
 }
 
 void free_totps(totps_t* totps) {
