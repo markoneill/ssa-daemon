@@ -25,7 +25,6 @@
 #define EMAIL_TOTP_LEN 6
 #define PHONE_TOTP_LEN 8
 
-
 typedef struct csr_ctx {
 	struct event_base* ev_base;
 	X509* ca_cert;
@@ -570,48 +569,15 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
     }
 //## PHONE OTP
 	 if (totp_ctx->phone_totp_length < PHONE_TOTP_LEN && recv_len > 0) {
-       int read_len = recv_len;
+        int read_len = recv_len;
 		if (recv_len > (PHONE_TOTP_LEN - totp_ctx->phone_totp_length)) {
 			read_len = (PHONE_TOTP_LEN - totp_ctx->phone_totp_length);
 		}
-		printf("this is the read_length: %s\n", read_len);
-		printf("this is the phone totp length: %s\n", totp_ctx->phone_totp_length);
 		bufferevent_read(bev, totp_ctx->phone_totp, read_len);
 		totp_ctx->phone_totp_length += read_len;
 		recv_len -= read_len;
 		printf("This is the phone totp: %s\n", totp_ctx->phone_totp);
     }
-//##LENGTH OF PUBLIC KEY IN BYTES
-	/*if (totp_ctx->expected_code_len == 0 && recv_len > 0) {
-		// the first byte of the request is the length of the code number in bytes
-		bufferevent_read(bev, single_byte, 1);
-		recv_len--;
-		totp_ctx->expected_code_len = single_byte[0];
-		if (totp_ctx->expected_code_len <= 0) {
-			printf("Bad Request: access code length is: %i\n", totp_ctx->expected_code_len);
-			// close connection...
-            free(totp_ctx);
-			return;
-		} else { 
-			totp_ctx->access_code = (char*)calloc(totp_ctx->expected_code_len+1, sizeof(char));
-		}
-	}*/
-//##THEIR PUBLIC KEY
-    /*if (totp_ctx->phone_length == totp_ctx->expected_phone_len && totp_ctx->email_length == totp_ctx->expected_email_len) {
-        printf("TOTP endpoint got all fields\n");
-        printf("Phone Number: %s\nEmail: %s\n", totp_ctx->phone_num, totp_ctx->email);
-        // Get a TOTP and then send it to the specified number and email...
-        totp = generate_totp();
-        printf("TOTP GENERATED: %s\n", totp);
-        int sms_response_code = twilio_send_message(totp_ctx->phone_num, totp, twilio_error);
-        if (sms_response_code != 0) {
-            printf("Error sending totp.\n");
-            printf("%s\n", twilio_error);
-        }
-        printf("Would send email here..\n");
-        if (totp != NULL)
-            free(totp);
-    }*/
 }
 
 void validate_totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
@@ -619,7 +585,7 @@ void validate_totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
 	if (events & BEV_EVENT_ERROR)
 		perror("Error from bufferevent");
 	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-        free(ctx);
+        free_validate_totp_ctx(ctx);
 		printf("Freeing the bufferevent\n");
 		bufferevent_free(bev);
 	}
@@ -653,9 +619,7 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 				bufferevent_setcb(bev, totp_read_cb, NULL, totp_event_cb, req_ctx);
 				printf("Updated callback to totp req\n");
                 if (recv_len > 0) {
-                    printf("Calling totp read to get rest of message\n");
                     totp_read_cb(bev, req_ctx);
-                    printf("return\n");
                 }
 				break;
 			case 1:
@@ -663,6 +627,9 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 				// set callback to validation
 				bufferevent_setcb(bev, validate_totp_read_cb, NULL, validate_totp_event_cb, req_ctx);
 				printf("Updated callback to validate totp\n");
+                if (recv_len > 0) {
+                    validate_totp_read_cb(bev, req_ctx);
+                }
 				break;
 			case 2:
 				req_ctx = create_csr_ctx(NULL);
