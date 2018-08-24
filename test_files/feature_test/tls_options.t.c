@@ -92,10 +92,12 @@ int main(int argc, char* argv[]) {
 
 void server_init(void) {
 	sem_init(&server_ready_sem, 1, 0);
+	printf("server ready\n");
 	return;
 }
 
 void server_destroy(void) {
+	printf("destroy server");
 	sem_destroy(&server_ready_sem);
 	return;
 }
@@ -103,10 +105,12 @@ void server_destroy(void) {
 void client_init(void) {
 	signal(SIGCHLD, client_sigchld_handler);
 	sem_init(&client_ready_sem, 1, 0);
+	printf("client ready\n");
 	return;
 }
 
 void client_destroy(void) {
+	printf("destroy client");
 	sem_destroy(&client_ready_sem);
 	return;
 }

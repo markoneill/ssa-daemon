@@ -1,5 +1,6 @@
 # Feature tests
-Feature tests is a collection of simple test cases to verify corect SSA functionality.
+Feature tests is a collection of simple test cases to verify corect SSA functionality. The run_tests.sh script is used to initialize the test environment and run each of the test programs.
+Tests are stored in files with a .t.c extention. Other .c files are included to give multiple test files access to common soket operations.
 
 ## Featrues tested
 ### Socket options

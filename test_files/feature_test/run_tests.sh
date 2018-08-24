@@ -21,7 +21,8 @@ function print_usage {
 	echo -e "\trebuild_tests:\tclean and build each test"
 	echo -e "\trebuild_daemon:\tclean and build the tls_wraper"
 	echo -e "\trebuild_ssa\tclean, build and insert the ssa"
-	echo -e "\trun:\t\trun all the tests without rebuilding them"
+	echo -e "\trun:\t\trun all exicutable files in this directory"
+	echo -e "\t\t\tNOAT: if tls_wraper is running, all tests will be exicuted against that instance of the daemon. Otherwise a new instance is created for each test"
 	echo -e "\tusage:\t\tprint this usage statement"
 	return $?
 }
@@ -123,7 +124,7 @@ function clean_daemon {
 
 function build_daemon {
 	echo "make project ssa-daemon"
-	make -s -C ${WRAPPER_DIR} || (echo -e "\ttls_wrapper build error.\nexiting" ; exit 1)
+	make -s -C ${WRAPPER_DIR} || (echo -e "\terror building tls_wrapper.\nexiting" ; exit 1)
 }
 
 function build_tests {
@@ -133,18 +134,22 @@ function build_tests {
 function run_tests {
 	echo "starting tests..."
 	
-	let kill_daemon=false
+	own_daemon=false
 	if [ `ps -au | grep -c tls_wrapper` -lt 1 ]; then
-		is_root "tls_wrapper must be run as root.\nChange to root user and try again."
-
+		is_root "tls_wrapper must be run as root.\nstart the tls_wrappre or try again as root"
+		echo "`date`" > ${LOG_DIR}/tls_wrapper.log
 		cd ${WRAPPER_DIR}
-		./tls_wrapper  1>${LOG_DIR}/tls_wrapper.log 2>&1 || echo -e "\ntls_wrapper died" &
-		kill_daemon=true
+		own_daemon=true
 	fi
 
 	tests=($(find -maxdepth 1 -perm -111 -type f | grep -v run_tests.sh))
 	for ix in "${tests[@]}"
 	do
+		if [ $own_daemon = true ]; then
+			pkill tls_wrapper
+			./tls_wrapper  1>>${LOG_DIR}/tls_wrapper.log 2>&1
+			|| echo -e "\ntls_wrapper died" &
+		fi
 		echo -e "\n\n\t$ix\n"
 		printf "%`tput cols`s\n" | tr ' ' '*'
 		$ix
@@ -152,7 +157,7 @@ function run_tests {
 	       	
 
 	echo "done"
-	if [ $kill_daemon = true ]; then
+	if [ $own_daemon = true ]; then
 		pkill tls_wrapper
 	fi
 }
