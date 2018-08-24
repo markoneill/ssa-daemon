@@ -15,6 +15,7 @@
 #include <netdb.h>
 #include "../../in_tls.h"
 #include "../../config.h"
+#include "test_view.h"
 
 #define NO_APP_CUSTOM		"cfgFiles/no_app_custom.cfg"
 #define NO_CACHE_TIMEOUT	"cfgFiles/no_cache_timeout.cfg"
@@ -30,19 +31,6 @@
 #define c	"cfgFiles/.cfg"
 #define d	"cfgFiles/.cfg"
 #define e	"cfgFiles/.cfg"
-#define BUFFER_SIZE	100
-
-#define PASS 1
-#define FAIL 0
-#define RESULT_POSITION 65
-#define PASSED_TEST "\x1B[32mPASSED\x1B[0m" 
-#define FAILED_TEST "\x1B[31mFAILED\x1B[0m"
-
-typedef int (*test_funct_t)(void);
-typedef struct {
-	test_funct_t func;
-	char* name;
-}test_t;
 
 
 //testing parse_config(char* filename) Branch Coverage
@@ -194,28 +182,8 @@ int test_default_app_config (void){
 	return PASS;
 }
 
-void run_tests(test_t* tests, size_t num_tests) {
-	char buf[BUFFER_SIZE];
-	int ret;
-	int i;
-	int len;
-	int passed_tests = 0;
-	printf("Starting Tests\n");
-	printf("********************************************************************************\n");
-	for (i = 0 ; i < num_tests ; i++ ){
-		ret = (*tests[i].func)();
-		len = strlen(tests[i].name);	
-		strcpy(buf,tests[i].name);
-		memset(&buf[len],'.',RESULT_POSITION-len);
-		strcpy(&buf[RESULT_POSITION],ret ? PASSED_TEST :FAILED_TEST);
-		printf("%s\n", buf);
-		passed_tests+= ret;
-	}
-	printf("********************************************************************************\n\n");
-	printf("PASSED %d/%ld tests\n\n", passed_tests, num_tests);
-}
 
-#define SIZE_OF_TEST_ARRAY 8
+#define SIZE_OF_TEST_ARRAY 9 
 
 int main(int argc, char* argv[]){
 	test_t test_array[SIZE_OF_TEST_ARRAY] = 
@@ -227,9 +195,10 @@ int main(int argc, char* argv[]){
 		{test_parse_config_multiple_profiles, "MULTIPLE PROFILES"},
 		{test_default_app_config, "RETRIEVE DEFAULT PROFILE"},
 		{test_global_app_config_yes,"RETRIEVE VALID APP PROFILE"},
-		{test_global_app_config_no,"FAKE PROFILE RETURNS DEFAULT"}
+		{test_global_app_config_no,"FAKE PROFILE RETURNS DEFAULT"},
+		{test_parse_config_same_name_profiles, "SAME NAME PROFILES9012345678901234567890123456789012345678901234567890"}
        	};
-	run_tests(test_array,SIZE_OF_TEST_ARRAY);
+	run_tests("Config File Tests",test_array,SIZE_OF_TEST_ARRAY);
 	return 0;
 }
 

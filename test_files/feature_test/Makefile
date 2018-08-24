@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g
 LIBS = -lpthread
-SOURCE = $(filter $(wildcard *.c), *.t.c)
+SOURCE = $(filter-out $(wildcard *.t.c),$(wildcard *.c))
 TLS_OPTIONS_TEST = tls_options.t.c
 TLS_OPTIONS_EXE = $(TLS_OPTIONS_TEST:.t.c=)
 
@@ -20,7 +20,7 @@ $(TLS_OPTIONS_EXE): $(TLS_OPTIONS_TEST)
 
 $(SSA_CONF_EXE): MY_SOURCE=$(SOURCE) $(SSA_CONF_TEST) ../../config.c ../../config.h ../../hashmap_str.c ../../hashmap_str.h ../../log.c ../../log.h
 $(SSA_CONF_EXE): MY_LIBS=$(LIBS) `pkg-config --libs libconfig` 
-$(SSA_CONF_EXE): $(MY_SOURCE)
+$(SSA_CONF_EXE): $(SSA_CONF_TEST) ../../config.c ../../config.h ../../hashmap_str.c ../../hashmap_str.h ../../log.c ../../log.h
 	$(CC) $(CFLAGS) -o $(SSA_CONF_EXE) $(MY_SOURCE) $(MY_LIBS)
 
 clean:
