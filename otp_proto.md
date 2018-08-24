@@ -14,9 +14,10 @@
 
 ## OTP Validate Request
     8 bits (1 Byte) - for endpoint specifier
+    1 Byte - for length of Access Code
     64 bits (8 Bytes) - Access Code
-    48 bits (6 Bytes) - first OTP
-    64 bits (8 Bytes) - second OTP
+    48 bits (6 Bytes) - email OTP
+    64 bits (8 Bytes) - phone OTP
     16 bits (2 Bytes) - length of public key in bytes (Max 65535)
     X bits - Their public key
 

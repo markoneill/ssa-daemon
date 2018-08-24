@@ -22,6 +22,9 @@
 #define CERT_DAYS 365
 #define CERT_PATH "test_files/certificate_a.pem"
 #define KEY_PATH "test_files/key_a.pem"
+#define EMAIL_TOTP_LEN 6
+#define PHONE_TOTP_LEN 8
+
 
 typedef struct csr_ctx {
 	struct event_base* ev_base;
@@ -39,7 +42,7 @@ typedef struct con_ctx {
 	int max_length;
 } con_ctx_t;
 
-typedef struct totp_ctx {
+typedef struct totp_ctx {//##
 	// The expected length of the characters in the phone num
 	int expected_phone_len;
 	// The length of the read characters
@@ -52,6 +55,8 @@ typedef struct totp_ctx {
 
 typedef struct validate_totp_ctx {
 	char* access_code;
+	int expected_code_len;
+	int code_length; 
     // max email totp len == 6
     int email_totp_length;
 	char* email_totp;
@@ -177,6 +182,8 @@ validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
 
 	ctx = (validate_totp_ctx_t*)malloc(sizeof(validate_totp_ctx_t));
 	ctx->access_code = 0;
+	ctx->expected_code_len = 0; 
+	ctx->code_length = 0;
 	ctx->phone_totp = NULL;
 	ctx->email_totp = NULL;
 	ctx->con_ctx = NULL;
@@ -403,7 +410,8 @@ void new_event_cb(struct bufferevent *bev, short events, void *ctx) {
 	}
 }
 
-void totp_read_cb(struct bufferevent *bev, void *ctx) {
+void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS AND EMAIL
+
 	printf("TOTP READ CALLBACK INVOKED.\n");
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
@@ -490,7 +498,7 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {
             printf("Error sending totp.\n");
             printf("%s\n", twilio_error);
         }
-        printf("Would send email here..\n");
+        printf("Would send email here..\n");//##EMAIL TO BE SENT
         bufferevent_write(bev, totps->access_code, strlen(totps->access_code+1));
         free_totps(totps);
     }
@@ -508,44 +516,43 @@ void totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
 }
 
 
-void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {
+void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUNCTION TO BE CHANGED
 	printf("TOTP VALIDATE READ CALLBACK INVOKED.\n");
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	totp_ctx_t *totp_ctx = (totp_ctx_t*)ctx;
+	validate_totp_ctx_t *totp_ctx = (validate_totp_ctx_t*)ctx;
     char *totp = NULL;
 	char single_byte[1];
-    char twilio_error[100];
 
-    // read the length of the phone number field
-	if (totp_ctx->expected_phone_len == 0 && recv_len > 0) {
-		// the first byte of the request is the length of the phone number in bytes
+    // read the length of the acess code number field
+	if (totp_ctx->expected_code_len == 0 && recv_len > 0) {
+		// the first byte of the request is the length of the code number in bytes
 		bufferevent_read(bev, single_byte, 1);
 		recv_len--;
-		totp_ctx->expected_phone_len = single_byte[0];
-		if (totp_ctx->expected_phone_len <= 0) {
-			printf("Bad Request: Phone number length is: %i\n", totp_ctx->expected_phone_len);
+		totp_ctx->expected_code_len = single_byte[0];
+		if (totp_ctx->expected_code_len <= 0) {
+			printf("Bad Request: access code length is: %i\n", totp_ctx->expected_code_len);
 			// close connection...
             free(totp_ctx);
 			return;
 		} else { 
-			totp_ctx->phone_num = (char*)calloc(totp_ctx->expected_phone_len+1, sizeof(char));
+			totp_ctx->access_code = (char*)calloc(totp_ctx->expected_code_len+1, sizeof(char));
 		}
 	}
 
-    if (totp_ctx->phone_length < totp_ctx->expected_phone_len && recv_len > 0) {
+    if (totp_ctx->code_length < totp_ctx->expected_code_len && recv_len > 0) {
         int read_len = recv_len;
-		if (recv_len > (totp_ctx->expected_phone_len - totp_ctx->phone_length)) {
+		if (recv_len > (totp_ctx->expected_code_len - totp_ctx->code_length)) {
 			// If we received more chars than we want to store
-			// Set the read amount to the remaining length of the expected phone number
-			read_len = (totp_ctx->expected_phone_len - totp_ctx->phone_length);
+			// Set the read amount to the remaining length of the expected access code
+			read_len = (totp_ctx->expected_code_len - totp_ctx->code_length);
 		}
-		bufferevent_read(bev, totp_ctx->phone_num, read_len);
-        totp_ctx->phone_length += read_len;
+		bufferevent_read(bev, totp_ctx->access_code, read_len);
+        totp_ctx->code_length += read_len;
         recv_len -= read_len;
 	}
 
-    if (totp_ctx->email_length == totp_ctx->expected_email_len && recv_len > 0) {
+    if (totp_ctx->email_totp_length == totp_ctx->expected_email_len && recv_len > 0) {
         if (totp_ctx->expected_email_len == 0) {
             // read the byte for the length of the email
             bufferevent_read(bev, single_byte, 1);
@@ -617,12 +624,12 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
-	char first_byte[1];
+	char first_byte[1];//##reads first byte to designate endpoint
 	int request_num = -1;
 	void *req_ctx = NULL;
 
 	if (recv_len >= 1) {
-		bufferevent_read(bev, first_byte, 1);
+		bufferevent_read(bev, first_byte, 1);//##getting data to put in first byte
 		if (isdigit(first_byte[0])) {
 			request_num = atoi(first_byte);
             recv_len--;
@@ -631,7 +638,7 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 			// close connection
 		}
 
-		switch (request_num) {
+		switch (request_num) {//##BRANCHES OUT TO ENDPOINTS HERE
 			case 0:
 				req_ctx = create_totp_ctx(NULL);
 				// set callback to otp_request
