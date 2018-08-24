@@ -28,7 +28,12 @@
 
 # Outgoing messages
 ## OTP Request Response
-    64 bits (8 Bytes) - Access Code
+    
+    1 byte - access code email length
+    55 bytes - Access Code email
+    1 byte - access code phone length
+    55 bytes -access code phone
+    
 
 ## OTP Validate Response
     Signed Certificate Null Terminated
