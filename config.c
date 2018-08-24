@@ -163,15 +163,16 @@ size_t parse_config(char* filename) {
 	int num_profiles;
 
 	config_init(&cfg);
-
 	if (!config_read_file(&cfg, filename)) {
 		log_printf(LOG_ERROR, "Error loading config file %s: %s %d\n", filename, config_error_text(&cfg), config_error_line(&cfg));
 		return -1;
 	}
-
 	profiles = config_lookup(&cfg, "Profiles");
-	num_profiles = config_setting_length(profiles);
-	
+	if ( profiles != NULL ) {
+		num_profiles = config_setting_length(profiles);
+	} else {
+		num_profiles = 0;
+	}
 	// global_config = calloc(num_profiles + 1, sizeof(ssa_config_t));
 	global_config = str_hashmap_create(HASHMAP_SIZE);
 	default_config = calloc(1,sizeof(ssa_config_t));
@@ -188,33 +189,31 @@ size_t parse_config(char* filename) {
 	str_hashmap_add(global_config,DEFAULT_CONF,default_config);
 
 
-
 	//TODO failout if a default is not set 
 	if (config_lookup(&cfg, "Default.MinProtocol") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for MinProtocol not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}
 	if (config_lookup(&cfg, "Default.CipherSuite") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for CipherSuite not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}
 	if (config_lookup(&cfg, "Default.SessionCacheTimeout") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for SessionCacheTimeout not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}
 	if (config_lookup(&cfg, "Default.Validation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for Validation not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}
 	if (config_lookup(&cfg, "Default.TrustStoreLocation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for TrustStoreLocation not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}   
 	if (config_lookup(&cfg, "Default.AppCustomValidation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for AppCustomValidation not set.\n");
-		EXIT_FAILURE
+		EXIT_FAILURE;
 	}
-
 	// Parse all the profiles
 
 	for(i = 0; i < num_profiles; i++) {
@@ -228,7 +227,6 @@ size_t parse_config(char* filename) {
 		}
 		str_hashmap_add(global_config,cur_config->profile,cur_config);
 	}
-
 	config_destroy(&cfg);
 	return global_config_size;
 }
