@@ -181,21 +181,24 @@ validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
 	validate_totp_ctx_t* ctx;
 
 	ctx = (validate_totp_ctx_t*)malloc(sizeof(validate_totp_ctx_t));
-	ctx->access_code = 0;
+	ctx->access_code = NULL;
 	ctx->expected_code_len = 0; 
 	ctx->code_length = 0;
-	ctx->phone_totp = NULL;
-	ctx->email_totp = NULL;
+	ctx->phone_totp = malloc(PHONE_TOTP_LEN * sizeof(char));
+	ctx->email_totp = malloc(EMAIL_TOTP_LEN * sizeof(char));
+	ctx->phone_totp_length = 0;
+	ctx->email_totp_length = 0;
 	ctx->con_ctx = NULL;
 
 	return ctx;
 }
 
 void free_validate_totp_ctx(validate_totp_ctx_t* ctx) {
-    //if (ctx->ev_base != NULL)
-        //free(ctx->ev_base)
+    if (ctx->access_code != NULL)
+        free(ctx->access_code);
     free(ctx->phone_totp);
     free(ctx->email_totp);
+
     free(ctx);
 }
 
@@ -537,7 +540,7 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 			return;
 		} else { 
 			totp_ctx->access_code = (char*)calloc(totp_ctx->expected_code_len+1, sizeof(char));
-			printf("allocating access code length" );
+			printf("allocating access code length\n" );
 		}
 		
 	}
@@ -552,7 +555,7 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 		bufferevent_read(bev, totp_ctx->access_code, read_len);
         totp_ctx->code_length += read_len;
         recv_len -= read_len;
-		printf("access code recieved");
+		printf("access code recieved: %s\n", totp_ctx->access_code);
 	}
 //##EMAIL OTP
     if (totp_ctx->email_totp_length < EMAIL_TOTP_LEN && recv_len > 0) {
@@ -571,6 +574,8 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 		if (recv_len > (PHONE_TOTP_LEN - totp_ctx->phone_totp_length)) {
 			read_len = (PHONE_TOTP_LEN - totp_ctx->phone_totp_length);
 		}
+		printf("this is the read_length: %s\n", read_len);
+		printf("this is the phone totp length: %s\n", totp_ctx->phone_totp_length);
 		bufferevent_read(bev, totp_ctx->phone_totp, read_len);
 		totp_ctx->phone_totp_length += read_len;
 		recv_len -= read_len;
