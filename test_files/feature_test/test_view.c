@@ -19,8 +19,8 @@ void run_tests(char* title, test_t* tests, size_t num_tests) {
 	}
 	memset(border,'*',WINDOW_SIZE);	
 	border[WINDOW_SIZE] = '\0';
-	snprintf(buf,len+2, "* %s",title);
-	memset(&buf[len+1],' ',WINDOW_SIZE-len);
+	snprintf(buf,len+3, "* %s",title);
+	memset(&buf[len+2],' ',WINDOW_SIZE-len);
 	strcpy(&buf[WINDOW_SIZE-1],"*");
 	printf("\n%s\n",border);
 	printf("%s\n",buf);
