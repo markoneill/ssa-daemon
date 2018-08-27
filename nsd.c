@@ -27,7 +27,6 @@
 #ifdef CLIENT_AUTH
 #include "nsd.h"
 #include "log.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

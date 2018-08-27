@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
 		return 0;
 	}
 	sock_fd = connect_to_host(argv[1], "443");
-	sprintf(http_request,"GET /login/index.php HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 
 	memset(http_response, 0, 2048);
 	send(sock_fd, http_request, strlen(http_request), 0);

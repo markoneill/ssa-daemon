@@ -309,8 +309,6 @@ int make_connection(int sockfd){
     return 0;
 }
 
-// need to look at the tls_inet what is the reroute address
-
 int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     if(hashmap_get(sock_map, global_id) != NULL){
     int bind_result;
@@ -321,8 +319,10 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     char buff[8192];
     unsigned long id;
     void* msg_head;
+    int block_val;
+    int is_blocking;
     int blocking = 1;
-
+ 
     if(is_bind == 0){
         orgi_bind_type bind_orgi;
         bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
@@ -381,6 +381,18 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
         perror("send remote address failed");
         return -1;
     }
+
+    /*
+    if ( (block_val = fcntl(fd, F_GETFL, 0)) < 0) {
+      perror("fcntl error");
+    } else {
+       is_blocking = !(block_val & O_NONBLOCK); // if its the same return 0 means non blocking
+    }
+    printf("the is_blocking number: %d\n", is_blocking);
+
+    if(is_blocking == 0){ // nonblocking case
+    }
+    */
 
     // send blocking
     char blockingString[256];
@@ -634,13 +646,9 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
         return -1;
     }
 
-    //printf("the messgae received in accept: %s\n", buff);
-
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
-
-    //printf("the new fd number: %d\n", new_tcp_fd);
 
     return new_tcp_fd;
     }
@@ -659,8 +667,6 @@ int listen(int sockfd, int backlog){
     char buff[8192];
     unsigned long id;
     struct sockaddr* addr;
-
-
 
     if(is_bind == 0){
         int bind_result;

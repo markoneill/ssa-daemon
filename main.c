@@ -65,11 +65,12 @@ int main(int argc, char* argv[]) {
 	int status;
 	int ret;
 	int starting_port = 8443;
-#ifdef CLIENT_AUTH
-	pthread_t csr_daemon;
+
 	daemon_param_t csr_params = {
 		.port = 8040
 	};
+	pthread_t csr_daemon;
+#ifdef CLIENT_AUTH
 	daemon_param_t auth_params = {
 		.port = 6666
 	};
@@ -128,8 +129,8 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	#ifdef CLIENT_AUTH
 	pthread_create(&csr_daemon, NULL, create_csr_daemon, (void*)&csr_params);
+	#ifdef CLIENT_AUTH
 	pthread_create(&auth_daemon, NULL, create_auth_daemon, (void*)&auth_params);
 	#endif
 

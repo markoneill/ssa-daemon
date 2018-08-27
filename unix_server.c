@@ -48,6 +48,8 @@ char* get_addr_string(struct sockaddr *addr) {
     strcat(str, semicolon);
     strcat(str, portString);
 
+    printf("the Address: %s\n", str);
+
     char *result = malloc(sizeof(str));
     memcpy(result, str, sizeof(str));
 
@@ -115,7 +117,7 @@ int create_unix_socket(){
 	return fd;
 }
 
-int unix_recv(evutil_socket_t fd, short events, void *arg) {
+void unix_recv(evutil_socket_t fd, short events, void *arg) {
 	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
 	int unix_fd;
 	int len;
@@ -145,7 +147,7 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 	strcpy(buff, messageBuff);
 	if(len < 0){
 		perror("message receive failed");
-		return -1;
+		return;
 	}
 	destination_address = from;
 	if(buff[0] == '1'){ // a socket notify
@@ -383,10 +385,10 @@ int unix_recv(evutil_socket_t fd, short events, void *arg) {
 	}
 	else{
 		printf("unkonw message: %s\n", buff);
-		return -1;
+		return;
 	}
 
-	return 0;
+	return;
 }
 
 int close_unix_socket(int fd){

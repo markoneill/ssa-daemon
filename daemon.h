@@ -27,8 +27,6 @@
 #ifndef DAEMON_H
 #define DAEMON_H
 
-//#include <netinet/in.h>
-
 #include <event2/event.h>
 #include <event2/util.h>
 
