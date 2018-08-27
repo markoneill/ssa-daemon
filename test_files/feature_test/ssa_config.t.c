@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <netdb.h>
 #include "../../in_tls.h"
@@ -26,7 +27,7 @@
 #define NO_VALIDATION		"cfgFiles/no_validation.cfg"
 #define ONE_PROFILE	 	"cfgFiles/one_profile.cfg"
 #define VALID_FILE		"cfgFiles/valid.cfg"
-#define a	"cfgFiles/.cfg"
+#define INVALID_MIN_PROTOCOL	"cfgFiles/invalid_min_protocol.cfg"
 #define b	"cfgFiles/.cfg"
 #define c	"cfgFiles/.cfg"
 #define d	"cfgFiles/.cfg"
@@ -66,7 +67,23 @@ int test_global_app_config_no (void);
 int test_global_app_config_yes (void);
 int test_default_app_config (void);
 
+int test_parse_config_exit_failure(char* filename){
+	pid_t pid;
+	int status;
+	if( (pid= fork()) == 0){
+		parse_config(filename);
+		exit(EXIT_SUCCESS);	
+	} else {
+		waitpid(pid,&status,0);
+		if(WIFEXITED(status) ) {
+			if( WEXITSTATUS(status) == EXIT_FAILURE){
+				return PASS;
+			}
+		}
+	}
+	return FAIL;
 
+}
 
 int test_parse_config_no_file			(void){
 	if(parse_config(NULL) != -1) return FAIL;
@@ -75,60 +92,60 @@ int test_parse_config_no_file			(void){
 }
 
 int test_parse_config_no_validation		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_VALIDATION);
 }
 
 int test_parse_config_no_app_custom		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_APP_CUSTOM);
 
 }
 
 int test_parse_config_no_trust_store		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_TRUST_STORE);
 }
 
 int test_parse_config_no_min_protocol		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_MIN_PROTOCOL);
 }
 
 int test_parse_config_no_cipher_suite		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_CIPHER_SUITE);
 }
 
 int test_parse_config_no_cache_timeout		(void){
-	return PASS;
+	return test_parse_config_exit_failure(NO_CACHE_TIMEOUT);
 }
 
 int test_parse_config_invalid_file		(void){
-	return PASS;
+	return FAIL;
 }
 
 int test_parse_config_invalid_validation	(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_invalid_app_custom	(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_invalid_trust_store	(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_invalid_min_protocol	(void){
-	return PASS;
+	return test_parse_config_exit_failure(INVALID_MIN_PROTOCOL);
 }
 	
 int test_parse_config_invalid_max_protocol	(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_invalid_cipher_suite	(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_invalid_cache_timeout	(void){
-	return PASS;
+	return FAIL;
 }
 
 int test_parse_config_valid_default_profile	(void){
@@ -149,7 +166,7 @@ int test_parse_config_one_profile		(void){
 }
 	
 int test_parse_config_invalid_profile		(void){
-	return PASS;
+	return FAIL;
 }
 	
 int test_parse_config_multiple_profiles 	(void){
@@ -158,7 +175,7 @@ int test_parse_config_multiple_profiles 	(void){
 }
 	
 int test_parse_config_same_name_profiles	(void){
-	return PASS;
+	return FAIL;
 }
 
 
@@ -183,7 +200,7 @@ int test_default_app_config (void){
 }
 
 
-#define SIZE_OF_TEST_ARRAY 9 
+#define SIZE_OF_TEST_ARRAY 24  
 
 int main(int argc, char* argv[]){
 	test_t test_array[SIZE_OF_TEST_ARRAY] = 
@@ -196,11 +213,25 @@ int main(int argc, char* argv[]){
 		{test_default_app_config, "RETRIEVE DEFAULT PROFILE"},
 		{test_global_app_config_yes,"RETRIEVE VALID APP PROFILE"},
 		{test_global_app_config_no,"FAKE PROFILE RETURNS DEFAULT"},
-		{test_parse_config_same_name_profiles, "SAME NAME PROFILES9012345678901234567890123456789012345678901234567890"}
+		{test_parse_config_same_name_profiles, "SAME NAME PROFILES"},
+		{test_parse_config_no_validation, "NO VALIDATION"},
+		{test_parse_config_no_app_custom, "NO APP CUSTOM"},
+		{test_parse_config_no_trust_store, "NO TRUST STORE"},
+		{test_parse_config_no_min_protocol, "NO MIN PROTOCOL"},
+		{test_parse_config_no_cipher_suite, "NO CIPHER SUITE"},
+		{test_parse_config_no_cache_timeout, "NO CACHE TIMEOUT"},
+		{test_parse_config_invalid_file		,"INVAILD FILE"},
+		{test_parse_config_invalid_validation	,"INVAILD VALIDATION"},
+		{test_parse_config_invalid_app_custom	,"INVAILD APP CUSTOM"},
+		{test_parse_config_invalid_trust_store	,"INVAILD TRUST STORE"},
+		{test_parse_config_invalid_min_protocol	,"INVAILD MIN PROTOCOL"},
+		{test_parse_config_invalid_max_protocol	,"INVAILD MAX PROTOCOL"},
+		{test_parse_config_invalid_cipher_suite	,"INVAILD CIPHER SUITE"},
+		{test_parse_config_invalid_cache_timeout,"INVAILD CACHE TIMEOUT"},
+		{test_parse_config_invalid_profile	,"INVAILD PROFILE"}
        	};
 	run_tests("Config File Tests",test_array,SIZE_OF_TEST_ARRAY);
 	return 0;
 }
-
 
 
