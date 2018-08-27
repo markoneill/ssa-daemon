@@ -48,8 +48,6 @@ char* get_addr_string(struct sockaddr *addr) {
     strcat(str, semicolon);
     strcat(str, portString);
 
-    printf("the Address: %s\n", str);
-
     char *result = malloc(sizeof(str));
     memcpy(result, str, sizeof(str));
 
