@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include "test_view.h"
 #include "../../in_tls.h"
@@ -37,7 +38,7 @@
 #define NUM_TESTS 8
 
 /* initialization */
-void server_init(int* server_pid, test_funct_t start_funk);
+void server_init(test_funct_t start_funk);
 void server_destroy(void);
 void client_init(void);
 void client_destroy(void);
@@ -71,6 +72,7 @@ void client_sigchld_handler(int signal);
 sem_t* client_ready_sem;
 sem_t* server_ready_sem;
 sem_t* server_listens_sem;
+int server_pid;
 volatile int status;
 
 
@@ -98,8 +100,8 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-void server_init(int* server_pid, test_funct_t start_func) {
-	if ((*server_pid = fork())) {
+void server_init(test_funct_t start_func) {
+	if (!(server_pid = fork())) {
 		if ((server_listens_sem = sem_open(SERVER_LISTEN_NAME, 0)) == SEM_FAILED) {
 			perror("server_init");
 		}
@@ -109,7 +111,6 @@ void server_init(int* server_pid, test_funct_t start_func) {
 		if ((client_ready_sem = sem_open(CLIENT_READY_NAME, 0)) == SEM_FAILED) {
 			perror("server_init");
 		}
-		printf("server ready\n");
 		(*start_func)();
 		server_destroy();
 		exit(EXIT_SUCCESS);
@@ -118,7 +119,6 @@ void server_init(int* server_pid, test_funct_t start_func) {
 }
 
 void server_destroy(void) {
-	printf("destroy server");
 	if (sem_close(server_ready_sem)) {
 		perror("server_destroy");
 	}
@@ -132,13 +132,13 @@ void server_destroy(void) {
 }
 
 void client_init(void) {
-	if ((server_listens_sem = sem_open(SERVER_LISTEN_NAME, O_CREAT, 0644, 1)) == SEM_FAILED) {
+	if ((server_listens_sem = sem_open(SERVER_LISTEN_NAME, O_CREAT, 0644, 0)) == SEM_FAILED) {
 		perror("client_init");
 	}
-	if ((server_ready_sem = sem_open(SERVER_READY_NAME, O_CREAT, 0644, 1)) == SEM_FAILED) {
+	if ((server_ready_sem = sem_open(SERVER_READY_NAME, O_CREAT, 0644, 0)) == SEM_FAILED) {
 		perror("client_init");
 	}
-	if ((client_ready_sem = sem_open(CLIENT_READY_NAME, O_CREAT, 0644, 1)) == SEM_FAILED) {
+	if ((client_ready_sem = sem_open(CLIENT_READY_NAME, O_CREAT, 0644, 0)) == SEM_FAILED) {
 		perror("client_init");
 	}
 	signal(SIGCHLD, client_sigchld_handler);
@@ -147,7 +147,17 @@ void client_init(void) {
 }
 
 void client_destroy(void) {
-	printf("destroy client");
+	printf("destroy client\n");
+	fflush(stdout);
+	if (sem_close(server_ready_sem)) {
+		perror("client_destroy");
+	}
+	if (sem_close(server_listens_sem)) {
+		perror("client_destroy");
+	}
+	if (sem_close(client_ready_sem)) {
+		perror("client_destroy");
+	}
 	if (sem_unlink(SERVER_READY_NAME)) {
 		perror("client_destroy");
 	}
@@ -157,14 +167,9 @@ void client_destroy(void) {
 	if (sem_unlink(CLIENT_READY_NAME)) {
 		perror("client_destroy");
 	}
-	if (sem_close(server_ready_sem)) {
-		perror("client_destroy");
-	}
-	if (sem_close(server_listens_sem)) {
-		perror("client_destroy");
-	}
-	if (sem_close(client_ready_sem)) {
-		perror("client_destroy");
+	if (server_pid) {
+		//kill(- getpid(), SIGINT);
+		server_pid = 0;
 	}
 	return;
 }
@@ -187,7 +192,7 @@ void run_option_tests_client(int* server_pid, test_t* tests, int num) {
 			printf("\t\tFAILED (code %d)", -failcode);
 			kill(*server_pid, SIGINT);
 			status = PASS;
-			server_init(server_pid, tests, tests[i+1].server_func);
+			server_init(tests, tests[i+1].server_func);
 		}
 	}
 }
@@ -223,26 +228,20 @@ void run_option_tests_server(test_t* tests, int num, test_funct_t start_func) {
 }
 */
 
-int connect_test_client(void) {
+int connect_to_host(char* host, char* service) {
 	int sock;
 	int ret;
-	int server_pid;
-	char buff[MY_BUFFER_SIZE];
 	struct addrinfo hints;
 	struct addrinfo* addr_ptr;
 	struct addrinfo* addr_list;
 
-	server_init(&server_pid, connect_test_server);
-
-	memset(&addr_list, 0, sizeof(hints));
+	memset(&hints, 0, sizeof(hints));
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_family = AF_INET;
-
-	sem_wait(server_listens_sem);
-	ret = getaddrinfo(NULL, "443", &hints, &addr_list);
+	ret = getaddrinfo(host, service, &hints, &addr_list);
 	if (ret != 0) {
 		fprintf(stderr, "Failed in getaddrinfo: %s\n", gai_strerror(ret));
-		return FAIL;
+		return -1;
 	}
 
 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
@@ -251,25 +250,46 @@ int connect_test_client(void) {
 			perror("socket");
 			continue;
 		}
+	        if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
+			perror("setsockopt: TLS_REMOTE_HOSTNAME");
+			close(sock);
+			continue;
+		}
 
-////////	if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, crt_host, strlen(crt_host)+1) == -1) {
-////////		perror("setsockopt: TLS_REMOTE_HOSTNAME");
-////////		close(sock);
-////////		continue;
-////////	}
-		
-		if (connect(sock, (struct sockaddr*)addr_ptr, addr_ptr->ai_addrlen) == -1) {
+		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
 			perror("connect");
 			close(sock);
 			continue;
 		}
+
+		break;
 	}
 	freeaddrinfo(addr_list);
 	if (addr_ptr == NULL) {
 		fprintf(stderr, "failed to find a suitable address for connection\n");
+		return -1;
+	}
+	return sock;
+}
+int connect_test_client(void) {
+	int sock;
+	int ret;
+	char buff[MY_BUFFER_SIZE];
+	struct addrinfo hints;
+	struct addrinfo* addr_ptr;
+	struct addrinfo* addr_list;
+
+	server_init(connect_test_server);
+
+	memset(&addr_list, 0, sizeof(hints));
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_family = AF_INET;
+
+	sem_wait(server_listens_sem);
+	sock = connect_to_host("localhost","8080");
+	if ( sock == -1){
 		return FAIL;
 	}
-
 	strncpy(buff, LOREM_IPSUM, MY_BUFFER_SIZE);
 	if ((ret = send(sock, buff, strlen(buff), 0)) == -1) {
 		return FAIL;
@@ -297,29 +317,32 @@ int connect_test_server(void) {
 
 	in_addr.sin_family = AF_INET;
 	in_addr.sin_addr.s_addr = inet_addr("0.0.0.0");
-	in_addr.sin_port = htons(443);
+	in_addr.sin_port = htons(8080);
 
 	int fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TLS);
 	bind(fd, (struct sockaddr*)&in_addr, sizeof(in_addr));
-////////if (setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
-////////	perror("cert a");
-////////}
-////////if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
-////////	perror("key a");
-////////}
-////////if (setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
-////////	perror("cert b");
-////////}
-////////if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
-////////	perror("key b");
-////////}
+	if (setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
+		perror("cert a");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
+		perror("key a");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
+		perror("cert b");
+	}
+	if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
+		perror("key b");
+	}
 	listen(fd, SOMAXCONN);
+	printf("server ready\n");
+	fflush(stdout);
 	sem_post(server_listens_sem);
 
 	c_fd = accept(fd, (struct sockaddr*)&s_addr, &addr_len);
 	if (getsockopt(c_fd, IPPROTO_TLS, TLS_HOSTNAME, servername, &servername_len) == -1) {
 		perror("getsockopt: TLS_HOSTNAME");
-		return FAIL;
+		server_destroy();
+		exit(EXIT_FAILURE);
 	}
 	printf("Client requested host %d %s\n", servername_len,  servername);
 	recv(c_fd, request, MY_BUFFER_SIZE, 0);
@@ -387,7 +410,15 @@ int upgrade_test_server(void) {
 }
 
 void client_sigchld_handler(int signal) {
-	printf("test failed");
-	status = FAIL;
+	int stat;
+	waitpid(-1,&stat,0);
+	if(WIFEXITED(stat) ) {
+		server_pid = 0;
+		if( WEXITSTATUS(stat) == EXIT_FAILURE){
+			status = FAIL;
+			return;
+		}
+	}
+	status = PASS;
 	return;
 }
