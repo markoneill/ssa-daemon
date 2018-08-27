@@ -8,7 +8,7 @@ You can read more about the SSA, it's design goals, and features in our [USENIX 
 Userspace libevent2-based TLS wrapping daemon for use with the SSA
 
 ## Prerequisites
-The SSA has two components - a [kernel module](https://github.com/markoneill/ssa-daemon) and a userspace daemon (this repository).
+The SSA has two components - a [kernel module](https://github.com/markoneill/ssa) and a userspace daemon (this repository).
 Both need to be installed and running to provide TLS as an operating system service.
 The kernel component has its own README with installation instructions, and you are encouraged to build and install and component first.
 
