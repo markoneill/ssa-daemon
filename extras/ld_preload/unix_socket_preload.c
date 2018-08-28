@@ -38,6 +38,7 @@ int is_bind = 0;
 hmap_t* sock_map;
 struct sockaddr_in local_address;
 struct sockaddr_in* addr_external;
+pthread_mutex_t id_mutex;
 
 unsigned long concatenate(unsigned long x, int y) { //combine two int
     unsigned long pow = 10;
@@ -48,7 +49,6 @@ unsigned long concatenate(unsigned long x, int y) { //combine two int
 }
 
 char* get_addr_string(struct sockaddr *addr) {
-    /* Make sure there's enough room for IPv6 addresses */
     char str[INET6_ADDRSTRLEN];
     unsigned long ip_addr;
     struct in6_addr ip6_addr;
@@ -78,14 +78,13 @@ char* get_addr_string(struct sockaddr *addr) {
 }
 
 int createUnixSocket(){
-    // crete the server file here as well
     int fd;
     int ret;
     struct sockaddr_un addr;
 
     orig_socket_type socket_orig;
     socket_orig = (orig_socket_type)dlsym(RTLD_NEXT,"socket");
-    if ((fd = socket_orig(PF_UNIX, SOCK_DGRAM, 0)) < 0) { // create a unix domian socket
+    if ((fd = socket_orig(PF_UNIX, SOCK_DGRAM, 0)) < 0) {
         perror("error in create socket.");
         return -1;
     }
@@ -143,12 +142,12 @@ int socket(int domain, int type, int protocol){
     local_address.sin_port = 0;
     local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-    get_addr_string((struct sockaddr*)&local_address);
-
-    process_id = getpid(); // need to put a mutext around it
+    pthread_mutex_lock(&id_mutex);
+    process_id = getpid();
     id  = concatenate(process_id, tcp_fd);
     global_id = id;
     global_tcp_fd = tcp_fd;
+    pthread_mutex_unlock(&id_mutex);
 
     hashmap_add(sock_map, id, (void*)(long)tcp_fd); // key and value
  
@@ -216,7 +215,6 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     int ret;
     char buff[8192];
     unsigned long id;
-    // send setsockpot notify
 
     fd = createUnixSocket();
     strcpy(buff, "2 ssa setsockpot notify");
@@ -234,7 +232,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -246,7 +244,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     strcat(resultMark, levelString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send level failed");
         return -1;
     }
@@ -258,7 +256,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     strcat(resultMark, optnameString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send level failed");
         return -1;
     }
@@ -268,7 +266,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     strcat(resultMark, optval);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send optval failed");
         return -1;
     }
@@ -351,7 +349,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -441,7 +439,6 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 }
 
 
-// need to look at the getsockopt in the tls_common the different iotname have different things need to do
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen){
   if(optname == TLS_REMOTE_HOSTNAME || optname == TLS_HOSTNAME || optname == TLS_TRUSTED_PEER_CERTIFICATES || optname == TLS_CERTIFICATE_CHAIN
      || optname == TLS_PRIVATE_KEY || optname == TLS_ALPN || optname == TLS_SESSION_TTL || optname == TLS_DISABLE_CIPHER || optname == TLS_PEER_IDENTITY
@@ -453,15 +450,14 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     unsigned long id;
 
     fd = createUnixSocket();
-    // send ssa socket notify
     strcpy(buff, "4 ssa getsockopt notify");
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send failed in getsockopt");
         return -1;
     }
 
-     // send id numeber
+    // send id numeber
     char idString[256];
     char resultMark[256];
     strcpy(resultMark, "4id");
@@ -469,7 +465,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -481,7 +477,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     strcat(resultMark, levelString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send level failed");
         return -1;
     }
@@ -493,7 +489,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     strcat(resultMark, optnameString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send level failed");
         return -1;
     }
@@ -523,6 +519,8 @@ int close(int fd){
     int unix_fd;
     unsigned long id;
     char buff[8192];
+    char idString[256];
+    char resultMark[256];
 
     unix_fd = createUnixSocket();
     strcpy(buff, "5 ssa close notify");
@@ -531,9 +529,7 @@ int close(int fd){
         perror("send failed in close");
         return -1;
     }
-    // send id numeber
-    char idString[256];
-    char resultMark[256];
+    
     strcpy(resultMark, "5id");
     if(fd == (new_accept_id % 10)){
         sprintf(idString, "%ld", new_accept_id);
@@ -544,7 +540,7 @@ int close(int fd){
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(unix_fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -553,9 +549,6 @@ int close(int fd){
         perror("recv error");
         return -1;
     }
-    //printf("the messgae received in close: %s\n", buff);
-
-    //printf("the closed fd number: %d\n", fd);
 
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
@@ -589,13 +582,10 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
     if(new_tcp_fd == -1){
         perror("error in accept");
     }
-    
-    //printf("new_tcp_fd number: %d\n", new_tcp_fd);
 
     struct sockaddr_in peer_address;
     int peer_len;
     peer_len = sizeof(peer_address);
-          /* Ask getpeername to fill in peer's socket address.  */
     if (getpeername(new_tcp_fd, &peer_address, &peer_len) == -1) {
         perror("getpeername() failed");
         return -1;
@@ -622,7 +612,7 @@ int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -663,6 +653,8 @@ int listen(int sockfd, int backlog){
     int len;
     int ret;
     char buff[8192];
+    char idString[256];
+    char resultMark[256];
     unsigned long id;
     struct sockaddr* addr;
 
@@ -677,7 +669,6 @@ int listen(int sockfd, int backlog){
         }
         socklen_t size = sizeof(local_address);
         getsockname(sockfd, (struct sockaddr *) &local_address, &size);
-
         is_bind == 1;
     }
 
@@ -690,14 +681,12 @@ int listen(int sockfd, int backlog){
     }
 
     // send id numeber
-    char idString[256];
-    char resultMark[256];
     strcpy(resultMark, "7id");
     sprintf(idString, "%ld", global_id);
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed in setsockopt");
         return -1;
     }
@@ -841,5 +830,3 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
         return bind_orgi(sockfd, addr, addrlen);
     }
 }
-
-//gcc -shared -fPIC -ldl -lnl-3 -lnl-genl-3 -lpthread -lrt -o unix_socket_preload.so -I/usr/include/libnl3 unix_socket_preload.c ../../hashmap.c
