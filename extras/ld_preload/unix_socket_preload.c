@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <linux/limits.h>
 #include <arpa/inet.h>
@@ -12,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <errno.h>
 #include "../../in_tls.h" 
 #include "../../hashmap.h"
 #include "../../ipc.h"
@@ -29,6 +31,7 @@ typedef int (*orgi_bind_type)(int sockfd, const struct sockaddr *addr, socklen_t
 
 #define SNAME "/mysem"
 #define HASHMAP_NUM_BUCKETS 100
+#define MAX_HOST_LEN        255
 
 int global_id = 0;
 int global_fd = 0;
@@ -207,89 +210,6 @@ int socket(int domain, int type, int protocol){
   }
 }
 
-int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen){
-    if(optname == 85 || optname == 86 || optname == 87 || optname == 88 || optname == 89 ||
-       optname == 90 || optname == 91 || optname == 92 || optname == 93 || optname == 94 || optname == 95){
-    int fd;
-    int len;
-    int ret;
-    char buff[8192];
-    unsigned long id;
-
-    fd = createUnixSocket();
-    strcpy(buff, "2 ssa setsockpot notify");
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) {
-        perror("send failed in setsockopt");
-        return -1;
-    }
-
-    // send id numeber
-    char idString[256];
-    char resultMark[256];
-    strcpy(resultMark, "2id");
-    sprintf(idString, "%ld", global_id);
-    strcat(resultMark, idString);
-    strcpy(buff, resultMark);
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) {
-        perror("send id failed in setsockopt");
-        return -1;
-    }
-
-    // send level
-    char levelString[256];
-    strcpy(resultMark, "2le");
-    sprintf(levelString, "%ld", level);
-    strcat(resultMark, levelString);
-    strcpy(buff, resultMark);
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) {
-        perror("send level failed");
-        return -1;
-    }
-
-    // send option name
-    char optnameString[256];
-    strcpy(resultMark, "2on");
-    sprintf(optnameString, "%ld", optname);
-    strcat(resultMark, optnameString);
-    strcpy(buff, resultMark);
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) {
-        perror("send level failed");
-        return -1;
-    }
-
-    // send optval
-    strcpy(resultMark, "2ov");
-    strcat(resultMark, optval);
-    strcpy(buff, resultMark);
-    ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) {
-        perror("send optval failed");
-        return -1;
-    }
-
-    if ((len = recv(fd, buff, 8192, 0)) < 0) {
-        perror("recv error");
-        return -1;
-    }
-    printf("received messgae for setsockopt: %s\n", buff);
-
-    orgi_close_type close_orgi;
-    close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
-    close_orgi(fd);
-
-    return 0;
-    }
-    else{
-        orgi_setsockopt_type setsockopt_orgi;
-        setsockopt_orgi = (orgi_setsockopt_type)dlsym(RTLD_NEXT,"setsockopt");
-        return setsockopt_orgi(sockfd, level, optname, optval, optlen);
-    }
-}
-
 int make_connection(int sockfd){
     struct sockaddr_in tlswrap_address;
     tlswrap_address.sin_family = AF_INET;
@@ -438,6 +358,177 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
   }
 }
 
+int is_valid_host_string(char* str, int len) {
+    int i;
+    char c;
+    for (i = 0; i < len-1; i++) {
+        c = str[i];
+                if (!isalnum(c) && c != '-' && c != '.') {
+            return 0;
+                }
+        }
+    if (str[len-1] != '\0') {
+        return 0;
+    }
+        return 1;
+}
+
+int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen){
+    if(optname == 85 || optname == 86 || optname == 87 || optname == 88 || optname == 89 ||
+       optname == 90 || optname == 91 || optname == 92 || optname == 93 || optname == 94 || optname == 95){
+
+    int fd;
+    int len;
+    int ret;
+    char buff[8192];
+    char resolved_path[PATH_MAX];
+    char* optval_temp;
+    unsigned long id;
+
+    if (optval == NULL) {
+        return -EINVAL; 
+    }
+    if (optlen == 0) {
+        return -EINVAL;
+    }
+
+    optval_temp = malloc(optlen);
+    memcpy(optval_temp, optval, optlen);
+
+    switch(optname){
+        case TLS_REMOTE_HOSTNAME:
+            if(optlen > MAX_HOST_LEN){
+                return -EINVAL;
+            }
+            if (!is_valid_host_string(optval_temp, len)) {
+                return -EINVAL;
+            }
+            break;
+        case TLS_HOSTNAME:
+            ret = 0;
+            break;
+        case TLS_TRUSTED_PEER_CERTIFICATES:
+        case TLS_CERTIFICATE_CHAIN:
+        case TLS_PRIVATE_KEY:
+            /* We convert relative paths to absolute ones
+             * here. We also skip things prefixed with '-'
+             * because that denotes direct PEM encoding */
+            if (optval_temp[0] != '-' && optval_temp[0] != '/') {
+                if (realpath(optval_temp, resolved_path) == NULL) {
+                    return -ENOMEM;
+                }
+            }
+            ret = 0;
+            break;
+        case TLS_ALPN:
+        case TLS_SESSION_TTL:
+        case TLS_DISABLE_CIPHER:
+        case TLS_PEER_IDENTITY:
+            ret = 0;
+            break;
+        case TLS_REQUEST_PEER_AUTH:
+            ret = 0;
+            break;
+        case TLS_PEER_CERTIFICATE_CHAIN:
+        case TLS_ID:
+        default:
+         ret = 0;
+         break;
+    }
+
+    if(ret != 0){
+        free(optval_temp);
+        return ret;
+    }
+
+    fd = createUnixSocket();
+    strcpy(buff, "2 ssa setsockpot notify");
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send failed in setsockopt");
+        free(optval_temp);
+        return -1;
+    }
+
+    // send id numeber
+    char idString[256];
+    char resultMark[256];
+    strcpy(resultMark, "2id");
+    sprintf(idString, "%ld", global_id);
+    strcat(resultMark, idString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send id failed in setsockopt");
+        free(optval_temp);
+        return -1;
+    }
+
+    // send level
+    char levelString[256];
+    strcpy(resultMark, "2le");
+    sprintf(levelString, "%ld", level);
+    strcat(resultMark, levelString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send level failed");
+        free(optval_temp);
+        return -1;
+    }
+
+    // send option name
+    char optnameString[256];
+    strcpy(resultMark, "2on");
+    sprintf(optnameString, "%ld", optname);
+    strcat(resultMark, optnameString);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send level failed");
+        free(optval_temp);
+        return -1;
+    }
+
+    printf("Option value: %s\n", optval);
+
+    // send optval
+    strcpy(resultMark, "2ov");
+    strcat(resultMark, optval);
+    strcpy(buff, resultMark);
+    ret = send(fd, buff, strlen(buff)+1, 0);
+    if (ret == -1) {
+        perror("send optval failed");
+        free(optval_temp);
+        return -1;
+    }
+
+    free(optval_temp);
+
+    if ((len = recv(fd, buff, 8192, 0)) < 0) {
+        perror("recv error");
+        return -1;
+    }
+    printf("received messgae for setsockopt: %s\n", buff);
+
+    if (level != IPPROTO_TLS) {
+        orgi_setsockopt_type setsockopt_orgi;
+        setsockopt_orgi = (orgi_setsockopt_type)dlsym(RTLD_NEXT,"setsockopt");
+        return setsockopt_orgi(sockfd, level, optname, optval, optlen);
+    }
+
+    orgi_close_type close_orgi;
+    close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
+    close_orgi(fd);
+
+    return 0;
+    }
+    else{
+        orgi_setsockopt_type setsockopt_orgi;
+        setsockopt_orgi = (orgi_setsockopt_type)dlsym(RTLD_NEXT,"setsockopt");
+        return setsockopt_orgi(sockfd, level, optname, optval, optlen);
+    }
+}
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen){
   if(optname == TLS_REMOTE_HOSTNAME || optname == TLS_HOSTNAME || optname == TLS_TRUSTED_PEER_CERTIFICATES || optname == TLS_CERTIFICATE_CHAIN
@@ -448,6 +539,12 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     int ret;
     char buff[8192];
     unsigned long id;
+
+    if(level != IPPROTO_TLS){ // added on Aug 29th 
+        orgi_getsockopt_type getsockopt_orgi;
+        getsockopt_orgi = (orgi_getsockopt_type)dlsym(RTLD_NEXT,"getsockopt");
+        return getsockopt_orgi(sockfd, level, optname, optval, optlen);
+    }
 
     fd = createUnixSocket();
     strcpy(buff, "4 ssa getsockopt notify");
@@ -499,7 +596,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
         return -1;
     }
 
-    strcpy(optval, buff);
+    strncpy(optval, buff, *optlen);
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
     close_orgi(fd);
