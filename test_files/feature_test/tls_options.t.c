@@ -8,6 +8,7 @@
  */
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <netdb.h>
@@ -29,7 +30,6 @@
 #include "utils.h"
 #include "../../in_tls.h"
 
-#define SERVER_PORT		"8082"
 #define CLIENT_READY_NAME	"/clientreadysem"
 #define SERVER_READY_NAME	"/serverreadysem"
 #define CONTEX_LOCK_NAME	"/contentlocksem"
@@ -42,6 +42,7 @@
 #define WAIT_TIMEOUT_SEC	2
 #define NUM_TESTS		9
 #define MILL		     1000
+#define SERVER_START_PORT    8080
 
 /* initialization */
 int run_on_server(test_funct_t start_funk);
@@ -93,6 +94,7 @@ void server_sigalrm_handler(int signal);
 /* local typedefs */
 typedef struct test_ctx {
 	test_funct_t server_funct;
+	int server_port;
 	int funct_ret;
 	int test_status;
 } test_ctx_t;
@@ -150,6 +152,20 @@ void set_server_function(test_funct_t funct) {
 			ctx->funct_ret == FAIL ? "FAIL" : "",
 			ctx->funct_ret == PASS ? "PASS" : "",
 			ctx->test_status);//*/
+	//sem_post(context_lock_sem);
+}
+
+int get_server_port(void) {
+	int port;
+	//sem_wait(context_lock_sem);
+	port = ctx->server_port;
+	//sem_post(context_lock_sem);
+	return port;
+}
+
+void set_server_port(int port) {
+	//sem_wait(context_lock_sem);
+	ctx->server_port = port;
 	//sem_post(context_lock_sem);
 }
 
@@ -222,9 +238,12 @@ int run_on_server(test_funct_t start_func) {
 }
 
 void server_fork(void) {
+	int ret;
 	set_test_status(RUNNING);
 	if (!(server_pid = fork())) {
-		if (server_init() == -1) {
+		ret = server_init();
+		sem_post(server_ready_sem);
+		if (ret == -1) {
 			set_test_status(DONE);
 		}
 		else {
@@ -233,6 +252,7 @@ void server_fork(void) {
 		server_destroy();
 		exit(EXIT_SUCCESS);
 	}
+	sem_wait(server_ready_sem);
 	return;
 }
 
@@ -261,6 +281,9 @@ void server_main(void) {
 }
 
 int server_init(void) {
+	int port;
+	int i = 0;
+
 	/* set signal handlers */
 	if (signal(SIGUSR1, sigusr1_handler) == SIG_ERR) {
 		perror("server_init signal");
@@ -286,7 +309,15 @@ int server_init(void) {
 	}
 
 	/* open listening fd */
-	listen_fd.fd = bind_listen(atoi(SERVER_PORT), "localhost");
+	listen_fd.fd = -1;
+	while (listen_fd.fd < 0) {
+		port = i + SERVER_START_PORT;
+		listen_fd.fd = bind_listen(port, "localhost");
+		if (errno != EADDRINUSE)
+			break;
+		i++;
+	}
+	set_server_port(port);
 	if (listen_fd.fd == -1) return -1;
 	listen_fd.events = POLLIN;
 	return 0;
@@ -371,6 +402,7 @@ int wait_server_response(time_t sec) {
 }
 
 int connect_test_client(void) {
+	char port[6];
 	int client_ret;
 	int server_ret;
 	int sock;
@@ -381,7 +413,8 @@ int connect_test_client(void) {
 		return FAIL;
 	}
 
-	sock = connect_to_host("localhost",SERVER_PORT);
+	sprintf(port, "%d", get_server_port());
+	sock = connect_to_host("localhost", port);
 	if ( sock == -1){
 		perror("connect_test_client sock");
 		return FAIL;
@@ -421,6 +454,7 @@ int connect_test_server(void) {
 int send_recv_test_client(void) {
 	struct timeval tv = { 5, 0 };
 	char buff[LARGE_BUFFER];
+	char port[6];
 	int client_ret;
 	int server_ret;
 	int sock;
@@ -432,7 +466,8 @@ int send_recv_test_client(void) {
 	}
 	strncpy(buff, LOREM_IPSUM, strlen(LOREM_IPSUM)+1);
 
-	sock = connect_to_host("localhost","8080");
+	sprintf(port, "%d", get_server_port());
+	sock = connect_to_host("localhost", port);
 	if ( sock == -1){
 		perror("send_recv_test_client sock");
 		return FAIL;
@@ -518,6 +553,7 @@ int send_recv_test_server(void) {
 int hostname_test_client(void) {
 	struct timeval tv = { 5, 0 };
 	char buff[LARGE_BUFFER];
+	char port[6];
 	int client_ret;
 	int server_ret;
 	int sock;
@@ -529,7 +565,8 @@ int hostname_test_client(void) {
 	}
 	strncpy(buff, LOREM_IPSUM, LARGE_BUFFER);
 
-	sock = connect_to_host("localhost","8080");
+	sprintf(port, "%d", get_server_port());
+	sock = connect_to_host("localhost", port);
 	if ( sock == -1){
 		return FAIL;
 	}
