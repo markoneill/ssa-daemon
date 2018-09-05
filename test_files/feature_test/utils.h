@@ -10,5 +10,6 @@
 int connect_to_host(char* host, char* service);
 int bind_listen(uint16_t port, char* hostname);
 int echo_recv(int fd, char* buff, size_t buff_len);
+//int timed_accept(int listen_fd, struct sockaddr* addr, socklen_t* addr_len, int timeout);
 
 #endif //UTILS_H

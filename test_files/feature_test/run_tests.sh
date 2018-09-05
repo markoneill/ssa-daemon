@@ -16,37 +16,44 @@ function print_usage {
 	echo -e "\twhere <mode> is one of"
 	echo -e "\tall:\t\tbuild and run all tests"
 	echo -e "\tbuild_test:\tbuild each test"
-	echo -e "\tbuild_daemon:\tbuild the tls_wraper"
+	echo -e "\tbuild_daemon:\tbuild the tls_wrapper"
 	echo -e "\tbuild_ssa\tbuild and insert the ssa"
 	echo -e "\trebuild_tests:\tclean and build each test"
-	echo -e "\trebuild_daemon:\tclean and build the tls_wraper"
+	echo -e "\trebuild_daemon:\tclean and build the tls_wrapper"
 	echo -e "\trebuild_ssa\tclean, build and insert the ssa"
-	echo -e "\trun:\t\trun all exicutable files in this directory"
-	echo -e "\t\t\tNOAT: if tls_wraper is running, all tests will be exicuted against that instance of the daemon. Otherwise a new instance is created for each test"
+	echo -e "\trun:\t\trun all executable files in this directory"
+	echo -e "\t\t\tNOAT: if tls_wrapper is running, all tests will be executed against that instance of the daemon. Otherwise a new instance is created for each test"
 	echo -e "\tusage:\t\tprint this usage statement"
 	return $?
 }
 
-function is_root {
+function require_root {
 	if [[ $EUID -ne 0 ]]; then
 		echo -e "$1"
-		return -1
+		exit 1
 	fi
 	return 0
 }
 
-function remove_ssa_kernelmodule {
-	echo "Removing ssa kernel modual"
-	is_root "Options on the ssa require root privleges.\n\
-		Change to root user and try again."
-
-	if [[ $SSA_INSTALLED -gt 0 ]]; then
-		rmmod ssa
-		SSA_INSTALLED=`$(kmod list | grep -c ssa)`
+function dir_chk_logdir {
+	echo "checking for log directory..."
+	if [ ! -d ${LOG_DIR} ]; then
+		echo -e "\tdirectory absent\n\tmaking log directory"
+		mkdir ${LOG_DIR} || \
+		       (echo "\tfailed to make ${LOG_DIR}" ; return 1)
 	fi
+	return 0
 }
 
-function set_ssa_dir {
+function dir_chk_daemon {
+	if [ ! -d ${WRAPPER_DIR} ]; then
+		echo -e "\terror: missing directory dependency ${WRAPPER_DIR}"
+		return 1
+	fi
+	return 0
+}
+
+function dir_chk_ssa {
 	if [ ! -d ${SSA_DIR} ]; then 
 		SSA_DIR=${SSA_HOME}
 		if [ ! -d ${SSA_DIR} ]; then
@@ -54,40 +61,50 @@ function set_ssa_dir {
 				Please clone the ssa into the folder containing the ssa-daemon or\
 			        specify the path to the ssa in SSA_HOME environment variable and \
 			       	try again"
-			 exit 1
+			 return 1
 		fi
 	fi
+	return 0
+}
+
+function remove_ssa_kernel_module {
+	require_root "Options on the ssa require root privileges.\n\
+		Change to root user and try again."
+
+	if [[ $SSA_INSTALLED -gt 0 ]]; then
+		rmmod ssa || exit 1
+		SSA_INSTALLED=$(kmod list | grep -c ssa)
+	fi
+	return 0
 }
 
 function clean_ssa {
-	is_root "Options on the ssa require root privleges.\n\
+	require_root "Options on the ssa require root privileges.\n\
 		Change to root user and try again."
-
-	set_ssa_dir
-	echo -e "\tcleaning project at $SSA_DIR"
-	make -s -C $SSA_DIR clean
-	rm $SSA_DIR/ssa.ko
+	dir_chk_ssa && \
+		rm $SSA_DIR/ssa.ko && \
+		make -s -C $SSA_DIR clean
+	return $?
 }
 
-
 function build_ssa {
-	is_root "Options on the ssa require root privleges.\n\
+	require_root "Options on the ssa require root privileges.\n\
 		Change to root user and try again."
-
 	cd ${SSA_DIR}
-	make -s clean
-	make -s || (echo -e "\tbuild failed" ; exit 1)
+	clean_ssa && \
+		make -s || \
+		(echo -e "\tbuild failed" ; exit 1)
 	cd ${HOME_DIR}
+	return 0
 }
 
 function insert_ssa {
 	echo "Locating ssa"
-
 	if [ $SSA_INSTALLED -eq 0 ]; then
 		echo -e "\tno ssa module in kernel"
 		if [ ! -f ${SSA_DIR}/$SSA_KO ]; then
 			echo -e "\t$SSA_KO does not exist"
-			set_ssa_dir
+			dir_chk_ssa
 			build_ssa
 		fi
 		insmod ${SSA_DIR}/ssa.ko || exit 1
@@ -96,47 +113,40 @@ function insert_ssa {
 	else
 		echo -e "\tmodule found in kernel"
 	fi
-}
-
-function init_dir {
-	# Make sure we are in the right directory
-	echo "checking direcotry dependencies..."
-	missing=false
-	if [ ! -d ${WRAPPER_DIR} ]; then
-		echo -e "\terror: missing directory dependency ${WRAPPER_DIR}"
-		missing=true
-	fi
-	if [ ! -d ${LOG_DIR} ]; then
-		echo -e "\tmaking log directory"
-		mkdir ${LOG_DIR} || (echo "\tfailed to make ${LOG_DIR}" && $missing=true)
-		missing=true
-	fi
-	if [[ $missing = false ]]; then
-		echo -e "\tall directorys present"
-	fi
-	return 0
+	return 0;
 }
 
 function clean_daemon {
 	echo "clean project ssa-daemon"
+	dir_chk_daemon || exit 1
 	make -s -C $WRAPPER_DIR clean
+	return $?
 }
 
 function build_daemon {
 	echo "make project ssa-daemon"
+	dir_chk_daemon || exit 1
 	make -s -C ${WRAPPER_DIR} || (echo -e "\terror building tls_wrapper.\nexiting" ; exit 1)
+	return $?
+}
+
+function clean_tests {
+	make -s clean
+	return $?
 }
 
 function build_tests {
 	make -s all
+	return $?
 }
 
 function run_tests {
+	init_dir
 	echo "starting tests..."
 	
 	own_daemon=false
 	if [ `ps -au | grep -c tls_wrapper` -lt 1 ]; then
-		is_root "tls_wrapper must be run as root.\nstart the tls_wrappre or try again as root"
+		require_root "tls_wrapper must be run as root.\nstart the tls_wrapper or try again as root"
 		echo "`date`" > ${LOG_DIR}/tls_wrapper.log
 		cd ${WRAPPER_DIR}
 		own_daemon=true
@@ -147,8 +157,8 @@ function run_tests {
 	do
 		if [ $own_daemon = true ]; then
 			pkill tls_wrapper
-			./tls_wrapper  1>>${LOG_DIR}/tls_wrapper.log 2>&1
-			|| echo -e "\ntls_wrapper died" &
+			./tls_wrapper  1>>${LOG_DIR}/tls_wrapper.log 2>&1 || \
+			       	echo -e "\ntls_wrapper died" &
 		fi
 		echo -e "\n\n\t$ix\n"
 		printf "%`tput cols`s\n" | tr ' ' '*'
@@ -169,53 +179,54 @@ function main {
 		echo "mode = \"${MODE}\""
 	else
 		print_usage ${0}
-		return 0
+		return $?
 	fi
 
-	init_dir
-
-	if [[ ${MODE} = all ]]; then
-		build_tests
+	if [[ ${MODE} = "all" ]]; then
+		build_tests && \
 		run_tests
-		return 0
+		return $?
 	fi
-	if [[ ${MODE} = rebuild_tests ]]; then
-
-		MODE="build_tests"
+	if [[ ${MODE} = "rebuild_tests" ]]; then
+		clean_tests && \
+			MODE="build_tests" || \
+			return 1
 	fi
 	if [[ ${MODE} = build_tests ]]; then
 		build_tests
-		return 0
+		return $?
 	fi
 	if [[ ${MODE} = rebuild_daemon ]]; then
-		clean_daemon
-		MODE="build_daemon"
+		clean_daemon && \
+		       MODE="build_daemon" || \
+		       return 1
 	fi
 	if [[ ${MODE} = build_daemon ]]; then
 		build_daemon
-		return 0;
+		return $?;
 	fi
 	if [[ ${MODE} = rebuild_ssa ]]; then
-		remove_ssa_kernelmodule
-		clean_ssa
-		MODE="build_ssa"
+		remove_ssa_kernel_module && \
+			clean_ssa && \
+			MODE="build_ssa" || \
+			return 1
 	fi
 	if [[ ${MODE} = build_ssa ]]; then
-		build_ssa
-		return 0
+		insert_ssa
+		return $?
 	fi
 	if [[ ${MODE} = run ]]; then
 		run_tests
-		return 0
+		return $?
 	fi
 	if [[ ${MODE} = usage ]]; then
 		print_usage ${0}
-		return 0
+		return $?
 	fi
 
 	echo "Unknown mode ${MODE}"
 	print_usage ${0}
-	return 0
+	return $?
 }
 
 main $1
