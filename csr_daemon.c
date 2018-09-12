@@ -53,12 +53,16 @@ typedef struct totp_ctx {//##
 } totp_ctx_t;
 
 typedef struct validate_totp_ctx {
-	char* access_code;
-	int expected_code_len;
-	int code_length;
+	char* email_access_code;
+	int expected_email_code_len;
+	int email_code_length;
 	// max email totp len == 6
 	int email_totp_length;
 	char* email_totp;
+	// access code for the phone totp
+	char* phone_access_code;
+	int expected_phone_code_len;
+	int phone_code_length;
 	// max email totp len == 8
 	int phone_totp_length;
 	char* phone_totp;
@@ -146,7 +150,7 @@ int csr_server_create(int port) {
 	ERR_free_strings();
 	SSL_COMP_free_compression_methods();
 	#endif
-	
+
 
 	return 0;
 }
@@ -180,9 +184,12 @@ validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
 	validate_totp_ctx_t* ctx;
 
 	ctx = (validate_totp_ctx_t*)malloc(sizeof(validate_totp_ctx_t));
-	ctx->access_code = NULL;
-	ctx->expected_code_len = 0;
-	ctx->code_length = 0;
+	ctx->email_access_code = NULL;
+	ctx->expected_email_code_len = 0;
+	ctx->email_code_length = 0;
+	ctx->phone_access_code = NULL;
+	ctx->expected_phone_code_len = 0;
+	ctx->phone_code_length = 0;
 	ctx->phone_totp = malloc(PHONE_TOTP_LEN * sizeof(char));
 	ctx->email_totp = malloc(EMAIL_TOTP_LEN * sizeof(char));
 	ctx->phone_totp_length = 0;
@@ -193,8 +200,10 @@ validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
 }
 
 void free_validate_totp_ctx(validate_totp_ctx_t* ctx) {
-	if (ctx->access_code != NULL)
-		free(ctx->access_code);
+	if (ctx->email_access_code != NULL)
+		free(ctx->email_access_code);
+	if (ctx->phone_access_code != NULL)
+		free(ctx->phone_access_code);
 	free(ctx->phone_totp);
 	free(ctx->email_totp);
 
@@ -291,7 +300,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {
 		else {
 			con_ctx->max_length = con_ctx->max_length*2;
 		}
-		
+
 		con_ctx->cert = realloc(con_ctx->cert,con_ctx->max_length);
 	}
 	bufferevent_read(bev, con_ctx->cert+con_ctx->length, recv_len);
@@ -413,8 +422,6 @@ void new_event_cb(struct bufferevent *bev, short events, void *ctx) {
 }
 
 void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS AND EMAIL
-
-	printf("TOTP READ CALLBACK INVOKED.\n");
 	struct evbuffer *input = bufferevent_get_input(bev);
 	size_t recv_len = evbuffer_get_length(input);
 	totp_ctx_t *totp_ctx = (totp_ctx_t*)ctx;
@@ -422,7 +429,7 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 	char single_byte[1];
 	char twilio_error[100];
 	char response[120];
-	
+
 	// read the length of the phone number field
 	if (totp_ctx->expected_phone_len == 0 && recv_len > 0) {
 		// the first byte of the request is the length of the phone number in bytes
@@ -430,7 +437,6 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 		recv_len--;
 		totp_ctx->expected_phone_len = single_byte[0];
 		if (totp_ctx->expected_phone_len <= 0) {
-			printf("Bad Request: Phone number length is: %i\n", totp_ctx->expected_phone_len);
 			// close connection...
 			free(totp_ctx);
 			return;
@@ -457,11 +463,7 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 			bufferevent_read(bev, single_byte, 1);
 			recv_len--;
 			totp_ctx->expected_email_len = single_byte[0];
-			printf("The single byte of the email string: %s\n", single_byte);
-			printf("single byte as an int");
-			printf("expec: %i", totp_ctx->expected_email_len);
 			if (totp_ctx->expected_email_len <= 0) {
-				printf("Bad Request: Email length is: %i\n", totp_ctx->expected_email_len);
 				// close connection...
 				free(totp_ctx);
 				return;
@@ -472,29 +474,23 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 	}
 
 	if (totp_ctx->email_length < totp_ctx->expected_email_len && recv_len > 0) {
-		printf("Reading Email...\n");
 		int read_len = recv_len;
-		printf("readlen before adjust: %i\n", read_len);
-		printf("expec: %i\n", totp_ctx->expected_email_len);
-		printf("email len: %i\n", totp_ctx->email_length);
 		if (recv_len > (totp_ctx->expected_email_len - totp_ctx->email_length)) {
 			// If we received more chars than we want to store
 			// Set the read amount to the remaining length of the expected email
 			read_len = (totp_ctx->expected_email_len - totp_ctx->email_length);
 		}
-		printf("reading email read_len: %i\n", read_len);
 		bufferevent_read(bev, totp_ctx->email, read_len);
 		totp_ctx->email_length += read_len;
 		recv_len -= read_len;
 	}
 
 	if (totp_ctx->phone_length == totp_ctx->expected_phone_len && totp_ctx->email_length == totp_ctx->expected_email_len) {
-		printf("TOTP endpoint got all fields\n");
 		printf("Phone Number: %s\nEmail: %s\n", totp_ctx->phone_num, totp_ctx->email);
 		// Get a TOTP and then send it to the specified number and email...
 		totps = generate_totp();
-		printf("TOTPS GENERATED: %s\n", totps->email_totp);
-		printf("TOTPS GENERATED: %s\n", totps->phone_totp);
+		printf("EMAIL TOTP: %s\n", totps->email_totp);
+		printf("PHONE TOTP: %s\n", totps->phone_totp);
 		printf("ACCESS CODE: %s\n", totps->access_code_email);
 		printf("ACCESS CODE: %s\n", totps->access_code_phone);
 		int sms_response_code = twilio_send_message(totp_ctx->phone_num, totps->phone_totp, twilio_error);
@@ -503,10 +499,10 @@ void totp_read_cb(struct bufferevent *bev, void *ctx) {//##TOTP GENERATION SMS A
 			printf("%s\n", twilio_error);
 		}
 		printf("Would send email here..\n");//##EMAIL TO BE SENT
-		snprintf(response, 120, "%i%s%i%s", strnlen(totps->access_code_email, 55), totps->access_code_email, 
-											strnlen(totps->access_code_phone, 55), totps->access_code_phone);
+		snprintf(response, 120, "%c%s%c%s", strnlen(totps->access_code_email, 65), totps->access_code_email,
+											strnlen(totps->access_code_phone, 65), totps->access_code_phone);
 		bufferevent_write(bev, response, strnlen(response, 120));
-		
+
 		free_totps(totps);
 	}
 }
@@ -531,37 +527,35 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 	char *totp = NULL;
 	char single_byte[1];
 
-	// ##read the length of the acess code number field
-	if (totp_ctx->expected_code_len == 0 && recv_len > 0) {
+	// ##read the length of the access code number field
+	if (totp_ctx->expected_email_code_len == 0 && recv_len > 0) {
 		// the first byte of the request is the length of the code number in bytes
 		bufferevent_read(bev, single_byte, 1);
 		recv_len--;
-		totp_ctx->expected_code_len = single_byte[0];
-		if (totp_ctx->expected_code_len <= 0) {
-			printf("Bad Request: access code length is: %i\n", totp_ctx->expected_code_len);
+		totp_ctx->expected_email_code_len = single_byte[0];
+		if (totp_ctx->expected_email_code_len <= 0) {
+			printf("Bad Request: email access code length is: %i\n", totp_ctx->expected_email_code_len);
 			// close connection...
 			free(totp_ctx);
 			return;
 		} else {
-			totp_ctx->access_code = (char*)calloc(totp_ctx->expected_code_len+1, sizeof(char));
-			printf("allocating access code length\n" );
+			totp_ctx->email_access_code = calloc(totp_ctx->expected_email_code_len+1, sizeof(char));
 		}
-		
+
 	}
-//##ACCESS CODE
-	if (totp_ctx->code_length < totp_ctx->expected_code_len && recv_len > 0) {
+	// Read email access code
+	if (totp_ctx->email_code_length < totp_ctx->expected_email_code_len && recv_len > 0) {
 		int read_len = recv_len;
-		if (recv_len > (totp_ctx->expected_code_len - totp_ctx->code_length)) {
+		if (recv_len > (totp_ctx->expected_email_code_len - totp_ctx->email_code_length)) {
 			// If we received more chars than we want to store
 			// Set the read amount to the remaining length of the expected access code
-			read_len = (totp_ctx->expected_code_len - totp_ctx->code_length);
+			read_len = (totp_ctx->expected_email_code_len - totp_ctx->email_code_length);
 		}
-		bufferevent_read(bev, totp_ctx->access_code, read_len);
-		totp_ctx->code_length += read_len;
+		bufferevent_read(bev, totp_ctx->email_access_code, read_len);
+		totp_ctx->email_code_length += read_len;
 		recv_len -= read_len;
-		printf("access code recieved: %s\n", totp_ctx->access_code);
 	}
-//##EMAIL OTP
+	//##EMAIL OTP
 	if (totp_ctx->email_totp_length < EMAIL_TOTP_LEN && recv_len > 0) {
 		int read_len = recv_len;
 		if (recv_len > (EMAIL_TOTP_LEN - totp_ctx->email_totp_length)) {
@@ -570,9 +564,36 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 		bufferevent_read(bev, totp_ctx->email_totp, read_len);
 		totp_ctx->email_totp_length += read_len;
 		recv_len -= read_len;
-		printf("This is the email totp: %s\n", totp_ctx->email_totp);
 	}
-//## PHONE OTP
+	// Read length of the phone access code
+	if (totp_ctx->expected_phone_code_len == 0 && recv_len > 0) {
+		// the first byte of the request is the length of the code number in bytes
+		bufferevent_read(bev, single_byte, 1);
+		recv_len--;
+		totp_ctx->expected_phone_code_len = single_byte[0];
+		if (totp_ctx->expected_phone_code_len <= 0) {
+			printf("Bad Request: phone access code length is: %i\n", totp_ctx->expected_phone_code_len);
+			// close connection...
+			free(totp_ctx);
+			return;
+		} else {
+			totp_ctx->phone_access_code = calloc(totp_ctx->expected_phone_code_len+1, sizeof(char));
+		}
+
+	}
+	// Read phone access code
+	if (totp_ctx->phone_code_length < totp_ctx->expected_phone_code_len && recv_len > 0) {
+		int read_len = recv_len;
+		if (recv_len > (totp_ctx->expected_phone_code_len - totp_ctx->phone_code_length)) {
+			// If we received more chars than we want to store
+			// Set the read amount to the remaining length of the expected access code
+			read_len = (totp_ctx->expected_phone_code_len - totp_ctx->phone_code_length);
+		}
+		bufferevent_read(bev, totp_ctx->phone_access_code, read_len);
+		totp_ctx->phone_code_length += read_len;
+		recv_len -= read_len;
+	}
+	//## PHONE OTP
 	if (totp_ctx->phone_totp_length < PHONE_TOTP_LEN && recv_len > 0) {
 		int read_len = recv_len;
 		if (recv_len > (PHONE_TOTP_LEN - totp_ctx->phone_totp_length)) {
@@ -581,11 +602,14 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 		bufferevent_read(bev, totp_ctx->phone_totp, read_len);
 		totp_ctx->phone_totp_length += read_len;
 		recv_len -= read_len;
-		printf("This is the phone totp: %s\n", totp_ctx->phone_totp);
 	}
 
-	if (totp_ctx->code_length == totp_ctx->expected_code_length) {
-		
+	if (totp_ctx->phone_totp_length == PHONE_TOTP_LEN) {
+		printf("Doing totp verification\n");
+		int something = validate_totp(totp_ctx->phone_access_code, totp_ctx->phone_totp, totp_ctx->phone_totp_length);
+		printf("%s\n", something);
+		something = validate_totp(totp_ctx->email_access_code, totp_ctx->email_totp, totp_ctx->email_totp_length);
+		printf("%s\n", something);
 	}
 }
 

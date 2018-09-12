@@ -12,7 +12,7 @@ typedef struct totps {
 } totps_t;
 
 totps_t* generate_totp();
-char* validate_totp(char* key, char* totp, int length);
+int validate_totp(char* key, char* totp, int length);
 
 void free_totps(totps_t *totps);
 

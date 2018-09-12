@@ -44,7 +44,7 @@ totps_t* generate_totp() {
 	return totps;
 }
 
-char* validate_totp(char* key, char* totp, int length) {
+int validate_totp(char* key, char* totp, int length) {
 	return totp_verify(key, totp, length, PERIOD, SHA256);
 }
 
