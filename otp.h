@@ -17,6 +17,7 @@ typedef enum _cotp_errno {
     INVALID_PERIOD          = 6
 } cotp_error_t;
 
+
 char   *get_hotp            (const char     *base32_encoded_secret,
                              long            counter,
                              int             digits,
@@ -29,11 +30,21 @@ char   *get_totp            (const char     *base32_encoded_secret,
                              int             sha_algo,
                              cotp_error_t   *err_code);
 
+char   *get_steam_totp      (const char     *base32_encoded_secret,
+                             int             period,
+                             cotp_error_t   *err_code);
+
+
 char   *get_totp_at         (const char     *base32_encoded_secret,
                              long            time,
                              int             digits,
                              int             period,
                              int             sha_algo,
+                             cotp_error_t   *err_code);
+
+char   *get_steam_totp_at   (const char     *base32_encoded_secret,
+                             long            timestamp,
+                             int             period,
                              cotp_error_t   *err_code);
 
 int     totp_verify         (const char     *base32_encoded_secret,
@@ -42,5 +53,11 @@ int     totp_verify         (const char     *base32_encoded_secret,
                              int             period,
                              int             sha_algo);
 
-#endif
+int     hotp_verify         (const char     *base32_encoded_secret,
+                             long            counter,
+                             int             digits,
+                             const char     *user_hotp,
+                             int             sha_algo);
+
+#endif // OTP_H
 

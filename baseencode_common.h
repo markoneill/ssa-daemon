@@ -1,4 +1,5 @@
-#pragma once
+#ifndef BASEENCODE_COMMON_H
+#define BASEENCODE_COMMON_oH
 
 #include "baseencode.h"
 
@@ -10,7 +11,6 @@
 #define MAX_ENCODE_INPUT_LEN        64*1024*1024
 // if 64 MB of data is encoded than it should be also possible to decode it. That's why a bigger input is allowed for decoding
 #define MAX_DECODE_BASE32_INPUT_LEN ((MAX_ENCODE_INPUT_LEN * 8 + 4) / 5)
-#define MAX_DECODE_BASE64_INPUT_LEN ((MAX_ENCODE_INPUT_LEN * 8 + 4) / 6)
 
 
 static int
@@ -48,3 +48,6 @@ check_input(const unsigned char *user_data, size_t data_len, int max_len, baseen
 
     *err = SUCCESS;
 }
+
+#endif // BASEENCODE_COMMON_H
+

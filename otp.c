@@ -1,7 +1,3 @@
-/*
-    This code is based predominately on the https://github.com/paolostivanin/libcotp repository. The gen_otp function was added utilizing
-    the get_totp function and totp_verify function. The hotp_verify function was removed as it was not used. 
-*/
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
@@ -9,12 +5,11 @@
 #include "baseencode.h"
 #include "otp.h"
 
-
 #define SHA1_DIGEST_SIZE    20
 #define SHA256_DIGEST_SIZE  32
 #define SHA512_DIGEST_SIZE  64
 
-static int DIGITS_POWER[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000};
+static long long int DIGITS_POWER[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000};
 
 
 static int
@@ -52,8 +47,30 @@ normalize_secret (const char *K)
 }
 
 
+static char *
+get_steam_code(unsigned const char *hmac)
+{
+    int offset = (hmac[SHA1_DIGEST_SIZE-1] & 0x0f);
+
+    // Starting from the offset, take the successive 4 bytes while stripping the topmost bit to prevent it being handled as a signed integer
+    int bin_code = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | ((hmac[offset + 3] & 0xff));
+
+    const char steam_alphabet[] = "23456789BCDFGHJKMNPQRTVWXY";
+
+    char code[6];
+    for (int i = 0; i < 5; i++) {
+        int mod = bin_code % strlen(steam_alphabet);
+        bin_code = bin_code / strlen(steam_alphabet);
+        code[i] = steam_alphabet[mod];
+    }
+    code[5] = '\0';
+
+    return strdup(code);
+}
+
+
 static int
-truncate(unsigned const char *hmac, int N, int algo)
+truncate(unsigned const char *hmac, int digits_length, int algo)
 {
     // take the lower four bits of the last byte
     int offset = 0;
@@ -74,7 +91,7 @@ truncate(unsigned const char *hmac, int N, int algo)
     // Starting from the offset, take the successive 4 bytes while stripping the topmost bit to prevent it being handled as a signed integer
     int bin_code = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | ((hmac[offset + 3] & 0xff));
 
-    int token = bin_code % DIGITS_POWER[N];
+    int token = bin_code % DIGITS_POWER[digits_length];
 
     return token;
 }
@@ -112,18 +129,19 @@ compute_hmac(const char *K, long C, int algo)
 
 
 static char *
-finalize(int N, int tk)
+finalize(int digits_length, int tk)
 {
-    char *token = malloc((size_t)N + 1);
+    char *token = malloc((size_t)digits_length + 1);
     if (token == NULL) {
         fprintf (stderr, "Error during memory allocation\n");
         return NULL;
     } else {
-        char *fmt = calloc(1, 5);
+        int extra_char = digits_length < 10 ? 0 : 1;
+        char *fmt = calloc(1, 5 + extra_char);
         memcpy (fmt, "%.", 2);
-        snprintf (fmt+2, 2, "%d", N);
-        memcpy (fmt+3, "d", 2);
-        snprintf (token, N+1, fmt, tk);
+        snprintf (fmt + 2, 2 + extra_char, "%d", digits_length);
+        memcpy (fmt + 3 + extra_char, "d", 2);
+        snprintf (token, digits_length + 1, fmt, tk);
         free (fmt);
     }
     return token;
@@ -131,9 +149,9 @@ finalize(int N, int tk)
 
 
 static int
-check_period(int P)
+check_period(int period)
 {
-    if ((P != 30) && (P != 60)) {
+    if (period <= 0 || period > 120) {
         return INVALID_PERIOD;
     }
     return VALID;
@@ -141,9 +159,9 @@ check_period(int P)
 
 
 static int
-check_otp_len(int N)
+check_otp_len(int digits_length)
 {
-    if ((N != 6) && (N != 8)) {
+    if (digits_length < 3 || digits_length > 10) {
         return INVALID_DIGITS;
     }
     return VALID;
@@ -198,6 +216,16 @@ get_totp(const char *secret, int digits, int period, int algo, cotp_error_t *err
 
 
 char *
+get_steam_totp (const char *secret, int period, cotp_error_t *err_code)
+{
+    // AFAIK, the secret is stored base64 encoded on the device. As I don't have time to waste on reverse engineering
+    // this non-standard solution, the user is responsible for decoding the secret in whatever format this is and then
+    // providing the library with the secret base32 encoded.
+    return get_steam_totp_at (secret, (long)time(NULL), period, err_code);
+}
+
+
+char *
 get_totp_at(const char *secret, long current_timestamp, int digits, int period, int algo, cotp_error_t *err_code)
 {
     if (check_gcrypt() == -1) {
@@ -224,6 +252,31 @@ get_totp_at(const char *secret, long current_timestamp, int digits, int period, 
         return NULL;
     }
     return token;
+}
+
+
+char *
+get_steam_totp_at (const char *secret, long current_timestamp, int period, cotp_error_t *err_code)
+{
+    if (check_gcrypt() == -1) {
+        *err_code = GCRYPT_VERSION_MISMATCH;
+        return NULL;
+    }
+
+    if (check_period(period) == INVALID_PERIOD) {
+        *err_code = INVALID_PERIOD;
+        return NULL;
+    }
+
+    long timestamp = current_timestamp / period;
+
+    unsigned char *hmac = compute_hmac(secret, timestamp, SHA1);
+    if (hmac == NULL) {
+        *err_code = INVALID_B32_INPUT;
+        return NULL;
+    }
+
+    return get_steam_code(hmac);
 }
 
 

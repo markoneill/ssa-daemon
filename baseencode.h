@@ -1,7 +1,7 @@
 #ifndef BASEENCODE_H
 #define BASEENCODE_H
 
-#include <stdlib.h>
+#include <stddef.h>
 
 typedef enum _baseencode_errno {
     SUCCESS = 0,
@@ -22,5 +22,5 @@ unsigned char   *base32_decode (const char          *user_data,
                                 size_t               data_len,
                                 baseencode_error_t  *err);
 
-#endif
+#endif // BASEENCODE_H
 
