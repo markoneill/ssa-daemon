@@ -19,6 +19,7 @@
 #include "twilio.h"
 
 #define FAIL_MSG "SIGNING REQUEST FAILED"
+#define TOTP_FAIL_MSG "TOTP VERIFY FAILED"
 #define CERT_DAYS 365
 #define CERT_PATH "test_files/certificate_a.pem"
 #define KEY_PATH "test_files/key_a.pem"
@@ -526,6 +527,8 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 	validate_totp_ctx_t *totp_ctx = (validate_totp_ctx_t*)ctx;
 	char *totp = NULL;
 	char single_byte[1];
+	int phone_totp_valid;
+	int email_totp_valid;
 
 	// ##read the length of the access code number field
 	if (totp_ctx->expected_email_code_len == 0 && recv_len > 0) {
@@ -606,10 +609,14 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 
 	if (totp_ctx->phone_totp_length == PHONE_TOTP_LEN) {
 		printf("Doing totp verification\n");
-		int something = validate_totp(totp_ctx->phone_access_code, totp_ctx->phone_totp, totp_ctx->phone_totp_length);
-		printf("%s\n", something);
-		something = validate_totp(totp_ctx->email_access_code, totp_ctx->email_totp, totp_ctx->email_totp_length);
-		printf("%s\n", something);
+		phone_totp_valid = validate_totp(totp_ctx->phone_access_code, totp_ctx->phone_totp, totp_ctx->phone_totp_length);
+		email_totp_valid = validate_totp(totp_ctx->email_access_code, totp_ctx->email_totp, totp_ctx->email_totp_length);
+		if (phone_totp_valid == 0 && email_totp_valid == 0) {
+			printf("Totp's verified\n");
+			bufferevent_write(bev, "SUCCESS", 7);
+		} else {
+			bufferevent_write(bev, TOTP_FAIL_MSG, strnlen(TOTP_FAIL_MSG, 25));
+		}
 	}
 }
 
