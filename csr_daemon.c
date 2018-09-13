@@ -67,7 +67,7 @@ typedef struct validate_totp_ctx {
 	// max email totp len == 8
 	int phone_totp_length;
 	char* phone_totp;
-	con_ctx_t* con_ctx;
+	con_ctx_t* con_ctx; //
 } validate_totp_ctx_t;
 
 
@@ -178,6 +178,7 @@ void free_totp_ctx(totp_ctx_t* ctx) {
 	free(ctx->phone_num);
 	free(ctx->email);
 	free(ctx);
+	
 }
 
 validate_totp_ctx_t* create_validate_totp_ctx(struct event_base* ev_base) {
@@ -281,8 +282,8 @@ int copy_cert(struct bufferevent *bev, con_ctx_t *con) {
 	return 0;
 }
 
-// This is not written correctly and needs to not have to read all at once.
-void csr_read_cb(struct bufferevent *bev, void *con) {
+// This is not written correctly and needs to not have to read all at once. 
+void csr_read_cb(struct bufferevent *bev, void *con) {//cause of seg fault? 
 
 	int cert_len = 0;
 	X509* new_cert;
@@ -613,7 +614,15 @@ void validate_totp_read_cb(struct bufferevent *bev, void *ctx) {//##VALIDATE FUN
 		email_totp_valid = validate_totp(totp_ctx->email_access_code, totp_ctx->email_totp, totp_ctx->email_totp_length);
 		if (phone_totp_valid == 0 && email_totp_valid == 0) {
 			printf("Totp's verified\n");
-			bufferevent_write(bev, "SUCCESS", 7);
+			free_validate_totp_ctx(totp_ctx);//frees everything in validate_totp_ctx
+			//bufferevent_write(bev, "SUCCESS", 7); //replace sucess with a funciton that will call sgining funciton to actually sign cert, then write signed cert to buffer event using buffer event write. 
+			void* csr_ctx = create_csr_ctx(NULL);
+			bufferevent_setcb(bev, csr_read_cb, NULL, csr_event_cb, csr_ctx);
+			printf("Updated callback to csr\n");
+			if(recv_len > 0){
+				csr_read_cb(bev, csr_ctx);
+			}
+
 		} else {
 			bufferevent_write(bev, TOTP_FAIL_MSG, strnlen(TOTP_FAIL_MSG, 25));
 		}
@@ -631,7 +640,7 @@ void validate_totp_event_cb(struct bufferevent *bev, short events, void *ctx) {
 	}
 }
 
-void new_read_cb(struct bufferevent *bev, void *ctx) {
+void new_read_cb(struct bufferevent *bev, void *ctx) {//called when there is a new connection and routes to proper event
 	printf("New Read Callback invoked\n");
 	if (ctx != NULL)
 		printf("Context Not defined for new_read_cb\n");
@@ -656,7 +665,7 @@ void new_read_cb(struct bufferevent *bev, void *ctx) {
 			case 0:
 				req_ctx = create_totp_ctx(NULL);
 				// set callback to otp_request
-				bufferevent_setcb(bev, totp_read_cb, NULL, totp_event_cb, req_ctx);
+				bufferevent_setcb(bev, totp_read_cb, NULL, totp_event_cb, req_ctx);//bufferevent_setcb tells where to go when theres a write or event/error
 				printf("Updated callback to totp req\n");
 				if (recv_len > 0) {
 					totp_read_cb(bev, req_ctx);
