@@ -2,7 +2,7 @@
 
 DISTRO=$(awk -F= '/^NAME/{print $2}' /etc/os-release)
 test -n $DISTRO && echo "distribution detected: ${DISTRO}" || echo "could not determine OS type"
-if [[ "${DISTRO}" == 'Fadora' ]]; then
+if [[ "${DISTRO}" == 'Fedora' ]]; then
 	echo 'Installing Fadora libraries for tls_wrapper'
 	sudo dnf install \
 						  avahi-devel \
