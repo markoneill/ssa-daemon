@@ -1014,8 +1014,8 @@ char* strnstr(char* haystack, char* needle, int length) {
 void set_alpn(int fd) {
 	char protos[] = "http/1.1";
 	socklen_t protos_len = sizeof(protos);
-	if (setsockopt(fd, IPPROTO_TLS, SO_ALPN, protos, protos_len) == -1) {
-		perror("setsockopt: SO_ALPN");
+	if (setsockopt(fd, IPPROTO_TLS, TLS_ALPN, protos, protos_len) == -1) {
+		perror("setsockopt: TLS_ALPN");
 	}
 	return;
 }

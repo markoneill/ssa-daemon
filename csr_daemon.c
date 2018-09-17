@@ -5,12 +5,14 @@
 
 #include <event2/event.h>
 #include <event2/listener.h>
+#include <event2/buffer.h>
 #include <event2/util.h>
 #include <event2/bufferevent_ssl.h>
 
 #include <openssl/ssl.h>
 #include <openssl/engine.h>
 #include <openssl/bio.h>
+#include <openssl/conf.h>
 
 
 #include "log.h"
@@ -89,7 +91,6 @@ static void totp_event_cb(struct bufferevent *bev, short events, void *ctx);
 int csr_server_create(int port) {
 	struct event_base* ev_base = event_base_new();
 	struct evconnlistener* listener;
-	evutil_socket_t server_sock;
 	struct event* sev_pipe;
 	struct event* sev_int;
 	struct sockaddr_in sin;
@@ -336,7 +337,7 @@ void csr_read_cb(struct bufferevent *bev, void *con) {//cause of seg fault?
 		return;
 	}
 
-	bufferevent_write(bev, encoded_cert, cert_len);
+	bufferevent_write(bev, encoded_cert, cert_len + 1);
 
 	free(encoded_cert);
 	X509_REQ_free(cert_req);
@@ -345,9 +346,11 @@ void csr_read_cb(struct bufferevent *bev, void *con) {//cause of seg fault?
 
 void csr_accept_error_cb(struct evconnlistener *listener, void *arg) {
 	struct event_base *base = evconnlistener_get_base(listener);
+#ifndef NO_LOG
 	int err = EVUTIL_SOCKET_ERROR();
 	log_printf(LOG_ERROR, "Got an error %d (%s) on the listener\n",
 			err, evutil_socket_error_to_string(err));
+#endif
 	event_base_loopexit(base, NULL);
 	return;
 }

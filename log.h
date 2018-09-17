@@ -31,7 +31,6 @@
 #include <sys/socket.h>
 
 typedef enum log_level {
-	LOG_BENCHMARK,
 	LOG_DEBUG,
 	LOG_INFO,
 	LOG_WARNING,
@@ -44,10 +43,11 @@ void log_printf(log_level_t level, const char* format, ...);
 void log_printf_addr(struct sockaddr *addr);
 void log_close(void);
 #else
+#define noop
 #define log_init(X, Y)	((int)0)
-#define log_printf (void)sizeof
-#define log_printf_addr (void)sizeof
-#define log_close() ((void)0)
+#define log_printf(...) noop
+#define log_printf_addr(...) noop
+#define log_close() noop
 #endif
 
 int timeval_subtract(struct timeval* result, struct timeval* x, struct timeval* y);

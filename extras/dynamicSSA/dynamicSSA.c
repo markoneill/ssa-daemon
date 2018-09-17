@@ -194,8 +194,8 @@ X509 *SSL_get_peer_certificate(const SSL *s)
 
     // SSL_write((SSL*)s,"GET / HTTP/1.1\r\nhost: google.com\r\n\r\n",1);
 
-    if (getsockopt(ssl_fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, cert, &cert_len) == -1) {
-        perror("getsockopt: SO_PEER_CERTIFICATE:");
+    if (getsockopt(ssl_fd, IPPROTO_TLS, TLS_PEER_CERTIFICATE_CHAIN, cert, &cert_len) == -1) {
+        perror("getsockopt: TLS_PEER_CERTIFICATE_CHAIN:");
     }
 
     /* Cert conversion to an X509 OpenSSL Object */

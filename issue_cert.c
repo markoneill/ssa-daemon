@@ -9,6 +9,26 @@
 #include <openssl/engine.h>
 #include <openssl/bio.h>
 
+int add_ext(X509* cert, int nid, char* value);
+char req_buf[] =
+"-----BEGIN CERTIFICATE REQUEST-----\n\
+MIICtjCCAZ4CAQIwODELMAkGA1UEBhMCVVMxEjAQBgNVBAoMCVRydXN0QmFzZTEV\n\
+MBMGA1UEAwwMTWFyayBPJ05laWxsMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB\n\
+CgKCAQEAxJHMm6BT3ioPmNDR7R/r+DTRaTb+mvVt8uj26J8GB7k9UHEDKtctX+Jh\n\
+qtsIe5UYHI+Lz506TlVaXkn+dtqS2uj+fYu1Owz6YoeStHYQAJetfTIcE8xCfnRW\n\
+sXntqfLtOGarT+DxWvl8TweYhJ2PRM9PDyiMvrOGJZV1KOReAIXTaavAWfMcLXGX\n\
+drpHlhcJkD7rGlUi0ZgS63vtmHWxw3s0kUWGDqyHln51Q+Gx9IEp9pwZZS5CbVsL\n\
+SF/FxeoC9pK9oHmPys4uYbVE9Mpr5cjCw8H+IUcTRQnMb/w6ReSs2Rmi+y0JhHRV\n\
+IQEt5jdSbdMkNX5N4ckuNsT9VioFnQIDAQABoDkwNwYJKoZIhvcNAQkOMSowKDAO\n\
+BgNVHQ8BAf8EBAMCBaAwFgYDVR0RBA8wDYELbXRvQGJ5dS5lZHUwDQYJKoZIhvcN\n\
+AQELBQADggEBABv21IU4M2LPRVT8yzwObaMJQpJCkvIaHJY1Dk4vhhQn6Ix9o/6L\n\
+yZQ4cZeTtuVsul+/06pnJBe/0/vHp3ENoMm1gYo0JoY8s3uPG9oHmumPbjXOqSmG\n\
+u2zL8S2hxrHx9K9LEDjsXaFA4UlK5edFV4sIBraxu8R/+Z1n0xwGgqAWiWHSJKIw\n\
+AEv65D2z0K5847xXUQfeGFru7oRrExbvMZS/Ud6nb7Lppxrl0ZyTbN+6CmQU7wK+\n\
+jWmfDNEvebB5wl6eytDDEv41nD4gJ/7qKNltIbVbAtk0J5x94tM7ulBOl+FQxPW3\n\
+3hJd+iRbFGOnHGB8WrmjjaiVbuvPxiNXfDs=\n\
+-----END CERTIFICATE REQUEST-----";
+
 
 unsigned char* net_encode_cert(X509* cert, int* len) {
 	unsigned char *buf = NULL;
@@ -26,6 +46,21 @@ X509* net_decode_cert(unsigned char* cert_buf,int len){
 	return d2i_X509(NULL, (const unsigned char **)&p, len);
 }
 
+EVP_PKEY* get_private_key_from_buf(char* buffer) {
+	BIO* key_bio;
+	EVP_PKEY* key;
+	key_bio = BIO_new_mem_buf(buffer, -1);
+	if (key_bio == NULL) {
+		return NULL;
+	}
+	key = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+	if (key == NULL) {
+		BIO_free_all(key_bio);
+		return NULL;
+	}
+	BIO_free_all(key_bio);
+	return key;
+}
 
 /* buffer must be null-terminated */
 X509_REQ* get_csr_from_buf(char* buffer) {
@@ -66,19 +101,17 @@ char *X509_to_PEM(X509 *cert, int* bio_len) {
 	}
 
 	// Get length of the bio data
-	BIO_get_mem_data(bio, &tmp_pem);
+	*bio_len = BIO_get_mem_data(bio, &tmp_pem);
 	if (NULL == tmp_pem) {
 		return NULL;
 	}
-	*bio_len = strlen(tmp_pem);
 
-	pem = (char *) malloc(*bio_len + 1);
+	pem = (char *)calloc(1, *bio_len + 1);
 	if (NULL == pem) {
 		BIO_free(bio);
 		return NULL;    
 	}
 
-	memset(pem, 0, *bio_len + 1);
 	BIO_read(bio, pem, *bio_len);
 	BIO_free(bio);
 	return pem;

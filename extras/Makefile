@@ -9,6 +9,8 @@ OBJECTS = $(SOURCES:.c=.o)
 INCLUDES = 
 LIBS = -ldl
 
+.PHONY: all clean
+
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: $(SO)
 
@@ -22,7 +24,7 @@ $(SO): $(OBJECTS)
 # To obtain object files
 %.o: %.c
 	$(CC) -c $(CXXFLAGS) $< $(INCLUDES) -o $@
- 
+
 # To remove generated files
 clean:
 	rm -f $(SO) $(OBJECTS)

@@ -1,5 +1,6 @@
 CC = gcc
 CCFLAGS = -Wall -g
+CXX_CLIENTAUTH_FLAGS= -DCLIENT_AUTH
 
 HTTP_SERVER_SRC = main.c \
 		http_server.c \
@@ -8,9 +9,12 @@ HTTP_SERVER_SRC = main.c \
 		utils.c
 
 HTTP_SERVER_OBJ = $(HTTP_SERVER_SRC:%.c=%.o)
-HTTP_SERVER_EXE = server
+HTTP_SERVER_EXE = testShopServer
 
 all: $(HTTP_SERVER_EXE)
+
+clientauth: CCFLAGS+=$(CXX_CLIENTAUTH_FLAGS)
+clientauth: $(HTTP_SERVER_EXE)
 
 $(HTTP_SERVER_EXE) : $(HTTP_SERVER_OBJ)
 	$(CC) $(CCFLAGS) $^ -o $@ $(LIBS)

@@ -11,14 +11,22 @@
 int connect_to_host(char* host, char* service);
 void print_identity(int fd);
 
-int main() {
-	int sock_fd = connect_to_host("www.google.com", "443");
-	char http_request[] = "GET / HTTP/1.1\r\nHost: www.google.com\r\n\r\n";
+int main(int argc, char* argv[]) {
+	int sock_fd;
+	char http_request[2048];
 	char http_response[2048];
+
+	if (argc < 2) {
+		printf("USAGE: %s <host name>\n", argv[0]);
+		return 0;
+	}
+	sock_fd = connect_to_host(argv[1], "443");
+	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
+
 	memset(http_response, 0, 2048);
-	send(sock_fd, http_request, sizeof(http_request)-1, 0);
+	send(sock_fd, http_request, strlen(http_request), 0);
 	recv(sock_fd, http_response, 750, 0);
-	printf("Received:\n%s", http_response);
+	printf("Received:\n%s\n", http_response);
 	close(sock_fd);
 	return 0;
 }
@@ -45,8 +53,8 @@ int connect_to_host(char* host, char* service) {
 			perror("socket");
 			continue;
 		}
-	        if (setsockopt(sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
-			perror("setsockopt: SO_REMOTE_HOSTNAME");
+	        if (setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {
+			perror("setsockopt: TLS_REMOTE_HOSTNAME");
 			close(sock);
 			continue;
 		}
@@ -69,14 +77,14 @@ int connect_to_host(char* host, char* service) {
 }
 
 void print_identity(int fd) {
-	char data[2048];
+	char data[4096];
 	socklen_t data_len = sizeof(data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_CERTIFICATE, data, &data_len) == -1) {
-		perror("SO_PEER_CERTIFICATE");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_CERTIFICATE_CHAIN, data, &data_len) == -1) {
+		perror("TLS_PEER_CERTIFICATE_CHAIN");
 	}
 	printf("Peer certificate:\n%s\n", data);
-	if (getsockopt(fd, IPPROTO_TLS, SO_PEER_IDENTITY, data, &data_len) == -1) {
-		perror("SO_PEER_IDENTITY");
+	if (getsockopt(fd, IPPROTO_TLS, TLS_PEER_IDENTITY, data, &data_len) == -1) {
+		perror("TLS_PEER_IDENTITY");
 	}
 	printf("Peer identity:\n%s\n", data);
 	return;

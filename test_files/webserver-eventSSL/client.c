@@ -185,8 +185,8 @@ void get_alpn(client_t* client) {
 	char alpn[255];
 	memset(alpn, 0, 255);
 	socklen_t alpn_len = sizeof(alpn);
-	if (getsockopt(client->fd, IPPROTO_TCP, SO_ALPN, alpn, &alpn_len) == -1) {
-		perror("getsockopt: SO_ALPN");
+	if (getsockopt(client->fd, IPPROTO_TCP, TLS_ALPN, alpn, &alpn_len) == -1) {
+		perror("getsockopt: TLS_ALPN");
 	}
 	if (alpn_len > 0) {
 		printf("Protocol negotiatated: %s\n", alpn);
@@ -216,8 +216,8 @@ void set_session_ttl(client_t* client) {
 	long ttl;
 	ttl = 400;
 	socklen_t ttl_len = sizeof(ttl);
-	if (setsockopt(client->fd, IPPROTO_TCP, SO_SESSION_TTL, &ttl, ttl_len) == -1) {
-		perror("setsockopt: SO_SESSION_TTL");
+	if (setsockopt(client->fd, IPPROTO_TCP, TLS_SESSION_TTL, &ttl, ttl_len) == -1) {
+		perror("setsockopt: TLS_SESSION_TTL");
 	}
 	return;
 }
@@ -225,8 +225,8 @@ void set_session_ttl(client_t* client) {
 void get_session_ttl(client_t* client) {
 	long ttl;
 	socklen_t ttl_len = sizeof(ttl);
-	if (getsockopt(client->fd, IPPROTO_TCP, SO_SESSION_TTL, &ttl, &ttl_len) == -1) {
-		perror("getsockopt: SO_SESSION_TTL");
+	if (getsockopt(client->fd, IPPROTO_TCP, TLS_SESSION_TTL, &ttl, &ttl_len) == -1) {
+		perror("getsockopt: TLS_SESSION_TTL");
 	}
 	if (ttl_len > 0) {
 		printf("Session ttl is %ld\n", ttl);

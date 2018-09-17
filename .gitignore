@@ -29,6 +29,7 @@
 *.dylib
 
 # Executables
+*/bin/*
 *.exe
 *.out
 *.app
@@ -50,3 +51,14 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Images
+*.png
+
+# Test files
+*.csv
+test_files/*
+
+# Editor files
+*.swp
+*.swo

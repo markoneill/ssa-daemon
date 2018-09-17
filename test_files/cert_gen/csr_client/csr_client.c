@@ -18,7 +18,7 @@
 
 #include "../../../in_tls.h"
 
-#define DEFAULT_ADDR    "127.0.0.1"
+#define DEFAULT_ADDR    "hax0r.online"
 #define DEFAULT_PORT    "8040"
 #define FAIL_MSG "SIGNING REQUEST FAILED"
 

@@ -58,7 +58,7 @@ index a28facd..0c1ff4a 100644
      size_t block_padding;
  
      CRYPTO_RWLOCK *lock;
-+    
++
 +    /* Custom Callback for client auth */
 +    int (*client_auth_cb)(SSL *s, void* hdata, size_t hdata_len, int, unsigned char** sig, size_t* sig_len);
  };

@@ -12,11 +12,10 @@ size_t global_config_size = 0;
 
 
 void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
-	const char* name = config_setting_name(cur_setting);
+	int i;
 	const char* value;
 	int extension_count = 0;
-	int rand_size = 0;
-	char* rand_path = NULL;
+	const char* name = config_setting_name(cur_setting);
 
 	if (STR_MATCH(name, "Application")) {
 		config->profile = strdup(config_setting_get_string(cur_setting));
@@ -34,6 +33,7 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
 		}
 		else {
 			log_printf(LOG_ERROR, "Unsupported MinVersion: %s\n", value);
+			exit(EXIT_FAILURE);
 		}
 	}
 	else if (STR_MATCH(name, "CipherSuite")) {
@@ -72,7 +72,7 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
 	}
 	else if (STR_MATCH(name, "Extensions")) {
 		extension_count = config_setting_length(cur_setting);
-		for(int i = 0; i < extension_count; i++) {
+		for(i = 0; i < extension_count; i++) {
 			const char* extension = config_setting_get_string_elem(cur_setting, i);
 			if (STR_MATCH(extension, "SNI")) {
 				config->extensions |= SSA_EXT_SNI;
@@ -150,6 +150,8 @@ void free_config()
 }
 
 size_t parse_config(char* filename) {
+	int i;
+	int j;
 	free_config(); // Just incase you call parse_config multiple times
 	config_t cfg;
 	config_setting_t *default_profile;
@@ -160,19 +162,18 @@ size_t parse_config(char* filename) {
 	ssa_config_t* cur_config;
 
 	int num_profiles;
-	const char* str;
-	int myint;
 
 	config_init(&cfg);
-
 	if (!config_read_file(&cfg, filename)) {
 		log_printf(LOG_ERROR, "Error loading config file %s: %s %d\n", filename, config_error_text(&cfg), config_error_line(&cfg));
 		return -1;
 	}
-
 	profiles = config_lookup(&cfg, "Profiles");
-	num_profiles = config_setting_length(profiles);
-	
+	if ( profiles != NULL ) {
+		num_profiles = config_setting_length(profiles);
+	} else {
+		num_profiles = 0;
+	}
 	// global_config = calloc(num_profiles + 1, sizeof(ssa_config_t));
 	global_config = str_hashmap_create(HASHMAP_SIZE);
 	default_config = calloc(1,sizeof(ssa_config_t));
@@ -181,7 +182,7 @@ size_t parse_config(char* filename) {
 	// Parse default
 	default_profile = config_lookup(&cfg, "Default");
 	int default_i = config_setting_length(default_profile);
-	for (int i = 0; i < default_i; i++) {
+	for (i = 0; i < default_i; i++) {
 		add_setting(default_config, config_setting_get_elem(default_profile, i));
 	}
 	//Default profile does not need a name
@@ -189,47 +190,44 @@ size_t parse_config(char* filename) {
 	str_hashmap_add(global_config,DEFAULT_CONF,default_config);
 
 
-
 	//TODO failout if a default is not set 
 	if (config_lookup(&cfg, "Default.MinProtocol") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for MinProtocol not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
 	if (config_lookup(&cfg, "Default.CipherSuite") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for CipherSuite not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
 	if (config_lookup(&cfg, "Default.SessionCacheTimeout") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for SessionCacheTimeout not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
 	if (config_lookup(&cfg, "Default.Validation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for Validation not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
 	if (config_lookup(&cfg, "Default.TrustStoreLocation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for TrustStoreLocation not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}   
 	if (config_lookup(&cfg, "Default.AppCustomValidation") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for AppCustomValidation not set.\n");
-		exit(-1);
+		exit(EXIT_FAILURE);
 	}
-	
 	// Parse all the profiles
 
-	for(int i = 0; i < num_profiles; i++) {
+	for(i = 0; i < num_profiles; i++) {
 		cur_config = malloc(sizeof(ssa_config_t));
 		init_ssa_config(default_config, cur_config);
 		cur_profile = config_setting_get_elem(profiles, i);
 		int num_custom = config_setting_length(cur_profile);
-		for (int j = 0; j < num_custom; j++) {
+		for (j = 0; j < num_custom; j++) {
 			cur_setting = config_setting_get_elem(cur_profile, j);
 			add_setting(cur_config, cur_setting);
 		}
 		str_hashmap_add(global_config,cur_config->profile,cur_config);
 	}
-
 	config_destroy(&cfg);
 	return global_config_size;
 }
@@ -237,7 +235,7 @@ size_t parse_config(char* filename) {
 /* return NULL if the config has not been parsed 
  * If it has, get the requested application
  * If the requested application does not exist return
- * the defualt configuration
+ * the default configuration
 */
 ssa_config_t* get_app_config(char* app_path)
 {

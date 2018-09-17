@@ -33,11 +33,16 @@
 #define KEY_FILE_A      "../key_a.pem"
 #define CERT_FILE_B     "../certificate_b.pem"
 #define KEY_FILE_B      "../key_b.pem"
-#define CA_FILE   	"../certificate_ca.pem"
+#define CA_FILE   	"../combined_ca.pem"
+#define NORMAL_CA_FILE  "../certificate_ca.pem"
+#define VISA_CA_FILE	"../certificate_visa_ca.pem"
 
 char http_version[] = "HTTP/1.1";
-char default_path[] = "/index.html";
+char default_path[] = "index.php";
 char server_name[]  = "Simple Web Server";
+
+#define PROTECTED_PATH	"/login"
+#define CART_PROTECTED_PATH	"/purchase"
 
 typedef struct server {
 	int fd;
@@ -48,7 +53,7 @@ void format_date(char* date_str, time_t raw_time);
 char* first_non_space(char* str);
 char* strnstr(char* haystack, char* needle, int length);
 char* resolve_path(char* root_dir, char* path);
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request);
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request, char* host);
 void set_alpn(int fd);
 
 /* HTTP functions */
@@ -74,10 +79,19 @@ int recv_data(client_t* client);
 int create_server_socket(char* port, int protocol);
 int set_blocking(int sock, int blocking);
 
+/* SSA specific */
+static char* get_peer_identity(client_t* client);
+#ifdef CLIENT_AUTH
+static void send_pha_req(client_t* client, char* hostname);
+#else
+#define NOOP
+#define send_pha_req(...) NOOP
+#endif
+
 void handle_client(client_t* client);
 void signal_handler(int signum);
 
-time_t g_timeout_secs = 5;
+time_t g_timeout_secs = 500;
 config_t g_config;
 int g_running;
 
@@ -406,12 +420,27 @@ int create_http_response(client_t* client, http_request_t* request) {
 
 	char* mime_type = get_mime_type(&g_config, resolved_path);
 
+	if (strstr(resolved_path, PROTECTED_PATH) != NULL) {
+		printf("Requesting normal cert\n");
+		if (setsockopt(client->fd, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, NORMAL_CA_FILE, sizeof(NORMAL_CA_FILE)) == -1) {
+			perror("ca cert");
+		}
+		send_pha_req(client, host);
+	}
+	if (strstr(resolved_path, CART_PROTECTED_PATH) != NULL) {
+		printf("Requesting visa cert\n");
+		if (setsockopt(client->fd, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, VISA_CA_FILE, sizeof(VISA_CA_FILE)) == -1) {
+			perror("visa ca cert");
+		}
+		send_pha_req(client, "hax0r.online");
+	}
+
 	/* We're ready to handle CGI now */
-	/*if (strstr(resolved_path, ".php") != NULL) {
-		handle_cgi(client->fd, path, resolved_path, request);
+	if (strstr(resolved_path, ".php") != NULL) {
+		handle_cgi(client, path, resolved_path, request, host);
 		free(resolved_path);
 		return 1;
-	}*/
+	}
 
 
 	/* Everything seems okay.  Let's actually do what the client requested */
@@ -478,7 +507,7 @@ int create_http_response_header(client_t* client, char* status, char* phrase, ch
 			{ .field = "Server", .value = server_name },
 			{ .field = "Content-Type", .value = mime_type },
 			{ .field = "Content-Length", .value = length_str },
-			{ .field = "Last-Modified", .value = last_modified_date_str },
+			//{ .field = "Last-Modified", .value = last_modified_date_str },
 			{ .field = NULL, .value = NULL}
 	};
 
@@ -494,10 +523,14 @@ int create_http_response_header(client_t* client, char* status, char* phrase, ch
 			headers[i].field, headers[i].value);
 	}
 	remaining_length = MAX_HEADER_LENGTH - header_length;
-	header_length += snprintf(header + header_length, remaining_length, "\r\n");
-	if (header_length > MAX_HEADER_LENGTH) {
-		fprintf(stderr, "MAX_HEADER_LENGTH needs to be increased\n");
-		exit(EXIT_FAILURE);
+	/* this is super hackish, but whatever. if modified time is zero, then don't finialize
+	 * headers, because we're (supposedly) using CGI */
+	if (m_time != 0) {
+		header_length += snprintf(header + header_length, remaining_length, "\r\n");
+		if (header_length > MAX_HEADER_LENGTH) {
+			fprintf(stderr, "MAX_HEADER_LENGTH needs to be increased\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 	printfv("Response created. Headers:\n%s", header);
 	client->send_buf.length = header_length;
@@ -822,22 +855,22 @@ int create_server_socket(char* port, int protocol) {
 	}
 
 
-        if (setsockopt(sock, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)) == -1) {
                 perror("cert a");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_A, sizeof(KEY_FILE_A)) == -1) {
                 perror("key a");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_B, sizeof(CERT_FILE_B)) == -1) {
                 perror("cert b");
         }
-        if (setsockopt(sock, IPPROTO_TLS, SO_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
+        if (setsockopt(sock, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B)) == -1) {
                 perror("key b");
         }
-/*	if (setsockopt(sock, IPPROTO_TLS, SO_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
+	if (setsockopt(sock, IPPROTO_TLS, TLS_TRUSTED_PEER_CERTIFICATES, CA_FILE, sizeof(CA_FILE)) == -1) {
 		perror("ca cert");
 	}
-*/
+
 	set_alpn(sock);
 
 
@@ -859,19 +892,25 @@ char* first_non_space(char* str) {
 
 char* resolve_path(char* root_dir, char* path) {
 	char* end;
+	char tmp_path[1024];
 	int path_length = strlen(path);
 	/* Don't count the query string in the path length */
 	if ((end = strchr(path, '?')) != NULL) {
 		path_length -= strlen(end);
 	}
 	/* Set default path if this is just slash (/) */
-	if (strncmp("/", path, path_length) == 0) {
+	/*if (strncmp("/", path, path_length) == 0) {
 		path = default_path;
 		path_length = strlen(default_path);
+	}*/
+	if (path[path_length-1] == '/') {
+		path_length = snprintf(tmp_path, 1024, "%.*s%s", path_length, path, default_path);
+		path = tmp_path;
 	}
 	path_length += strlen(root_dir)+1;
 	char* full_path = (char*)malloc(path_length);
 	snprintf(full_path, path_length, "%s%s", root_dir, path);
+	printfv("Full path resolved to %s\n", full_path);
 	return full_path;
 }
 
@@ -885,30 +924,66 @@ void format_date(char* date_str, time_t raw_time) {
 	return;
 }
 
-int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* request) {
+int handle_cgi(client_t* client, char* root, char* resolved_path, http_request_t* request, char* host) {
 	pid_t pid;
 	int err;
 	int p[2];
 	pipe(p);
+
+	char buffer[1024];
+	char* vf_buffer;
+	int vf_buf_len;
+	int bytes_read;
+	int eoh;
 	if ((pid = fork()) != 0) {
 		if (pid < 0) {
 			perror("fork");
 			exit(EXIT_FAILURE);
 		}
-		close(p[0]);
+		//close(p[0]);
 		if (request->body) {
 			write(p[1], request->body, request->body_length);
 		}
+		close(p[1]);
 		if ((err = waitpid(pid, NULL, 0)) == -1) {
 			perror("cgi waitpid");
 		}
+		vf_buffer = NULL;
+		vf_buf_len = 0;
+		while (1) {
+			bytes_read = read(p[0], buffer, 1024);
+			if (bytes_read <= 0) {
+				break;
+			}
+			vf_buffer = realloc(vf_buffer, vf_buf_len + bytes_read);
+			memcpy(vf_buffer + vf_buf_len, buffer, bytes_read);
+			vf_buf_len += bytes_read;
+		}
+		//vf_buf_len--;
+		close(p[0]);
+		eoh = (strstr(vf_buffer, "\r\n\r\n") + 4) - vf_buffer;
+		if (strstr(resolved_path, PROTECTED_PATH) != NULL) {
+			create_http_response_header(client, "301", "Found", "text/html", 0, (vf_buf_len - eoh));
+		}
+		else {
+			create_http_response_header(client, "200", "OK", "text/html", 0, (vf_buf_len - eoh));
+		}
+		int new_length = client->send_buf.length + vf_buf_len;
+		if (new_length > client->send_buf.max_length) {
+			client->send_buf.data = (unsigned char*)realloc(client->send_buf.data, new_length);
+			client->send_buf.max_length = new_length;
+		}
+		memcpy(&(client->send_buf.data)[client->send_buf.length], vf_buffer, vf_buf_len);
+		client->send_buf.length = new_length;
+		free(vf_buffer);
 		return 0;
 	}
-	close(p[1]);
+	//close(p[1]);
 	dup2(p[0], STDIN_FILENO);
-	dup2(sock, STDOUT_FILENO);
+	dup2(p[1], STDOUT_FILENO);
 
 	char* value;
+	char* id;
 	if ((value = get_header_value(request->headers, "Content-Length")) == NULL) {
 		setenv("CONTENT_LENGTH", "0" , 1);
 	}
@@ -938,20 +1013,52 @@ int handle_cgi(int sock, char* root, char* resolved_path, http_request_t* reques
 	setenv("REMOTE_HOST", "", 1); // XXX 
 	setenv("REMOTE_IDENT", "", 1);
 	setenv("REMOTE_USER", "", 1);
+	id = get_peer_identity(client);
+	if (id != NULL) {
+		setenv("SSA_ID", id , 1);
+	}
 	setenv("REQUEST_METHOD", request->method, 1);
 	setenv("SCRIPT_NAME", getenv("PATH_INFO"), 1);
-	setenv("SERVER_NAME", "", 1); // XXX
+	setenv("SERVER_NAME", host, 1); 
 	setenv("SERVER_PORT", "", 1); // XXX
 	setenv("SERVER_PROTOCOL", http_version, 1);
 	setenv("SERVER_SOFTWARE", server_name, 1);
 	char* args[] = { "/usr/bin/php-cgi", NULL };
-	//char cgi_header[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n";
-	//send_data(sock, (unsigned char*)cgi_header, strlen(cgi_header));
 	execv(args[0], args);
 	perror("php cgi: execv");
 	exit(EXIT_FAILURE);
 	return 0;
 }
+
+char* get_peer_identity(client_t* client) {
+	char* id;
+	socklen_t id_len = 255;
+	id = malloc(256);
+	if (getsockopt(client->fd, IPPROTO_TLS, TLS_PEER_IDENTITY, id, &id_len) == -1) {
+		perror("getsockopt: TLS_PEER_IDENTITY");
+		free(id);
+		return NULL;
+	}
+	if (id_len > 0) {
+		printf("Client ID is %s\n", id);
+	}
+	else {
+		printf("Client did not use client auth\n");
+	}
+	return id;
+}
+
+#ifdef CLIENT_AUTH
+void send_pha_req(client_t* client, char* hostname) {
+	char* data;
+	data = hostname;
+	socklen_t data_len = strlen(hostname)+1;
+	if (setsockopt(client->fd, IPPROTO_TLS, TLS_REQUEST_PEER_AUTH, data, data_len) == -1) {
+		perror("setsockopt: TLS_REQUEST_PEER_AUTH");
+	}
+	return;
+}
+#endif
 
 char* strnstr(char* haystack, char* needle, int length) {
 	int i;
@@ -971,8 +1078,8 @@ char* strnstr(char* haystack, char* needle, int length) {
 void set_alpn(int fd) {
 	char protos[] = "http/1.1";
 	socklen_t protos_len = sizeof(protos);
-	if (setsockopt(fd, IPPROTO_TLS, SO_ALPN, protos, protos_len) == -1) {
-		perror("setsockopt: SO_ALPN");
+	if (setsockopt(fd, IPPROTO_TLS, TLS_ALPN, protos, protos_len) == -1) {
+		perror("setsockopt: TLS_ALPN");
 	}
 	return;
 }

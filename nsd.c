@@ -24,11 +24,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifdef CLIENT_AUTH
 #include "nsd.h"
 #include "log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
 #include <avahi-common/alternative.h>
@@ -36,11 +40,19 @@
 #include <avahi-common/malloc.h>
 #include <avahi-common/error.h>
 
+#include <openssl/sha.h>
+#include <openssl/pem.h>
+
+#define MAX_TXT_RECORD_LEN	256
+#define MAX_HOSTNAME_LEN	256
+
 typedef struct service_ctx {
 	AvahiClient* client;
 	AvahiEntryGroup* group;
 	AvahiSimplePoll* poller;
+	char* service_name;
 	int port;
+	EVP_PKEY *pkey;
 } service_ctx_t;
 
 static int publish_service(service_ctx_t* ctx);
@@ -57,14 +69,30 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 	return 0;
 }*/
 
-int register_auth_service(int port) {
+int register_auth_service(int port, EVP_PKEY *pkey) {
 	int err;
+	char hostname[MAX_HOSTNAME_LEN], *charp;
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
 
 	ctx = calloc(1, sizeof(service_ctx_t));
+	if (ctx == NULL) {
+		log_printf(LOG_ERROR, "Unable to allocate service data\n");
+		return 0;
+	}
+
+	if (gethostname(hostname, MAX_HOSTNAME_LEN) == -1) {
+		log_printf(LOG_ERROR, "Failed to get hostname: %s\n", strerror(errno));
+		return 0;
+	}
 
 	ctx->port = port;
+	ctx->pkey = pkey;
+	ctx->service_name = avahi_strdup(hostname);
+
+	while( (charp = strchr(ctx->service_name, '.')) )	// remove '.'s from seriice name
+		(*charp) = ' ';
+
 	ctx->poller = avahi_simple_poll_new();
 	if (ctx->poller == NULL) {
 		log_printf(LOG_ERROR, "Avahi Error: couldn't create poller\n");
@@ -85,9 +113,43 @@ int register_auth_service(int port) {
 	free(ctx);
 	return 1;
 }
+int base64_encode(const unsigned char* buffer, size_t n, char* b64text, size_t length) { //Encodes a binary safe base 64 string
+	BIO *bio, *b64;
+	char *buffer_ptr;
+	int len;
 
+	b64 = BIO_new(BIO_f_base64());
+	bio = BIO_new(BIO_s_mem());
+	bio = BIO_push(b64, bio);
+
+	BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL); //Ignore newlines - write everything in one line
+	len = BIO_write(bio, buffer, n);
+	if(len > length){
+		log_printf(LOG_ERROR,"len = %d\n", len);
+		return 1;
+	}
+	if (BIO_flush(bio) != 1) {
+		log_printf(LOG_ERROR,"Failed to flush BIO\n");
+		return 1;
+	}
+	len = BIO_get_mem_data(bio, &buffer_ptr);
+	memcpy(b64text, buffer_ptr, len);
+	if (BIO_set_close(bio, BIO_NOCLOSE) != 1) {
+		log_printf(LOG_ERROR,"Failed to set close on BIO\n");
+		return 1;
+	}
+	BIO_free_all(bio);
+
+	return 0; //success
+}
 int publish_service(service_ctx_t* ctx) {
 	int err;
+	char buf[1024] = "publicKey=";
+	char *txt, *copy;
+	int len, i, j;
+	unsigned char hash[SHA256_DIGEST_LENGTH];
+	SHA256_CTX sha256;
+	BIO *pembio = BIO_new(BIO_s_mem());
 	if (ctx->group == NULL) {
 		ctx->group = avahi_entry_group_new(ctx->client, entry_group_cb, ctx);
 		if (ctx->group == NULL) {
@@ -98,21 +160,40 @@ int publish_service(service_ctx_t* ctx) {
 	}
 
 	if (avahi_entry_group_is_empty(ctx->group)) {
+		PEM_write_bio_PUBKEY(pembio,ctx->pkey);
+		len = BIO_get_mem_data(pembio,&txt);
+
+		copy = strdup(txt);
+		for (i = j = 0; j<len; j++) {
+			if (copy[j] != '\n')
+				copy[i++] = copy[j];
+		}
+		copy[i] = 0;
+		
+    		SHA256_Init(&sha256);
+    		SHA256_Update(&sha256, copy, i);
+    		SHA256_Final(hash, &sha256);
+		
+		base64_encode(hash, SHA256_DIGEST_LENGTH, buf+strlen(buf), MAX_TXT_RECORD_LEN);	
+		BIO_free(pembio);
 		err = avahi_entry_group_add_service(ctx->group, 
 			AVAHI_IF_UNSPEC, /* announce on all interfaces */
 			AVAHI_PROTO_UNSPEC, /* announce on all protocols */
 			0,
-			"SSA Auth",
+			ctx->service_name,
 			"_auth._tcp",
 			NULL, /* daemon will decide domain */
 			NULL, /* daemon will decide hostname */
 			ctx->port, /* service port */
-			NULL /* Null-terminated list of additional TXT records */
-		);
+			buf, /* Null-terminated list of additional TXT records */
+			NULL		
+			);
+		
 		if (err < 0) {
 			log_printf(LOG_ERROR, "Avahi Error: %s\n", avahi_strerror(err));
 			return 0;
 		}
+		free(copy);
 	}
 
 	if (avahi_entry_group_commit(ctx->group) < 0) {
@@ -151,15 +232,23 @@ void client_cb(AvahiClient* client, AvahiClientState state, void* userdata) {
 
 void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GCC_UNUSED void* userdata) {
 	service_ctx_t* ctx = userdata;
+	char* new_name;
 	switch (state) {
 		case AVAHI_ENTRY_GROUP_ESTABLISHED:
 			log_printf(LOG_INFO, "SSA service published\n");
+			log_printf(LOG_INFO, "NSD name: %s\n", ctx->service_name);
+			break;
+		case AVAHI_ENTRY_GROUP_COLLISION:
+			log_printf(LOG_INFO, "Avahi name collision: %s\n", 
+				avahi_strerror(avahi_client_errno(ctx->client)));
+				new_name = avahi_alternative_service_name(ctx->service_name);
+				avahi_free(ctx->service_name);
+				ctx->service_name = new_name;
+			log_printf(LOG_INFO, "Switching NSD name to %s\n", new_name);
+			publish_service(ctx);
 			break;
 		case AVAHI_ENTRY_GROUP_FAILURE:
-		case AVAHI_ENTRY_GROUP_COLLISION:
-			log_printf(LOG_ERROR, "Avahi Error: %s\n", 
-				avahi_strerror(avahi_client_errno(ctx->client)));
-			avahi_simple_poll_quit(ctx->poller);
+			log_printf(LOG_DEBUG, "AVAHI_ENTRY_GROUP_FAILURE\n");
 			break;
 		case AVAHI_ENTRY_GROUP_REGISTERING:
 		case AVAHI_ENTRY_GROUP_UNCOMMITED:
@@ -168,4 +257,4 @@ void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, AVAHI_GC
 	}
 	return;
 }
-
+#endif

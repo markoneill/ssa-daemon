@@ -24,42 +24,61 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
-#include <signal.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <wait.h>
+
+#include "auth_daemon.h"
+#include "config.h"
+#include "csr_daemon.h"
 #include "daemon.h"
 #include "log.h"
-#include "config.h"
-#include "auth_daemon.h"
 #include "nsd.h"
+#include "self_sign.h"
 
 void sig_handler(int signum);
-void* create_nsd_daemon(void* arg);
 void* create_csr_daemon(void* arg);
+
+#ifdef CLIENT_AUTH
+void* create_nsd_daemon(void* arg);
 void* create_auth_daemon(void* arg);
+#endif
 	
 pid_t* workers;
 int worker_count;
 int is_parent;
 
+typedef struct daemon_param {
+	int port;
+	EVP_PKEY* pub_key;
+} daemon_param_t;
+
 int main(int argc, char* argv[]) {
-	long cpus_on;
-	long cpus_conf;
 	int i;
 	pid_t pid;
 	struct sigaction sigact;
 	int status;
 	int ret;
 	int starting_port = 8443;
-	int csr_daemon_port = 8040;
-	int auth_port = 6666;
+	daemon_param_t csr_params = {
+		.port = 8040
+	};
 	pthread_t csr_daemon;
-	pthread_t nsd_daemon;
+#ifdef CLIENT_AUTH
+	daemon_param_t auth_params = {
+		.port = 6666
+	};
 	pthread_t auth_daemon;
+#endif
+#ifndef NO_LOG
+	long cpus_conf;
+	long cpus_on;
+#endif
 
 	/* Init logger */
 	if (log_init(NULL, LOG_DEBUG)) {
@@ -67,9 +86,16 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
+	if (geteuid() != 0) {
+		log_printf(LOG_ERROR, "Please run as root\n");
+		exit(EXIT_FAILURE);
+	}
+
+#ifndef NO_LOG
 	cpus_on = sysconf(_SC_NPROCESSORS_ONLN);
 	cpus_conf = sysconf(_SC_NPROCESSORS_CONF);
 	log_printf(LOG_INFO, "Detected %ld/%ld active CPUs\n", cpus_on, cpus_conf);
+#endif
 
 
 	memset(&sigact, 0, sizeof(sigact));
@@ -102,9 +128,10 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-	pthread_create(&csr_daemon, NULL, create_csr_daemon, csr_daemon_port);
-	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, auth_port);
-	pthread_create(&auth_daemon, NULL, create_auth_daemon, auth_port);
+	pthread_create(&csr_daemon, NULL, create_csr_daemon, (void*)&csr_params);
+	#ifdef CLIENT_AUTH
+	pthread_create(&auth_daemon, NULL, create_auth_daemon, (void*)&auth_params);
+	#endif
 
 	while ((ret = wait(&status)) > 0) {
 		if (ret == -1) {
@@ -124,6 +151,9 @@ int main(int argc, char* argv[]) {
 			log_printf(LOG_INFO, "worker continued\n");
 		}
 	}
+
+	/*pthread_join(csr_daemon, NULL);
+	pthread_join(auth_daemon, NULL);*/
 
 	log_close();
 	free_config();
@@ -147,20 +177,104 @@ void sig_handler(int signum) {
 	return;
 }
 
-void* create_nsd_daemon(void* arg) {
-	int port = (int)arg;
-	register_auth_service(port);
-	return NULL;
-}
-
 void* create_csr_daemon(void* arg) {
-	int csr_daemon_port = (int)arg;
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int csr_daemon_port = params->port;
 	csr_server_create(csr_daemon_port);
 	return NULL;
 }
 
-void* create_auth_daemon(void* arg) {
-	int port = (int)arg;
-	auth_server_create(port);
+#ifdef CLIENT_AUTH
+void* create_nsd_daemon(void* arg) {
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int port = params->port;
+	EVP_PKEY *pub_key = params->pub_key;	
+	register_auth_service(port, pub_key);
 	return NULL;
 }
+
+void* create_auth_daemon(void* arg) {
+	daemon_param_t* params = (daemon_param_t*)arg;
+	int port = params->port;
+	pthread_t nsd_daemon;
+	daemon_param_t nsd_params;
+	int status, pid;
+	BIO *pembio;
+	X509 *cert;
+	EVP_PKEY *pkey;	
+
+	if (generate_rsa_key(&pkey, 2048) == 0) {
+		fprintf(stderr, "Failed to generate RSA key\n");
+		return NULL;
+	}
+
+	cert = generate_self_signed_certificate(pkey, 0, 365);
+	if (cert == NULL) {
+		fprintf(stderr, "Failed to generate self signed certificate\n");
+		return NULL;
+	}
+
+	nsd_params.port = port;
+	if (!(nsd_params.pub_key = X509_get_pubkey(cert))) {
+		fprintf(stderr, "Failed to extract the public key from the certificate\n");
+		return NULL;
+	}
+	
+	pembio = BIO_new(BIO_s_mem());
+	PEM_write_bio_PUBKEY(pembio, nsd_params.pub_key); 	
+
+	char* keyString;
+	char* copy;
+	int len = BIO_get_mem_data(pembio, &keyString);
+	int pipefd[2], i, j;
+	pipe(pipefd);
+	char* argv[6];
+	argv[0] = "qrencode";
+	argv[1] = "-o";
+	argv[2] = QRIMG_PATH;
+	argv[3] = "-s";
+	argv[4] = "6";
+	argv[5] = NULL;
+	
+	copy = strdup(keyString);
+	for (i = j = 0; copy[j] != 0; j++) {
+		if (copy[j] != '\n')
+			copy[i++] = copy[j];
+	}
+	copy[i] = 0;
+
+	if((pid = fork())) {
+		if (pid == -1) {
+			fprintf(stderr, "could not create QRCode, Call to fork failed\n");
+			return NULL;
+		}
+		close(pipefd[0]);          /* Close unused read end */
+		write(pipefd[1], copy, len);
+		close(pipefd[1]);          /* Reader will see EOF */
+		waitpid(pid,&status,0);
+	} else {
+
+		close(pipefd[1]);          /* Close unused write end */
+		close(STDIN_FILENO);	   /* repalce stdin with reed end */
+		status = dup2(pipefd[0], STDIN_FILENO);
+		if (status != STDIN_FILENO)
+		{
+			perror("dup2 error\n");
+			return NULL;
+		}
+
+		execv("/usr/bin/qrencode", argv);
+		printf("something went wrong in create_auth_daemon child\n");
+		exit(-1);
+	}
+	
+	free(copy);
+	BIO_free(pembio);	
+	pthread_create(&nsd_daemon, NULL, create_nsd_daemon, (void*)&nsd_params);
+
+	auth_server_create(port, cert, pkey);
+	X509_free(cert);
+	EVP_PKEY_free(pkey);
+	return NULL;
+}
+#endif

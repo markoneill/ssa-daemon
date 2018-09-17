@@ -28,6 +28,22 @@
 #ifndef AUTH_DAEMON_H
 #define AUTH_DAEMON_H
 
-void auth_server_create(int port);
+#define AUTH_REQ_HEADER_SIZE	5
+
+#define CERTIFICATE_REQUEST	0
+#define CERTIFICATE_RESPONSE	1
+#define SIGNATURE_REQUEST	2
+#define SIGNATURE_RESPONSE	3
+#define FAILURE_RESPONSE	4
+#define POPUP_EXE		"./qrdisplay/bin/qrPopUp"
+#define QRIMG_PATH		"./qrdisplay/qrCode.png"
+
+#define CONNECTED	0x0
+#define AVAILABLE	0x1
+
+#include <openssl/x509.h>
+#include <openssl/evp.h>
+
+ void auth_server_create(int port, X509* cert, EVP_PKEY *pkey);
 
 #endif

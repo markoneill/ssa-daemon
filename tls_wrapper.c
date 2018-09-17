@@ -27,10 +27,13 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include <event2/event.h>
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
+#include <event2/buffer.h>
 
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -40,11 +43,15 @@
 #include "tls_wrapper.h"
 #include "tb_connector.h"
 #include "openssl_compat.h"
+#include "issue_cert.h"
+#include "auth_daemon.h"
 #include "log.h"
 #include "config.h"
+#include "netlink.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
+
 
 static SSL* tls_server_setup(SSL_CTX* tls_ctx);
 static SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname);
@@ -54,16 +61,39 @@ static void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg);
 static int server_name_cb(SSL* tls, int* ad, void* arg);
 static int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen,
 	       	const unsigned char *in, unsigned int inlen, void *arg);
-static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname);
+static SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname);
 
 static tls_conn_ctx_t* new_tls_conn_ctx();
 static void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx); 
 static int read_rand_seed(char **buf, char* seed_path, int size);
 int trustbase_verify(X509_STORE_CTX* store, void* arg);
+int client_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
 
-#ifdef CLIENTAUTH
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+#ifdef CLIENT_AUTH
+typedef struct auth_info {
+	int fd;
+	char* hostname;
+	char* ca_name;
+} auth_info_t;
+
+typedef struct s_auth_info {
+	unsigned long id;
+	tls_daemon_ctx_t* daemon;
+} s_auth_info_t;
+
+extern int auth_info_index;
+char auth_daemon_name[] = "\0auth_req";
+#define CLIENT_AUTH_KEY "test_files/openssl_mod_tests/client_key.key"
+#define CLIENT_AUTH_CERT "test_files/openssl_mod_tests/client_pub.pem"
+int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen);
+int client_cert_callback(SSL *s, X509** cert, EVP_PKEY** key);
+void send_cert_request(int fd, char* hostname, char* ca_name);
+int recv_cert_response(int fd, X509** o_cert);
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid);
+int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen);
+void send_all(int fd, char* msg, int bytes_to_send);
+int auth_daemon_connect(void);
 #endif
 
 
@@ -151,6 +181,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 	}
 	
 	/* We're sending just the first tls_ctx here because our SNI callbacks will fix it if needed */
+	SSL_CTX_set_cert_verify_callback(tls_opts->tls_ctx, client_verify, ctx);
 	ctx->tls = tls_server_setup(tls_opts->tls_ctx);
 	ctx->secure.bev = bufferevent_openssl_socket_new(daemon_ctx->ev_base, efd, ctx->tls,
 			BUFFEREVENT_SSL_ACCEPTING, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
@@ -213,20 +244,18 @@ static int read_rand_seed(char **buf, char* seed_path, int size) {
 		return 0;
 	}
 
-	while (data_len < size)
-    {
-    	ret = read(fd, *buf + data_len, size-data_len);
-        if (ret < 0)
-        {
-            free(*buf);
-            close(fd);
+	while (data_len < size) {
+	    	ret = read(fd, *buf + data_len, size-data_len);
+	        if (ret < 0) {
+			free(*buf);
+			close(fd);
 			*buf = NULL;
 			return 0;
-        }
-        data_len += ret;
-    }
+		}
+		data_len += ret;
+	}
 
-    close(fd);
+	close(fd);
 	return 1;
 }
 
@@ -235,10 +264,10 @@ tls_opts_t* tls_opts_create(char* path) {
 	SSL_CTX* tls_ctx;
 	ssa_config_t* ssa_config;
 	struct stat stat_store;
-	char* store_dir = NULL;
+	/*char* store_dir = NULL;*/
 	char* store_file = NULL;
-	unsigned char* rand_buf;
-	int unverified_context_id = 1;
+	char* rand_buf;
+	const unsigned char unverified_context_id = 1;
 
 	opts = (tls_opts_t*)calloc(1, sizeof(tls_opts_t));
 	if (opts == NULL) {
@@ -248,7 +277,7 @@ tls_opts_t* tls_opts_create(char* path) {
 	/* Configure default settings for connections based on
 	 * admin preferences */
 	tls_ctx = SSL_CTX_new(SSLv23_method());
-	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(int));
+	SSL_CTX_set_session_id_context(tls_ctx, &unverified_context_id, sizeof(unverified_context_id));
 	ssa_config = get_app_config(path);
 
 	if (ssa_config) {
@@ -264,7 +293,8 @@ tls_opts_t* tls_opts_create(char* path) {
 
 		stat(ssa_config->trust_store, &stat_store);
 		if (S_ISDIR(stat_store.st_mode)) {
-			store_dir = ssa_config->trust_store;
+			/*store_dir = ssa_config->trust_store;
+			 * XXX We don't support dirs yet */
 		}
 		else {
 			store_file = ssa_config->trust_store;
@@ -274,8 +304,7 @@ tls_opts_t* tls_opts_create(char* path) {
 			log_printf(LOG_ERROR, "Unable set truststore %s\n",ssa_config->trust_store);
 		}
 
-		if ( read_rand_seed(&rand_buf,ssa_config->randseed_path,ssa_config->randseed_size) == 1 )
-		{
+		if (read_rand_seed(&rand_buf,ssa_config->randseed_path,ssa_config->randseed_size) == 1) {
 			RAND_seed(rand_buf,ssa_config->randseed_size);
 			free(rand_buf);
 		}
@@ -366,13 +395,51 @@ int verify_dummy(int preverify, X509_STORE_CTX* store) {
 	return 1;
 }
 
+int client_verify(X509_STORE_CTX* store, void* arg) {
+	/*tls_conn_ctx_t* ctx = arg;*/
+	X509* cert;
+	STACK_OF(X509)* chain;
+#ifndef NO_LOG
+	X509_NAME* subject_name;
+	char* identity;
+#endif
+
+	if (X509_verify_cert(store) != 1) {
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
+		return 0;
+	}
+
+	log_printf(LOG_INFO, "Client cert verify invoked\n");
+	chain = X509_STORE_CTX_get1_chain(store);
+	if (chain == NULL) {
+		log_printf(LOG_ERROR, "Certificate chain unavailable\n");
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
+		return 0;
+	}
+	cert = sk_X509_value(chain, 0);
+	if (cert == NULL) {
+		log_printf(LOG_ERROR, "First cert not there\n");
+		/*netlink_notify_kernel(ctx->daemon, ctx->id, -EINVAL);*/
+		return 0;
+	}
+#ifndef NO_LOG
+	subject_name = X509_get_subject_name(cert);
+	identity = X509_NAME_oneline(subject_name, NULL, 0);
+	log_printf(LOG_INFO, "User \"%s\" is authenticated\n", identity);
+#endif
+	sk_X509_pop_free(chain, X509_free);
+
+	/*netlink_notify_kernel(ctx->daemon, ctx->id, 0);*/
+	return 1;
+}
+
 int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 	uint64_t query_id;
 	STACK_OF(X509)* chain;
 	int response;
 	char* hostname = arg;
 
-	int ok_so_far = X509_verify_cert(store);
+	X509_verify_cert(store);
 
 	query_id = 1;
 	chain = X509_STORE_CTX_get1_chain(store);
@@ -408,7 +475,7 @@ int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 }
 
 int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
-	int verified_context_id = 2;
+	const unsigned char verified_context_id = 2;
 	SSL_CTX* tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
 	STACK_OF(X509_NAME)* cert_names;
@@ -418,16 +485,26 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 	}*/
 
 	if (conn_ctx != NULL) {
-		/* These options not supported after connection (for now) */
-		return 0;
+		cert_names = SSL_load_client_CA_file(value);
+		if (cert_names == NULL) {
+			return 0;
+		}
+		SSL_set_client_CA_list(conn_ctx->tls, cert_names);
+//		printf("size of Cert stack = %d\n", sk_X509_num(cert_names));
+		return 1;
 	}
 	while (tls_opts != NULL) {
        		tls_ctx = tls_opts->tls_ctx;
 		if (SSL_CTX_load_verify_locations(tls_ctx, value, NULL) == 0) {
 			return 0;
 		}
-		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
-		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(int));
+		#ifdef CLIENT_AUTH
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER | 
+				SSL_VERIFY_POST_HANDSHAKE, NULL);
+		#else
+		SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+		#endif
+		SSL_CTX_set_session_id_context(tls_ctx, &verified_context_id, sizeof(verified_context_id));
 
 		/* Really we should only do this if we're the server */
 		cert_names = SSL_load_client_CA_file(value);
@@ -446,9 +523,8 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	char* next;
 	char* proto;
 	int proto_len;
-	//char alpn_string[256];
 	char* alpn_string;
-	int alpn_len;
+	unsigned int alpn_len;
 	char* alpn_str_ptr;
 	tls_opts_t* cur_opts;
 
@@ -461,7 +537,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	alpn_str_ptr = alpn_string;
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	log_printf(LOG_INFO, "ALPN Setting: %s\n", protos);
-	memset(alpn_string, 0, sizeof(alpn_string));
+	memset(alpn_string, 0, ALPN_STRING_MAXLEN);
 	while ((next = strchr(proto, ',')) != NULL) {
 		*next = '\0';
 		proto_len = strlen(proto);
@@ -476,6 +552,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 	alpn_str_ptr++;
 	memcpy(alpn_str_ptr, proto, proto_len);
 
+	/* XXX I don't think this is correct. verify */
 	alpn_len = strlen(alpn_string);
 
 	/* We need to apply the callback to all relevant SSL_CTXs */
@@ -485,7 +562,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 		cur_opts = cur_opts->next;
 	}
 	
-	if (SSL_CTX_set_alpn_protos(tls_ctx, alpn_string, alpn_len) == 1) {
+	if (SSL_CTX_set_alpn_protos(tls_ctx, (unsigned char*)alpn_string, alpn_len) == 1) {
 		return 0;
 	}
 	
@@ -497,11 +574,22 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	ssa_config_t* ssa_config;
 	char* cipher_list;
+	int length;
 
 	ssa_config = get_app_config(tls_opts->app_path);
 
-	if (asprintf(&cipher_list, "%s:!%s",ssa_config->cipher_list ,cipher) > 0) {
-		log_printf(LOG_ERROR, "Unable to disable cipher %s\n",cipher);
+	length = snprintf(NULL, 0, "%s:!%s", ssa_config->cipher_list, cipher);
+	if (length == -1) {
+		log_printf(LOG_ERROR, "Unable to parse cipher: %s\n", cipher);
+		return 0;
+	}
+	cipher_list = (char*)malloc(length + 1);
+	if (cipher_list == NULL) {
+		log_printf(LOG_ERROR, "Unable to allocate new cipher list\n");
+		return 0;
+	}
+	if (snprintf(cipher_list, length + 1, "%s:!%s", ssa_config->cipher_list, cipher) == -1) {
+		log_printf(LOG_ERROR, "Unable to add cipher: %s\n",cipher);
 		return 0;
 	}
 
@@ -514,14 +602,6 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 	free(ssa_config->cipher_list);
 	ssa_config->cipher_list = cipher_list;
 
-
-	//char* cur_cipher;
-	// XXX to make this function less than 500 lines we need access to the
-	// config string for this app.
-	// There is no function in OpenSSL to get back a cipher string and append
-	// the desired !cipher to it. All ways to do it are endlessly hairy.
-	//SSL_CTX_set_cipher_list
-	//SSL_set_cipher_list
 	return 1;
 }
 
@@ -537,6 +617,49 @@ int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
 		tls_ctx = tls_opts->tls_ctx;
 		SSL_CTX_set_timeout(tls_ctx, timeout);
 	}
+	return 1;
+}
+
+#ifdef CLIENT_AUTH
+void pha_cb(const SSL* tls, int where, int ret) {
+	s_auth_info_t* ai;
+	/*printf("pha_cb invoked!1111111111 and where is %08X\n", where);*/
+	if (where == 0x00002002) {
+		ai = SSL_get_ex_data(tls, auth_info_index);
+		SSL_set_info_callback((SSL*)tls, NULL);
+		netlink_notify_kernel(ai->daemon, ai->id, 0);
+		free(ai);
+	}
+	/*if (where & SSL_ST_CONNECT) {
+		printf("ssl want is %08X\n", SSL_want(tls));
+		//SSL_read(tls, NULL, 0);
+	}*/
+	return;
+}
+#endif
+
+int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value) {
+	#ifdef CLIENT_AUTH
+	s_auth_info_t* ai;
+	if (conn_ctx == NULL) {
+		return 0;
+	}
+	ai = (s_auth_info_t*)calloc(1, sizeof(s_auth_info_t));
+	if (ai == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate auth info\n");
+		return 0;
+	}
+	ai->id = conn_ctx->id;
+	ai->daemon = conn_ctx->daemon;
+	SSL_set_ex_data(conn_ctx->tls, auth_info_index, (void*)ai);
+
+	if (SSL_verify_client_post_handshake(conn_ctx->tls) == 0) {
+		log_printf(LOG_ERROR, "Unable to send auth request\n");
+		return 0;
+	}
+	SSL_do_handshake(conn_ctx->tls);
+	SSL_set_info_callback(conn_ctx->tls, pha_cb);
+	#endif
 	return 1;
 }
 
@@ -627,7 +750,6 @@ int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepa
 }
 
 int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname) {
-	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	if (conn_ctx == NULL) {
 		/* We don't fail here because this will be set when the
 		 * connection is actually created by tls_client_setup */
@@ -689,6 +811,7 @@ int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** dat
 	}
 	cert = SSL_get_peer_certificate(conn_ctx->tls);
 	if (cert == NULL) {
+		log_printf(LOG_INFO, "peer cert is NULL\n");
 		return 0;
 	}
 	subject_name = X509_get_subject_name(cert);
@@ -705,13 +828,12 @@ int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** d
 }
 
 int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	char* hostname;
-	char* hostname_copy;
+	const char* hostname;
 	if (conn_ctx == NULL) {
 		return 0;
 	}
 	hostname = SSL_get_servername(conn_ctx->tls, TLSEXT_NAMETYPE_host_name);
-	*data = hostname;
+	*data = (char*)hostname;
 	if (hostname == NULL) {
 		*len = 0;
 		return 1;
@@ -726,13 +848,13 @@ int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char**
 }
 
 int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
-	SSL_get0_alpn_selected(conn_ctx->tls, data, len);
+	SSL_get0_alpn_selected(conn_ctx->tls, (const unsigned char**)data, len);
 	return 1;
 }
 
 long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
-	long timeout;
 	SSL_CTX* tls_ctx;
+	long timeout = 0;
 	if (conn_ctx != NULL) {
 		timeout = SSL_SESSION_get_timeout(SSL_get0_session(conn_ctx->tls));
 		return timeout;
@@ -744,7 +866,7 @@ long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
 	return timeout;
 }
 
-SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, char* hostname) {
+SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname) {
 	X509* cert;
 	tls_opts_t* cur_opts;
 	if (tls_opts == NULL) {
@@ -794,7 +916,7 @@ int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, con
 	unsigned char* nc_out;
 
 	//printf("alpn string is %s\n", opts->alpn_string);
-	ret = SSL_select_next_proto(&nc_out, outlen, opts->alpn_string, strlen(opts->alpn_string),
+	ret = SSL_select_next_proto(&nc_out, outlen, (const unsigned char*)opts->alpn_string, strlen(opts->alpn_string),
 			in, inlen);
 	*out = nc_out;
 
@@ -805,6 +927,16 @@ int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, con
 
 SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 	SSL* tls;
+	#ifdef CLIENT_AUTH
+	SSL_CTX_set_client_cert_cb(tls_ctx, client_cert_callback);
+	log_printf(LOG_INFO, "Client cert callback set\n");
+	auth_info_t* ai = (auth_info_t*)calloc(1, sizeof(auth_info_t));
+	if (ai == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate auth info\n");
+		return NULL;
+	}
+	ai->hostname = hostname;
+	#endif
 	tls = SSL_new(tls_ctx);
 	if (tls == NULL) {
 		return NULL;
@@ -814,11 +946,11 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 		SSL_set_tlsext_host_name(tls, hostname);
 	}
 	//SSL_CTX_set_cert_verify_callback(tls_ctx, trustbase_verify, hostname);
-	
-	#ifdef CLIENTAUTH
-	SSL_set_client_auth_cb(tls, client_auth_callback);
-	#endif
 
+	#ifdef CLIENT_AUTH
+	SSL_force_post_handshake_auth(tls);
+	SSL_set_ex_data(tls, auth_info_index, (void*)ai);
+	#endif
 	return tls;
 }
 
@@ -831,9 +963,9 @@ SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 }
 
 int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id) {
-	if (conn->tls == NULL) {
+	/*if (conn->tls == NULL) {
 		return 1;
-	}
+	}*/
 	conn->daemon = daemon_ctx;
 	conn->id = id;
 	return 1;
@@ -848,8 +980,8 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 	if (endpoint->closed == 1) {
 		out_buf = bufferevent_get_output(bev);
 		if (evbuffer_get_length(out_buf) == 0) {
-			bufferevent_free(bev);
-			shutdown_tls_conn_ctx(ctx);
+			//bufferevent_free(bev);
+			//shutdown_tls_conn_ctx(ctx);
 		}
 		return;
 	}
@@ -893,7 +1025,6 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
-	char* servername;
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
@@ -903,6 +1034,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		//startpoint->connected = 1;
 		if (bev == ctx->secure.bev) {
 			//log_printf(LOG_INFO, "Is handshake finished?: %d\n", SSL_is_init_finished(ctx->tls));
+			log_printf(LOG_INFO, "Negotiated connection with %s\n", SSL_get_version(ctx->tls));
 			if (bufferevent_getfd(ctx->plain.bev) == -1) {
 				netlink_handshake_notify_kernel(ctx->daemon, ctx->id, 0);
 			}
@@ -921,6 +1053,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			else {
 				log_printf(LOG_INFO, "An unhandled error has occurred\n");
 			}
+			startpoint->closed = 1;
 		}
 		if (bev == ctx->secure.bev) {
 			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
@@ -936,8 +1069,8 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			if (evbuffer_get_length(out_buf) == 0) {
 				endpoint->closed = 1;
 			}
+			startpoint->closed = 1;
 		}
-		startpoint->closed = 1;
 	}
 	if (events & BEV_EVENT_EOF) {
 		log_printf(LOG_DEBUG, "%s endpoint got EOF\n", bev == ctx->secure.bev ? "encrypted" : "plaintext");
@@ -972,8 +1105,8 @@ tls_conn_ctx_t* new_tls_conn_ctx() {
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	if (ctx == NULL) return;
 
-	if (ctx->tls != NULL) {
-		SSL_shutdown(ctx->tls);
+	if (ctx->tls != NULL && ctx->secure.closed == 1) {
+		//SSL_shutdown(ctx->tls);
 	}
 	return;
 }
@@ -981,72 +1114,328 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 	shutdown_tls_conn_ctx(ctx);
 	ctx->tls = NULL;
-	if (ctx->secure.bev != NULL) bufferevent_free(ctx->secure.bev);
+	if (ctx->secure.bev != NULL) {
+		// && ctx->secure.closed == 0) {
+		 bufferevent_free(ctx->secure.bev);
+	}
 	ctx->secure.bev = NULL;
-	if (ctx->plain.bev != NULL) bufferevent_free(ctx->plain.bev);
+	if (ctx->plain.bev != NULL) {
+		// && ctx->plain.closed == 1) {
+		 bufferevent_free(ctx->plain.bev);
+	}
 	ctx->plain.bev = NULL;
 	free(ctx);
 	return;
 }
 
-#ifdef CLIENTAUTH
-int client_auth_callback(SSL *s, void* hdata, size_t hdata_len, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
-	EVP_PKEY* pkey = NULL;
-	const EVP_MD *md = NULL;
-	EVP_MD_CTX *mctx = NULL;
-	EVP_PKEY_CTX *pctx = NULL;
-	size_t siglen;
-	unsigned char* sig;
+#ifdef CLIENT_AUTH
+int client_auth_callback(SSL *tls, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid, unsigned char** o_sig, size_t* o_siglen) {
+	auth_info_t* ai;
 
-	printf("GOT THE CALLBACK! YAY\n");
-	pkey = get_private_key_from_file("d");
-	if (pkey == NULL) {
+	log_printf(LOG_INFO, "Sigalg ID is %d\n", sigalg_nid);
+	log_printf(LOG_INFO, "hash ID is %d\n", hash_nid);
+
+        /*EVP_PKEY* pkey = NULL;
+        const EVP_MD *md = NULL;
+        EVP_MD_CTX *mctx = NULL;
+        EVP_PKEY_CTX *pctx = NULL;
+        size_t siglen;
+        unsigned char* sig;*/
+
+	ai = SSL_get_ex_data(tls, auth_info_index);
+	send_sign_request(ai->fd, hdata, hdata_len, hash_nid, sigalg_nid);
+	if (recv_sign_response(ai->fd, o_sig, o_siglen) == 0) {
+		log_printf(LOG_ERROR, "Could not receive signature response\n");
+		close(ai->fd);
+		//free(ai);
+		return 1;
+	}
+	log_printf(LOG_INFO, "Got a signature, closing fd %d\n", ai->fd);
+	close(ai->fd);
+	//free(ai);
+
+        /*printf("Signing hash\n");
+        //pkey = get_private_key_from_file(CLIENT_AUTH_KEY);
+	pkey = get_private_key_from_buf(char* buffer);
+        if (pkey == NULL) {
+                return 0;
+        }
+        mctx = EVP_MD_CTX_new();
+        if (mctx == NULL) {
+                EVP_PKEY_free(pkey);
+                return 0;
+        }
+
+        siglen = EVP_PKEY_size(pkey);
+        sig = (unsigned char*)malloc(siglen);
+        if (sig == NULL) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                return 0;
+        }
+        
+        md = EVP_get_digestbynid(sigalg_nid);
+        if (md == NULL) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
+
+        if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
+
+        if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
+                EVP_PKEY_free(pkey);
+                EVP_MD_CTX_free(mctx);
+                free(sig);
+                return 0;
+        }
+
+        EVP_PKEY_free(pkey);
+        EVP_MD_CTX_free(mctx);*/
+        
+	/*
+        *o_sig = sig;
+        *o_siglen = siglen; */
+        /* sig is freed by caller */
+        return 1;
+}
+
+int client_cert_callback(SSL *tls, X509** cert, EVP_PKEY** key) {
+	int i;
+	char *ca_name;
+	char name_buf[1024];
+	X509_NAME* name;
+	STACK_OF(X509_NAME)* names;
+	auth_info_t* ai;
+	int fd;
+	//*cert = get_cert_from_file(CLIENT_AUTH_CERT);
+	ai = SSL_get_ex_data(tls, auth_info_index);
+	/* XXX improve this later to not block. This
+	 * blocking POC is...well, just for POC */
+	log_printf(LOG_INFO, "Client cert callback is invoked\n");
+
+	fd = auth_daemon_connect();
+	log_printf(LOG_INFO, "fd to auth daemon is %d\n", fd);
+	if (fd == -1) {
+		log_printf(LOG_ERROR, "Failed to connect to auth daemon\n");
 		return 0;
 	}
-	mctx = EVP_MD_CTX_new();
-	if (mctx == NULL) {
-		EVP_PKEY_free(pkey);
+	ai->fd = fd;
+	names = SSL_get_client_CA_list(tls);
+	if (names == NULL) {
+		send_cert_request(ai->fd, ai->hostname, NULL);
+	}
+	else {
+		ca_name = calloc(256,1);
+		for (i = 0; i < sk_X509_NAME_num(names); i++) {
+			name = sk_X509_NAME_value(names, i);
+			X509_NAME_oneline(name, name_buf, 1024);
+			X509_NAME_get_text_by_NID(name,NID_commonName,ca_name,256);
+			
+			printf("Name is %s\n", name_buf);
+		}
+		ai->ca_name = ca_name;
+		printf("%s\n",ai->ca_name);
+		send_cert_request(ai->fd, ai->hostname,ai->ca_name);
+	}
+	if (recv_cert_response(ai->fd, cert) == 0) {
+		log_printf(LOG_ERROR, "It appears the client does not want to authenticate\n");
+		*cert = NULL;
+		*key  = NULL;
+		close(ai->fd);
+		//free(ai);
 		return 0;
 	}
-
-	siglen = EVP_PKEY_size(pkey);
-	sig = (unsigned char*)malloc(siglen);
-	if (sig == NULL) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		return 0;
-	}
-	
-	md = EVP_get_digestbynid(sigalg_nid);
-	if (md == NULL) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
-
-	if (EVP_DigestSignInit(mctx, &pctx, md, NULL, pkey) <= 0) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
-
-	if (EVP_DigestSign(mctx, sig, &siglen, hdata, hdata_len) <= 0) {
-		EVP_PKEY_free(pkey);
-		EVP_MD_CTX_free(mctx);
-		free(sig);
-		return 0;
-	}
-
-	*o_sig = sig;
-	*o_siglen = siglen;
-
-	EVP_PKEY_free(pkey);
-	EVP_MD_CTX_free(mctx);
-	/* sig is freed by caller */
-	
+	*key = NULL;
+	//*key = get_private_key_from_file(CLIENT_KEY);
+	SSL_set_client_auth_cb(tls, client_auth_callback);
 	return 1;
 }
+
+int auth_daemon_connect(void) {
+	int fd;
+	struct sockaddr_un addr;
+	int addr_len;
+	fd = socket(PF_UNIX, SOCK_STREAM, 0);
+	if (fd == -1) {
+		log_printf(LOG_ERROR, "socket: %s\n", strerror(errno));
+		return -1;
+	}
+	memset(&addr, 0, sizeof(addr));
+	addr.sun_family = AF_UNIX;
+	memcpy(addr.sun_path, auth_daemon_name, sizeof(auth_daemon_name));
+	addr_len = sizeof(auth_daemon_name) + sizeof(sa_family_t);
+
+	if (connect(fd, (struct sockaddr*)&addr, addr_len) == -1) {
+		log_printf(LOG_ERROR, "connect: %s\n", strerror(errno));
+		return -1;
+	}
+	return fd;
+}
+
+void send_cert_request(int fd, char* hostname, char* ca_name) {
+	int msg_size;
+	char msg_type;
+	int hostname_len;
+	int ca_name_len;
+	if (ca_name == NULL) {
+		ca_name = hostname;
+	}
+	hostname_len = strlen(hostname)+1;
+	ca_name_len = strlen(ca_name)+1;
+	msg_size = htonl(hostname_len+ca_name_len);
+	msg_type = CERTIFICATE_REQUEST;
+	send_all(fd, &msg_type, 1);
+	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
+	send_all(fd, hostname, hostname_len);
+	send_all(fd, ca_name, ca_name_len);
+	log_printf(LOG_DEBUG, "Sent a cert request of length %u\n", hostname_len);
+	return;
+}
+
+void send_sign_request(int fd, void* hdata, size_t hdata_len, int hash_nid, int sigalg_nid) {
+	int msg_size;
+	char msg_type;
+	msg_size = htonl(hdata_len + sizeof(hash_nid) + sizeof(sigalg_nid));
+	msg_type = SIGNATURE_REQUEST;
+	send_all(fd, &msg_type, 1);
+	send_all(fd, (char*)&msg_size, sizeof(uint32_t));
+	send_all(fd, (char*)&hash_nid, sizeof(hash_nid));
+	send_all(fd, (char*)&sigalg_nid, sizeof(sigalg_nid));
+	send_all(fd, hdata, hdata_len);
+	log_printf(LOG_DEBUG, "Sent a sign request of length %u\n", hdata_len);
+	return;
+}
+
+int recv_cert_response(int fd, X509** o_cert) {
+	int bytes_read;
+	char msg_type;
+	int cert_len;
+	char* cert_mem;
+	X509* cert;
+	BIO* bio;
+	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message type in cert response\n");
+		return 0;
+	}
+	if (msg_type == FAILURE_RESPONSE) {
+		log_printf(LOG_ERROR, "Device reported failure message for cert response\n");
+		return 0;
+	}
+	bytes_read = recv(fd, &cert_len, sizeof(uint32_t), MSG_WAITALL);
+	printf("bytes read = %d\n", bytes_read);
+	
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message length in cert response\n");
+		return 0;
+	}
+
+	cert_len = ntohl(cert_len);
+	printf("cert length = %d (%08X)\n", cert_len, cert_len);
+	cert_mem = malloc(cert_len);
+	if (cert_mem == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate certificate length in cert response\n");
+		return 0;
+	}
+	bytes_read = recv(fd, cert_mem, cert_len, MSG_WAITALL);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read certificate data in cert response\n");
+		return 0;
+	}
+	log_printf(LOG_DEBUG, "Received a response of type %d%s%s%s%s%s and length %d\n",
+			msg_type,
+			msg_type == 0 ? "(CERTIFICATE_REQUEST)":"",
+			msg_type == 1 ? "(CERTIFICATE_RESPONSE)":"",
+			msg_type == 2 ? "(SIGNATURE_REQUEST)":"",
+			msg_type == 3 ? "(SIGNATURE_RESPONSE)":"",
+			msg_type == 4 ? "(FAILURE_RESPONSE)":"",
+			cert_len);
+	bio = BIO_new(BIO_s_mem());
+	if (bio == NULL) {
+		log_printf(LOG_ERROR, "Failed to create BIO for certificate memory\n");
+		return 0;
+	}
+	if (BIO_write(bio, cert_mem, cert_len) != cert_len) {
+		log_printf(LOG_ERROR, "Failed to write certificate data to BIO\n");
+		return 0;
+	}
+	cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
+	if (cert == NULL) {
+		log_printf(LOG_ERROR, "Failed to parse auth certificate\n");
+		return 0;
+	}
+	*o_cert = cert;
+	BIO_free(bio);
+	free(cert_mem);
+	return 1;
+}
+
+int recv_sign_response(int fd, unsigned char** o_sig, size_t* o_siglen) {
+	unsigned char* sig;
+	int siglen;
+	int bytes_read;
+	char msg_type;
+	bytes_read = recv(fd, &msg_type, 1, MSG_WAITALL);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message type in signature response\n");
+		return 0;
+	}
+	if (msg_type == FAILURE_RESPONSE) {
+		log_printf(LOG_ERROR, "Device reported failure message for signature response\n");
+		return 0;
+	}
+	bytes_read = recv(fd, &siglen, sizeof(uint32_t), MSG_WAITALL);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read message length in signature response\n");
+		return 0;
+	}
+	siglen = ntohl(siglen);
+	sig = malloc(siglen);
+	if (sig == NULL) {
+		log_printf(LOG_ERROR, "Failed to allocate signature response message\n");
+		return 0;
+	}
+	bytes_read = recv(fd, sig, siglen, MSG_WAITALL);
+	if (bytes_read == -1) {
+		log_printf(LOG_ERROR, "Failed to read signature response\n");
+		free(sig);
+		return 0;
+	}
+	*o_sig = sig;
+	*o_siglen = siglen;
+	log_printf(LOG_DEBUG, "Received a response of type %d%s%s%s%s%s and length %d\n",
+			msg_type,
+			msg_type == 0 ? "(CERTIFICATE_REQUEST)":"",
+			msg_type == 1 ? "(CERTIFICATE_RESPONSE)":"",
+			msg_type == 2 ? "(SIGNATURE_REQUEST)":"",
+			msg_type == 3 ? "(SIGNATURE_RESPONSE)":"",
+			msg_type == 4 ? "(FAILURE_RESPONSE)":"",
+			siglen);
+
+	return 1;
+}
+
+void send_all(int fd, char* msg, int bytes_to_send) {
+	int total_bytes_sent;
+	int bytes_sent;
+	total_bytes_sent = 0;
+	while (total_bytes_sent < bytes_to_send) {
+		bytes_sent = send(fd, msg + total_bytes_sent, bytes_to_send - total_bytes_sent, 0);
+		if (bytes_sent == -1) {
+			log_printf(LOG_ERROR, "Could not send data to auth daemon %s\n", strerror(errno));
+			return;
+		}
+		total_bytes_sent += bytes_sent;
+	}
+	return;
+}
+
 #endif
 
