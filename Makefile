@@ -44,7 +44,7 @@ PRELOAD_PATH=$(PWD)/extras
 QRVIEWR_PATH=./qrdisplay
 BASHRC=$(HOME)/.bashrc
 
-.PHONY: clean qrwindow shairedobject hostname-support preload hostname-support-remove
+.PHONY: clean qrwindow sharedobject hostname-support preload hostname-support-remove
 
 all: CXXFLAGS+=$(CXX_DEBUG_FLAGS)
 all: INCLUDES=$(STD_INCLUDES)
@@ -54,7 +54,7 @@ release: CXXFLAGS+=$(CXX_RELEASE_FLAGS)
 release: INCLUDES+=$(STD_INCLUDES)
 release: $(EXEC)
 
-hostname-support: shairedobject
+hostname-support: sharedobject
 hostname-support: preload
 hostname-support: release
 
@@ -80,7 +80,7 @@ clean:
 qrwindow:
 	$(MAKE) -C $(QRVIEWR_PATH)
 
-shairedobject:
+sharedobject:
 	$(MAKE) -C $(PRELOAD_PATH)
 
 preload: 

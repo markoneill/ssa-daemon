@@ -32,7 +32,7 @@ if [ -z "$1"]; then
 else
 	MODE=${1}
 fi
-echo "bild mode = $MODE"
+echo "build mode = $MODE"
 
 
 # Check permissions
@@ -87,7 +87,7 @@ fi
 
 # If clean moad execure make clean in each directory
 if [ $MODE = "clean" ]; then
-	echo "clean: cleaning directorys..."
+	echo "clean: cleaning directories..."
 	echo -e "\t$SSA_DIR"
 	make -s -C $SSA_DIR clean
 	rm $SSA_DIR/ssa.ko
