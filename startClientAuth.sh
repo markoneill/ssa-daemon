@@ -167,7 +167,7 @@ if [ ${MAKE_WRAPPER} == true ]; then
 fi
 if [ ${MAKE_SERVER} == true ]; then
 	echo -e "\ttestShopServer..."
-	make -s -C ${SERVER_DIR} || (echo -e "\tserver build error.\nexiting" ; exit 1)
+	make -s -C ${SERVER_DIR} clientauth || (echo -e "\tserver build error.\nexiting" ; exit 1)
 fi
 echo -e "\tdone"
 
