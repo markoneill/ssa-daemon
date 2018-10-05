@@ -226,7 +226,9 @@ void* create_auth_daemon(void* arg) {
 	char* keyString;
 	char* copy;
 	int len = BIO_get_mem_data(pembio, &keyString);
-	int pipefd[2], i, j;
+	int pipefd[2];
+        int i;
+       	int j;
 	pipe(pipefd);
 	char* argv[6];
 	argv[0] = "qrencode";

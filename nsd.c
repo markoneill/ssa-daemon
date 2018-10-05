@@ -71,7 +71,8 @@ static void entry_group_cb(AvahiEntryGroup* group, AvahiEntryGroupState state, v
 
 int register_auth_service(int port, EVP_PKEY *pkey) {
 	int err;
-	char hostname[MAX_HOSTNAME_LEN], *charp;
+	char hostname[MAX_HOSTNAME_LEN];
+	char* charp;
 	service_ctx_t* ctx;
 	AvahiClientFlags flags = 0;
 
@@ -90,7 +91,7 @@ int register_auth_service(int port, EVP_PKEY *pkey) {
 	ctx->pkey = pkey;
 	ctx->service_name = avahi_strdup(hostname);
 
-	while( (charp = strchr(ctx->service_name, '.')) )	// remove '.'s from seriice name
+	while( (charp = strchr(ctx->service_name, '.')) )	// remove '.'s from service name
 		(*charp) = ' ';
 
 	ctx->poller = avahi_simple_poll_new();
