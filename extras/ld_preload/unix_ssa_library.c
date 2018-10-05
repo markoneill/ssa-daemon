@@ -33,6 +33,25 @@ typedef int (*orgi_bind_type)(int sockfd, const struct sockaddr *addr, socklen_t
 #define HASHMAP_NUM_BUCKETS 100
 #define MAX_HOST_LEN        255
 
+typedef struct tls_sock_data {
+    unsigned long key;
+    struct socket* unix_sock;
+    struct sockaddr ext_addr;
+    int ext_addrlen;
+    struct sockaddr int_addr;
+    int int_addrlen;
+    struct sockaddr rem_addr;
+    int rem_addrlen;
+        char *hostname;
+    int is_bound;
+    int async_connect;
+    int interrupted; 
+    int response;
+    char* rdata; /* returned data from asynchronous callback */
+    unsigned int rdata_len; /* length of data returned from async callback */
+    int daemon_id; /* userspace daemon to which the socket is assigned */
+} tls_sock_data_t;
+
 int global_id = 0;
 int global_fd = 0;
 int new_accept_id = 0;
@@ -119,6 +138,17 @@ int createUnixSocket(){
     return fd;
 }
 
+void put_tls_sock_data(unsigned long key, tls_sock_data_t* sock_data) {
+    //spin_lock(&tls_sock_data_table_lock);
+    hashmap_add(sock_map, key, sock_data); // key and value
+    //spin_unlock(&tls_sock_data_table_lock);
+    return;
+}
+
+tls_sock_data_t* get_tls_sock_data(unsigned long key) {
+    return hashmap_get(sock_map, key);
+}
+
 int socket(int domain, int type, int protocol){
   int port_id = 8443;
   sock_map = hashmap_create(HASHMAP_NUM_BUCKETS);
@@ -129,37 +159,41 @@ int socket(int domain, int type, int protocol){
     char buff[8192];
     unsigned long id;
     unsigned long process_id = 0;
+    tls_sock_data_t* sock_data;
 
-    // create the TCP socket
-      int tcp_fd;
-      orig_socket_type socket_orig;
-      socket_orig = (orig_socket_type)dlsym(RTLD_NEXT,"socket");
-      tcp_fd = socket_orig(AF_INET, SOCK_STREAM, 0);
-      if(tcp_fd == -1){
-        printf("Error opening socket\n");
+    if((sock_data = malloc(sizeof(tls_sock_data_t))) == NULL){
+        perror("fail in sock data malloc");
         return -1;
     }
-    
-    // create a local address
-    local_address.sin_family = AF_INET;
-    local_address.sin_port = 0;
-    local_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    // create the TCP socket
+    int tcp_fd;
+    orig_socket_type socket_orig;
+    socket_orig = (orig_socket_type)dlsym(RTLD_NEXT,"socket");
+    tcp_fd = socket_orig(AF_INET, SOCK_STREAM, 0);
+    if(tcp_fd == -1){
+    printf("Error opening socket\n");
+    return -1;
+
+    ((struct sockaddr_in*)&sock_data->int_addr)->sin_family = AF_INET;
+    ((struct sockaddr_in*)&sock_data->int_addr)->sin_port = 0;
+    ((struct sockaddr_in*)&sock_data->int_addr)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    sock_data->key = (unsigned long)tcp_fd;
 
     pthread_mutex_lock(&id_mutex);
     process_id = getpid();
     id  = concatenate(process_id, tcp_fd);
-    global_id = id;
-    global_tcp_fd = tcp_fd;
     pthread_mutex_unlock(&id_mutex);
 
-    hashmap_add(sock_map, id, (void*)(long)tcp_fd); // key and value
- 
+    put_tls_sock_data(sock_data->key, sock_data);
+
     fd = createUnixSocket();
    
     // send ssa socket notify
     strcpy(buff, "1 ssa socket notify");
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send failed in socket");
         return -1;
     }
@@ -172,7 +206,7 @@ int socket(int domain, int type, int protocol){
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send id failed socket");
         return -1;
     }
@@ -186,7 +220,7 @@ int socket(int domain, int type, int protocol){
     strcpy(buff, comm_ptr);
 
     ret = send(fd, buff, strlen(buff)+1, 0);
-    if (ret == -1) { // send can be used when a socket is in a connected state
+    if (ret == -1) {
         perror("send comm_ptr failed in socket");
         return -1;
     }
@@ -202,12 +236,13 @@ int socket(int domain, int type, int protocol){
     close_orgi(fd);
 
     return tcp_fd;
-  }
+    }
   else{
     orig_socket_type socket_orig;
     socket_orig = (orig_socket_type)dlsym(RTLD_NEXT,"socket");
     return socket_orig(domain, type, protocol);
   }
+ }
 }
 
 int make_connection(int sockfd){
@@ -238,17 +273,25 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     int block_val;
     int is_blocking;
     int blocking = 1;
+    tls_sock_data_t* sock_data;
+
+    sock_data = get_tls_sock_data(sockfd);
+
+    struct sockaddr_in int_addr;
+    int_addr.sin_family = AF_INET;
+    int_addr.sin_port = 0;
+    int_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
  
-    if(is_bind == 0){
+    if(sock_data->is_bound == 0){
         orgi_bind_type bind_orgi;
         bind_orgi = (orgi_bind_type)dlsym(RTLD_NEXT,"bind");
-        bind_result = bind_orgi(sockfd, (struct sockaddr*) &local_address, sizeof(local_address));
+        bind_result = bind_orgi(sockfd, (struct sockaddr*) &int_addr, sizeof(local_address));
         if (bind_result == -1) {
          printf("Failed in bind\n");
          return -1;
         }
-        socklen_t size = sizeof(local_address);
-        getsockname(sockfd, (struct sockaddr *) &local_address, &size);
+        socklen_t size = sizeof(int_addr);
+        getsockname(sockfd, (struct sockaddr *) &int_addr, &size);
     }
     
     // ------------------send message ------------------
@@ -265,7 +308,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     char idString[256];
     char resultMark[256];
     strcpy(resultMark, "3id");
-    sprintf(idString, "%ld", global_id);
+    sprintf(idString, "%ld", sock_data->daemon_id);
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
@@ -276,7 +319,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 
     // send local address
     char localAddressString[256];
-    strcpy(localAddressString, get_addr_string((struct sockaddr*)&local_address));
+    strcpy(localAddressString, get_addr_string((struct sockaddr*)(&sock_data->int_addr)));
     strcpy(resultMark, "3la");
     strcat(resultMark, localAddressString);
     strcpy(buff, resultMark);
@@ -334,7 +377,8 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     int connection_check = make_connection(sockfd); 
     if(connection_check == -1){
       return -1;
-    } if ((len = recv(fd, buff, 8192, 0)) < 0) {
+    }
+    if ((len = recv(fd, buff, 8192, 0)) < 0) {
         perror("recv error");
         return -1;
      }
@@ -381,6 +425,9 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     char resolved_path[PATH_MAX];
     char* optval_temp;
     unsigned long id;
+    tls_sock_data_t* sock_data;
+
+    sock_data = get_tls_sock_data(sockfd);
 
     if (optval == NULL) {
         return -EINVAL; 
@@ -456,7 +503,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
     char idString[256];
     char resultMark[256];
     strcpy(resultMark, "2id");
-    sprintf(idString, "%ld", global_id);
+    sprintf(idString, "%ld", sock_data->daemon_id);
     strcat(resultMark, idString);
     strcpy(buff, resultMark);
     ret = send(fd, buff, strlen(buff)+1, 0);
@@ -529,7 +576,7 @@ int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t
         orgi_setsockopt_type setsockopt_orgi;
         setsockopt_orgi = (orgi_setsockopt_type)dlsym(RTLD_NEXT,"setsockopt");
         return setsockopt_orgi(sockfd, level, optname, optval, optlen);
-    }
+    } 
 }
 
 int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen){
@@ -539,6 +586,9 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     int ret;
     char buff[8192];
     unsigned long id;
+    tls_sock_data_t* sock_data;
+
+    sock_data = get_tls_sock_data(sockfd);
 
     if(level != IPPROTO_TLS){
         orgi_getsockopt_type getsockopt_orgi;
@@ -573,7 +623,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
         char idString[256];
         char resultMark[256];
         strcpy(resultMark, "4id");
-        sprintf(idString, "%ld", global_id);
+        sprintf(idString, "%ld", sock_data->daemon_id);
         strcat(resultMark, idString);
         strcpy(buff, resultMark);
         ret = send(fd, buff, strlen(buff)+1, 0);
@@ -620,7 +670,7 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
         //return id;
     default:
         return -EOPNOTSUPP;
-}
+    }
    }
    else{
       printf("establishing normal getsockopt...\n");

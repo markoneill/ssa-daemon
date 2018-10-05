@@ -754,15 +754,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	if (sock_ctx == NULL) {
 		response = -EBADF;
 	}
-	else {
-		ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
-		if (ret == -1) {
-			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
-				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
-			EVUTIL_CLOSESOCKET(sock_ctx->fd);
-			return;
-		} 		
-
+	else {		
 		get_addr_string(ext_addr);
 		ret = bind(sock_ctx->fd, ext_addr, ext_addrlen);
 		if (ret == -1) {
@@ -776,6 +768,13 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 			sock_ctx->ext_addr = *ext_addr;
 			sock_ctx->ext_addrlen = ext_addrlen;
 		}
+		ret = evutil_make_listen_socket_reuseable(sock_ctx->fd);
+		if (ret == -1) {
+			log_printf(LOG_ERROR, "Failed in evutil_make_listen_socket_reuseable: %s\n",
+				 evutil_socket_error_to_string(EVUTIL_SOCKET_ERROR()));
+			EVUTIL_CLOSESOCKET(sock_ctx->fd);
+			return;
+		} 
 	}
 	unix_notify_kernel(ctx, id, response);
 	return;
