@@ -334,10 +334,11 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
     int connection_check = make_connection(sockfd); 
     if(connection_check == -1){
       return -1;
-    } if ((len = recv(fd, buff, 8192, 0)) < 0) {
+    } 
+    if ((len = recv(fd, buff, 8192, 0)) < 0) {
         perror("recv error");
         return -1;
-     }
+    }
     printf("receive message for connection: %s\n", buff);
     orgi_close_type close_orgi;
     close_orgi = (orgi_close_type)dlsym(RTLD_NEXT,"close");
@@ -617,7 +618,6 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
         close_orgi(fd);
 
     case TLS_ID:
-        //return id;
     default:
         return -EOPNOTSUPP;
 }
