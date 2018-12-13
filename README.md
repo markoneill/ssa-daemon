@@ -43,3 +43,5 @@ See our paper (linked above) for a preview of the types of configuration options
 
 ## Notices
 The SSA is still undergoing large changes as we finalize the interface between it TrustBase, and other certificate validation strategies. Some commits may disable certificate validation temporarily while we work out the kinks between using TrustBase for traffic interception and using its API for certificate validation.
+
+The build-client-auth.sh script is for extra functionality that is still very much in flux and should not be used unless you know what you're getting yourself into.
