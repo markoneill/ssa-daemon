@@ -2,8 +2,8 @@
 
 DISTRO=$(awk -F= '/^NAME/{print $2}' /etc/os-release)
 test -n $DISTRO && echo "distribution detected: ${DISTRO}" || echo "could not determine OS type"
-if [[ "${DISTRO}" == 'Fadora' ]]; then
-	echo 'Installing Fadora libraries for tls_wrapper'
+if [[ "${DISTRO}" == 'Fedora' ]]; then
+	echo 'Installing Fedora libraries for tls_wrapper'
 	sudo dnf install \
 						  avahi-devel \
 						  elfutils-libelf-devel \
@@ -16,6 +16,7 @@ if [[ "${DISTRO}" == 'Fadora' ]]; then
 						  libnotify-devel \
 						  openssl-devel \
 						  qrencode \
+						  
 
 	echo 'Installed'
 fi
