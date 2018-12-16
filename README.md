@@ -28,6 +28,7 @@ You must have the SSA kernel module installed before you build and run the SSA u
 To install and run the SSA userspace daemon you need to run these commands as root:
 
 ```
+  ./install_packages.sh
   make
   ./tls_wrapper
 ```
