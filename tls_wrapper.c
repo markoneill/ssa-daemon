@@ -44,7 +44,6 @@
 #include "tb_connector.h"
 #include "openssl_compat.h"
 #include "issue_cert.h"
-#include "auth_daemon.h"
 #include "log.h"
 #include "config.h"
 #include "netlink.h"
