@@ -102,7 +102,10 @@ int main(int argc, char* argv[]) {
 	sigact.sa_handler = sig_handler;
 	sigaction(SIGINT, &sigact, NULL);
 
-	parse_config("ssa.cfg");
+	if (parse_config("ssa.cfg") == -1) {
+	    log_printf(LOG_ERROR, "Failed to parse config file\n");
+	    exit(EXIT_FAILURE);
+    }
 	
 	worker_count = 1;
 
