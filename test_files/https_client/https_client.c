@@ -21,12 +21,24 @@ int main() {
 	char http_response[2048];
 	memset(http_response, 0, 2048);
 	printf("sending\n");
-	send(sock_fd, http_request, sizeof(http_request)-1, 0);
+    fflush(stdout);
+	if(send(sock_fd, http_request, sizeof(http_request)-1, 0) == -1)
+    {
+        fprintf(stderr, "Error sending: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 	printf("recving\n");
-	recv(sock_fd, http_response, 2047, 0);
+    fflush(stdout);
+	if (recv(sock_fd, http_response, 2047, 0) == -1)
+    {
+        fprintf(stderr, "Error recv(): %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 	printf("closing\n");
+    fflush(stdout);
 	close(sock_fd);
 	printf("Received:\n%s", http_response);
+    fflush(stdout);
 	return 0;
 }
 
