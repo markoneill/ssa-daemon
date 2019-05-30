@@ -239,7 +239,7 @@ int connect_to_host(char* host, char* service, int prot) {
 			perror("socket");
 			continue;
 		}
-		setsockopt(sock, IPPROTO_TLS, SO_REMOTE_HOSTNAME, host, strlen(host)+1);
+		setsockopt(sock, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1);
 		set_blocking(sock, 0);
 		if (connect(sock, addr_ptr->ai_addr, addr_ptr->ai_addrlen) == -1) {
 			if (errno == EINPROGRESS || errno == EALREADY) {
