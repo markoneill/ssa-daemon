@@ -6,7 +6,7 @@ If you wish to change the default, change the file in line 105 of main.c to be t
 
 ## Creating an Config File
 The config file must be made in the .cfg format.
-
+See https://hyperrealm.github.io/libconfig/libconfig_manual.html#Configuration-Files
 ## Administator Settings 
 (taken from config.c in ssa-daemon):
 
@@ -16,22 +16,20 @@ You must create a default profile, and then can make application specific profil
 
 1. Application - the path to the app
 2. MinProtocol - the minimum TLS protocol version that can be used. If lower connections are used, then the connection will not go through. We don't allow SSL version because they are all vulnerable anyways.
-3. CipherSuite - order of preferred cipher suites to use
+3. MaxProtocol - the maximum TLS protocol version that can be used. This must be >= to MinProtocol, or else the SSA will not run. If not given, this value defaults to the highest TLS version.
+4. CipherSuite - order of preferred cipher suites to use
     - the format follows https://www.openssl.org/docs/man1.0.2/man1/ciphers.html
     - example: ```CipherSuite: "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS"```
-4. SessionCacheTimeout - timeout for session cacching
-5. SessionCacheLocation - path to store session data, for cross-machine sharing
-6. Validation - method of certificate validation. 
+5. SessionCacheTimeout - timeout for session caching
+6. SessionCacheLocation - path to store session data, for cross-machine sharing
+7. Validation - method of certificate validation. 
     - currently only "Normal" and "Trustbase" are allowed
-7. TrustStoreLocatation - designates the path to the PEM certificate file containing all trusted root certificates to be used in the SSA
-8. AppCustomValidation - determines whether to honor certificates supplied by apps for hard-coded validation
+8. TrustStoreLocatation - designates the path to the PEM certificate file containing all trusted root certificates to be used in the SSA
+9. AppCustomValidation - determines whether to honor certificates supplied by apps for hard-coded validation
     - either "On" or "Off"
-9. Extensions - 
-10. RandomSeed - requires two arguments, randseed_path and randseed_size
+10. Extensions - 
+11. RandomSeed - requires two arguments, randseed_path and randseed_size
     - example - ```RandomSeed: {"/dev/random", 512}```
-
-Currently, MaxProtocol is not implemented. 
-
 
 Example cfg file
 ```

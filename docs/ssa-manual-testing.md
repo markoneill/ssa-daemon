@@ -27,8 +27,10 @@ To make the tests work right, we will need to create a simple server and a simpl
 
 **Question** What should be the expected behavior if we try to set the MinProtocol to be higher than something we connect? Should it fail or should it be able to connect? The paper and the config file are different (TLS VERSION in paper VS MinProtocol in config file)
 
-Administrator Control:
-1. Change MinProtocal to be "1.2" in the ssa.cfg and restart the SSA
+##Administrator Control
+
+### MinProtocol
+1. Change MinProtocol to be "1.2" in the ssa.cfg and restart the SSA
     - run ```./https_client tls-v1-2.badssl.com 1012``` 
         - **Expected Behavior** 
             - the client receives an html response 
@@ -41,9 +43,7 @@ Administrator Control:
         - **Expected Behavior** 
             - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
             - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
-    - right now, the tests don't fail, but continue to work, even if the MinProtocol is set to be higher than the TLS version we connect, I know because the SSA says "Negotated connection with TLS1 or TLS1.1"
-        - I looked into this, and it looks like the lines that set the min and max version were commented out. See line 284 of tls_wrapper.c. After removing this comment, it started working
-2. Change MinProtocal to be "1.0" in the ssa.cfg
+2. Change MinProtocol to be "1.0" in the ssa.cfg
     - run ```./https_client tls-v1-2.badssl.com 1012``` 
         - **Expected Behavior** 
             - the client receives an html response 
@@ -52,9 +52,42 @@ Administrator Control:
         - **Expected Behavior**
             - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
             - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
-    - right now, the tests don't fail, but continue to work, even if the MinProtocol is set to be higher than the TLS version we connect, I know because the SSA says "Negotated connection with TLS1 or TLS1.1"
-        - I looked into this, and it looks like the lines that set the min and max version were commented out. See line 284 of tls_wrapper.c. After removing this comment, it started working
-3. Change CipherSuite to ```CipherSuite: "RSA:DH"```
+            
+### MaxProtocol
+2. Change MinProtocol to be "1.1" and add ```MaxProtocol: "1.1"``` in the ssa.cfg.
+    - run ```./https_client tls-v1-1.badssl.com 1011``` 
+        - **Expected Behavior** 
+            - the client receives an html response 
+            - no logging errors should appear
+    - run ```./https_client tls-v1-0.badssl.com 1010```
+        - **Expected Behavior**
+            - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
+            - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
+            - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
+            
+3. Change MinProtocol to be "1.2" and add ```MaxProtocol: "1.1"``` to the default profile in the ssa.cfg.
+    - run the ssa daemon
+        - **Expected Behavior**
+            -- the ssa should fail to run and give an error stating that the MinProtocol was higher than the MaxProtocl
+            
+4. Change MinProtocol to be "1.2" in the default profile and add ```MaxProtocol: "1.1"``` to the ncat profile.
+    - it should look like this 
+    ```
+    {
+        Application: "/bin/ncat"
+        MaxProtocol: "1.1"
+        CipherSuite: "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:!aNULL:!MD5:!DSS"
+    }
+   ```
+    - run the ssa daemon
+        - **Expected Behavior**
+            -- the ssa should fail to run and give an error stating that the MinProtocol was higher than the MaxProtocol for the application you added it to
+            
+### CipherSuite 
+5. Change CipherSuite to ```CipherSuite: "RSA:DH"```
     - run ```/https_client rsa4096.badssl.com 443```
         - **Expected Behavior**
             - from the client: get html content
@@ -63,7 +96,7 @@ Administrator Control:
         - **Expected Behavior**
             - from the client: get html content
             - from the SSA: no error logs
-4. Change CipherSuite to ```CipherSuite: "RSA:!DH"```
+6. Change CipherSuite to ```CipherSuite: "RSA:!DH"```
     - run ```/https_client rsa4096.badssl.com 443```
         - **Expected Behavior**
             - from the client: get html content
