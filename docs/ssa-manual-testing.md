@@ -105,5 +105,23 @@ To make the tests work right, we will need to create a simple server and a simpl
         - **Expected Behavior**
             - from the client: get error output, similar to ```connect: No route to host failed to find a suitable address for connection```
             - from the SSA: should get some error log similar to ```ERROR:   SSL error from bufferevent: ssl3_read_bytes [sslv3 alert handshake failure]```
-``
+            
+### TrustStoreLocation
+
+#### Fedora
+1. Change TrustStoreLocation to ```TrustStoreLocation: "/etc/pki/tls/certs/ca-bundle.crt"```
+    - run ```/https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - from the client: get html content
+            - from the SSA: no error logs, acccepted and handled connection
+2. Change TrustStoreLocation to ```TrustStoreLocation: "/etc/pki/tls/certs/blah.crt"```
+    - run ```/https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - from the client: get html content
+            - from the SSA: no error logs, acccepted and handled connection
+3. Remove TrustStoreLocation
+    - run ```/https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - from the SSA: daemon crashes, get log like ```ERROR:   Default configuration for TrustStoreLocation not set.  ```
+
 
