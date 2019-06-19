@@ -71,5 +71,7 @@ int main(int argc, char* argv[]) {
 
 void handle_req(char* req, char* resp) {
 	memcpy(resp, req, BUFFER_SIZE);
+    printf("Echo client data: %s\n", req);
+    sprintf(resp, "%s", req);
 	return;
 }
