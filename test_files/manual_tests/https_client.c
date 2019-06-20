@@ -73,8 +73,9 @@ int main(int argc, char* argv[]) {
 	}
 
     //put the HTTP request into the buf
+    memset(http_request, 0, MAX_REQUEST_SIZE);
 	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
-	memset(http_response, 0, 2048);
+	memset(http_response, 0, MAX_RESPONSE_SIZE);
     
     //send encrypted request
     int request_size = strlen(http_request);
