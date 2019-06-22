@@ -1,5 +1,10 @@
 # User Documentation
 
+## Purpose 
+The purpose of this README is to show how to use the SSA, with examples of client and server code. It also includes explanations of the socket functions and the different socket options.
+
+This README is not comprehensive, and if any details are missing, please add them.
+
 ## Table of Contents
 - [Pre-requisites](#pre-requisites)
 - [Using the SSA](#using-the-ssa)

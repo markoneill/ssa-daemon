@@ -1,4 +1,9 @@
 
+## Purpose
+The purpose of this README is to explain to administrators how to use the SSA. It includes the different settings administrators can use, what they do, and how to create an admin config file.
+
+This README is a WIP and can be changed as needed.
+
 ## Setting the Administrator File
 The SSA reads a configuration file to set the administrator security settings. By defaults it reads "ssa.cfg" as the configuration file.
 

@@ -1,25 +1,9 @@
 
-May 24th, 2019
-I started working on manual tests. I realized that the SSA is not doing certificate checking. When I run "normal", and I run the simple-test and give it expired.badssl.com, it still continued to connect to the site and gave no error. We will need to fix this. I will also need to figure out how to best verify that the test works/doesn't work.
+## Purpose
+This README goes through all the steps to manually test the features of the SSA to make sure it has basic functionality. These tests cover both administrator options and developer options while using the SSA. 
 
-- I tried installing Trustbase to see if I could get it to give an error, but got the following error
-```
-[pbstrein@ilab3 trustbase-linux]$ make
-gcc -Wall -O3 -fpic -g -c policy-engine/netlink.c -I/usr/include/libnl3 -I/usr/include/python2.7 -o policy-engine/netlink.o
-policy-engine/netlink.c:4:10: fatal error: sqlite3.h: No such file or directory
- #include <sqlite3.h>
-          ^~~~~~~~~~~
-compilation terminated.
-make: *** [Makefile:138: policy-engine/netlink.o] Error 1
-```
-Solution: Turns out the installer.sh wasn't installing the right packages for me because it couldn't find one of the packages. Turns out that if it cannot find one package, it will not install any of them. I need to figure out how to make it go thorugh each package independently. 
-    - maybe add the --skip-broken flag to the command, not sure if it works
- 
+This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documention.
 
-I got trustbase running, but it cannot do SSL certificates right. In fact, when I have it running, the internet in my browser fails because the checks do not work. I have to remove the module. If we want to get the whole thing working (with revocation), we are going to have to get trustbase working again. 
-
-
-# Manual Testing of Features
 ## Table of Contents
 - [TODOS](#todos)
 - [Administrator Options](#administrator-options)
@@ -35,12 +19,6 @@ I got trustbase running, but it cannot do SSL certificates right. In fact, when 
     - [Basic Server Functionality](#basic-server-functionality)
     - [Server Socket Options](#server-socket-options)
 
-Tuesday, May 29th, 2019
-I started working on the manual tests excluding certification revocation (I'm going to wait to talk to Dr. Zappala about it.) So I'm going to continue and run the tests manually.
-
-To make the tests work right, we will need to create a simple server and a simple client that can do the tests. THe simple__test folder has a server that works right under most situations, except to test the different versions of TLS using badssl.com. We need to specify the port so that we can check TLS 1.0 and TLS 1.1.
-
-**Question** What should be the expected behavior if we try to set the MinProtocol to be higher than something we connect? Should it fail or should it be able to connect? The paper and the config file are different (TLS VERSION in paper VS MinProtocol in config file)
 
 ## TODOs
 1. If the SSA gets a wrong path to the cert file during setsockopt with the option TLS_CERTIFICATE_CHAIN, it gets a segfault, not an error

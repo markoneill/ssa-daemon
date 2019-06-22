@@ -1,4 +1,7 @@
+## Purpose 
+This README is to help explain to developers how to make changes to the SSA and where those changes should happen.
 
+This README is a WIP and can be changed as needed.
 
 ## Adding to the SSA Admin Configuration File
 

@@ -1,8 +1,8 @@
 
-# Purpose
+## Purpose
 This document is an exploration into the different tests found in the `test_files` folder found in the ssa-daemon and the ssa kernel. This is WIP, and any further clarification/insights into the test folders are welcome. If anything is wrong in this document, change it to be correct.
 
-## Notes
+## Client Authentication Clarification
 Any time `client auth` or `client authentication` is mentioned or used in the SSA, it is because it is part of a project to do client authentication using the SSA. As of June 2019, the paper for client authentication was not published and the details are only found in Mark O'Neils PhD Dissertation. A short summary of client authentication. 
 
 Instead of using passwords to authenticate people to the web, many people are turning to stronger cryptography to authenticate users. In the Web world, WebAuthn has been standardized and will begin to be used. However, there are other methods. For example, other devices (such as phones) can be used to authenticate people. This would be more secure and an alternative to passwords. To implement client authentication, the SSA can be used to communicate with a phone that is connected to the WIFI. When a server wants to authenticate a client/user, the SSA will send a notification for authentication, and the phone would be used to autheneticate the person securely using cryptography. 
@@ -42,6 +42,7 @@ For more details, look for the paper (when it's published) or Mark O'Neil's Diss
     - epoll_client.c - uses SSA; expectes 1 cmd line argument which is the number of connections you want to make; default connects to www.phonixteam.net; uses epoll; to use this, modifications need to be made to line 242 and the make file needs to be changed
 9. webserver-event - this appears to be the server they use to test client authentication. See the note above about client auth.
 10. webserver-eventSSL - appears to be the same server as the webserver-event, but uses SSL instead of the SSA. 
+11. manual-testing - this folder is to be used to manual test the features of the SSA. It contains code similar to simple_test and https_server, but keeps all the necessary code and keys contained within itself. See [ssa-manual-testing.md](ssa-manual-testing.md)
 
 I also noticed some scripts that may be used for testing. They build the right dependencies and make sure that everything gets made right. 
 
