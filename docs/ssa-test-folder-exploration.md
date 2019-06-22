@@ -1,24 +1,30 @@
 
+# Purpose
+This document is an exploration into the different tests found in the `test_files` folder found in the ssa-daemon and the ssa kernel. This is WIP, and any further clarification/insights into the test folders are welcome. If anything is wrong in this document, change it to be correct.
+
+## Notes
+Any time `client auth` or `client authentication` is mentioned or used in the SSA, it is because it is part of a project to do client authentication using the SSA. As of June 2019, the paper for client authentication was not published and the details are only found in Mark O'Neils PhD Dissertation. A short summary of client authentication. 
+
+Instead of using passwords to authenticate people to the web, many people are turning to stronger cryptography to authenticate users. In the Web world, WebAuthn has been standardized and will begin to be used. However, there are other methods. For example, other devices (such as phones) can be used to authenticate people. This would be more secure and an alternative to passwords. To implement client authentication, the SSA can be used to communicate with a phone that is connected to the WIFI. When a server wants to authenticate a client/user, the SSA will send a notification for authentication, and the phone would be used to autheneticate the person securely using cryptography. 
+
+For more details, look for the paper (when it's published) or Mark O'Neil's Dissertation, Chapter 4.
 
 ## Tests
-
-Turns out that the SSA kernel and SSA daemon have a lot of tests within their folders. We may be able to use them for basic testing of functionality instead of it being informal testing. 
-
 
 ### Organization and Purpose of Tests
 
 #### SSA Daemon
 
-1. android_io - I don't know what this does. It has regular SSL calls, but no calls to the SSA. I don't know how to run it.
+1. android_io - implements Android authentication for Securely, the App created to make the Client Authentication. In other words, this handles the Android half of client authentication.
 2. cert_gen - doesn't actually test anything, just creates certs to be used for other testing
-3. client_auth_client - uses SSA, does basic SSA connection to website - can specify the host, port, cert_path, and key_path; has default values set in for a basic test
+3. client_auth_client - client that can handle simple client authentication. Used for testing client authentication from the client side. Automatically connects to openrebellion.com (I don't think that website asks for client authentication, it is just an https website.)
 4. https_client - has basic client and a threaded client
     - basic client - uses SSA, creates basic connection to www.google.com, does not have much info on what happened/errors
-    - threaded_https_client - I don't know what it's purpose is, but I'm guessing to test the load the SSA to make sure it works with multiple threads
+    - threaded_https_client - this appears to test the speed of the SSA, to test whether the SSA is much faster or slower than regular SSL calls. The SSA paper shows that the SSA is just as fast, and I bet they made their graph from this code.
         - uses SSA, creates connection to client using multiple threads; has options of running ssa vs regular ssl; 
         - there is a verbose setting, but it doesn't say too much, we could add more to it if desired
     - graph.py - small script to make a graph to from results; I'm guessing to show how the SSA performs compared to regular SSL calls
-5. https_server - creates a basic server that reads the request from the client and sends the same request back to the client.
+5. https_server - uses the SSA to create a basic server that reads the request from the client and sends the same request back to the client.
 6. openssl_mod_tests - I don't know what these tests do. They don't interact with the SSA, and they won't even compile. I the following error
     ```
     [pbstrein@ilab3 openssl_mod_tests]$ make
@@ -30,18 +36,18 @@ Turns out that the SSA kernel and SSA daemon have a lot of tests within their fo
     collect2: error: ld returned 1 exit status
     make: *** [Makefile:14: client] Error 1
     ```
-7. session_test - uses SSL; tests resuming a session after connecting once
+7. session_test - uses Open_SSL (not the SSA); tests resuming a session after connecting once
 8. simple_test - has two servers, https_client.c and epoll_client.c
     - https_client.c - uses SSA to connect to host; host is given as a cmd line argument
     - epoll_client.c - uses SSA; expectes 1 cmd line argument which is the number of connections you want to make; default connects to www.phonixteam.net; uses epoll; to use this, modifications need to be made to line 242 and the make file needs to be changed
-9. webserver-event - this runs a http server that uses the SSA. The server is made using epoll. You can make it by running "make" and then running "./testShopServer". THe commands to the server can be found in the main.c. I'm not sure what it tests or how you can test it. I tried running ```python stress.py localhost:8080```, but it caused a segfault on the server. There are some client.c files, but I don't know how to run them and compile them and if they even work with the server.
-10. webserver-eventSSL - appears to be the same server as the webserver-event, but uses SSL instead of the SSA. THere are includes of the SSA headers but when I run the server, the SSA daemon does not show any connections. Again, there is a client.c, but I don't know how to use it or what it's for. 
+9. webserver-event - this appears to be the server they use to test client authentication. See the note above about client auth.
+10. webserver-eventSSL - appears to be the same server as the webserver-event, but uses SSL instead of the SSA. 
 
 I also noticed some scripts that may be used for testing. They build the right dependencies and make sure that everything gets made right. 
 
-1. build-client-auth.sh - gets OPENSSL, LIBEVENT, the SSLSPLIT from the extras folder. It also applies the patches of the auth callbacks for SSL found in the extras folder. BUilds the ssa-daemon. Builds SSLSplit.
+1. build-client-auth.sh - gets all the packages and files ready to run the client authentication piece of the SSA. 
 2. install_packages.sh - installs necessary packages to run the SSA-daemon on fedora and ubuntu
-3. removeClientAuth.sh - kills the testShopServer, sslsplit, and the SSA-daemon, and turns the firewall back on after was shut off after running the sslsplit stuff.
+3. removeClientAuth.sh - turns off all the servers and resets the computer after running all the things to do usability testing with client authentication. Kills the testShopServer, sslsplit, and the SSA-daemon, and turns the firewall back on after was shut off after running the sslsplit stuff. 
 4. startClientAuth.sh - from the script. 
 ```
 This script will build and run the programs necisery to
@@ -59,8 +65,6 @@ on your machine.
 #### SSA Kernel
 
 May 15th, 2019 - the tests are in one folder. When I try using make, it fails. I think it's because the fails are named wrong. I will change the files to get the tests to run and then see if I can summarize what the tests already do. 
-
-I could not figure out the make file, so I ran this command to compile the basic commands. 
 
 1. tests.c - has the benchmarking tests for the socket command, connect, listen, and bind along with the baseline commands using SSL;
     - TODO: this test should have a usage script so it is easier to use and know how to use it besides looking through the code
@@ -83,4 +87,4 @@ There is also a folder with extras. These seem to have addon's to the SSA, like 
 
 ##### QRDisplay
 
-There is a folder with qrdisplay stuff. It had images and a program that can be run that asks to scan the qr image with your phone. I'm not sure what the purpose of this is. 
+There is a folder with qrdisplay stuff. It had images and a program that can be run that asks to scan the qr image with your phone. It must be for client authentication, but I'm not sure how it relates.
