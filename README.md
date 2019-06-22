@@ -19,6 +19,9 @@ The SSA is actively developed on Fedora, but may compile and run on other system
 
 ## Using the SSA
 Go to the [User Documentation](docs/user-documentation.md) to see how to use the SSA and examples of the SSA usage. 
+
+For administrators, see [Admin Documentation](docs/admin-documentation.md) to see the different admin options, what they do, and how to properly create a config file.
+
 Formal API specification will continue to be added to this README as well as [owntrust.org](https://owntrust.org) in the very near future. Eager users are encouraged to see our publication (linked above), [docs](docs/), code, or may contact us directly with questions.
 
 ## Status
