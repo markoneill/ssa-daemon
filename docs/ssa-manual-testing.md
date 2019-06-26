@@ -25,6 +25,7 @@ This README is a WIP and can be changed and added to as needed. Any place where 
 2. How do we test client certificates? How do we know that they work/got set right?
 3. When I use getsockopt with TLS_CERTIFICATE_CHAIN, I get a value of '', meaning empty. We need to check whether that is right or wrong and change it if it is wrong
 4. Add tests/fix tests when certificate validation is fixed - see TrustStoreLocation
+5. Add tests/fix tests to test TLS_SESSION_TTL and TLS_ALPN when we figure out how to better test the behavior. 
 
 ## Administrator Options
 ### MinProtocol
@@ -240,7 +241,7 @@ For the rest of the tests, you may need additional code to set a private key and
         - **TODO: currently the client segfaults instead of returning an error. Need to get the proper client behavior when this gets fixed**
         
 #### TLS_TRUSTED_PEER_CERTIFICATES
-**TODO: add tests and expected behavior**
+These will be easier to test with a local server. See the client/server tests to fully test this feature. 
 
 #### TLS_ALPN
 1. Test getsockopt with TLS_ALPN before connect
@@ -267,7 +268,23 @@ For the rest of the tests, you may need additional code to set a private key and
 
 
 #### TLS_SESSION_TTL
-**TODO: add tests and expected behavior**
+1. Test setsockopt with TLS_SESSION_TTL:
+    1. set `optname` to `TLS_SESSION_TTL`
+    2. set 'optval' to be '10'
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out how to test the functionality of session caching, and not just that the options got set**
+            - setsockopt should say that it got set to '10'
+            - getsockopt should say that it is '10'
+2. Test getsockopt with TLS_SESSION_TTL
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - get sockopt should get a value of ','
+            - **TODO: figure out if ',' is the right option, or if it should default to something else**
+
 
 #### TLS_DISABLE_CIPHER
 For these tests, you will need to change the admin settings in the ssa.cfg.
