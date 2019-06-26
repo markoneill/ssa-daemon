@@ -2,7 +2,7 @@
 ## Purpose
 This README goes through all the steps to manually test the features of the SSA to make sure it has basic functionality. These tests cover both administrator options and developer options while using the SSA. 
 
-This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documention.
+This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documentation.
 
 ## Table of Contents
 - [TODOS](#todos)
@@ -162,8 +162,6 @@ This will enable easier testing and of the different socket options.
 #### TLS_HOSTNAME
 **TODO: add tests and expected behavior**
 
-#### 
-
 #### TLS_CERTIFICATE_CHAIN and TLS_PRIVATE_KEY
 1. Test getsockopt and TLS_PRIVATE_KEY
     1. set `optname` to `TLS_PRIVATE_KEY`
@@ -287,17 +285,46 @@ For these tests, you will need to change the admin settings in the ssa.cfg.
     4. run `./https_client www.google.com 443`
     - **Expected Behavior** 
         - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_IDENTITY`
-2. Test getting peer identity
+2. Test getting peer identity before connect
     1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_IDENTITY` only works with getsockopt, and returns an error if you use setsockopt.
     2. set `optname` to `TLS_PEER_IDENTITY`
     4. run `make`
     4. run ```/https_client www.google.com 443```
         - **Expected Behavior**
-            - the SSA crashes **TODO: this seems like a bad things, so 
-            - from the SSA: no error logs
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+3. Test getting peer identity after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - you should get similar output to this `Used getsockopt: get_optval ='/C=US/ST=California/L=Mountain View/O=Google LLC/CN=www.google.com'`
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
+
 
 #### TLS_PEER_CERTIFICATE_CHAIN
-**TODO: add tests and expected behavior**
+1. Test that setsockopt fails with TLS_PEER_CERTIFICATE_CHAIN
+    1. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    2. set `set_optval` to `blahblah` (the value doesn't matter)
+    3. run `make`
+    4. run `./https_client www.google.com 443`
+    - **Expected Behavior** 
+        - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_CERTIFICATE_CHAIN`
+2. Test getting peer certificate chain before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_CERTIFICATE_CHAIN` only works with getsockopt, and returns an error if you use setsockopt.
+    2. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so 
+            - from the SSA: no error logs
+3. Test getting peer certificate chain after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - You should see a line saying "peer identity: ---begin certificate --- ... ---end certficate---
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
 
 ## Server Testing
 
