@@ -35,6 +35,24 @@ void add_setting(ssa_config_t* config, config_setting_t* cur_setting) {
 			log_printf(LOG_ERROR, "Unsupported MinVersion: %s\n", value);
 		}
 	}
+    else if (STR_MATCH(name, "MaxProtocol")) {
+        value = config_setting_get_string(cur_setting);
+        if (STR_MATCH(value, "1.3")) {
+            config->max_version = TLS1_3_VERSION;
+        }
+        else if (STR_MATCH(value, "1.2")) {
+            config->max_version = TLS1_2_VERSION;
+        }
+        else if (STR_MATCH(value, "1.1")) {
+            config->max_version = TLS1_1_VERSION;
+        }
+        else if (STR_MATCH(value, "1.0")) {
+            config->max_version = TLS1_VERSION;
+        }
+        else {
+            log_printf(LOG_ERROR, "Unsupported MaxVersion: %s\n", value);
+        }
+    }
 	else if (STR_MATCH(name, "CipherSuite")) {
 		if (config->cipher_list != NULL)
 			free(config->cipher_list);
@@ -188,8 +206,13 @@ size_t parse_config(char* filename) {
 	str_hashmap_add(global_config,DEFAULT_CONF,default_config);
 
 
+	//for MaxProtocol, if it is not given, default to the highest for best security
+    if (config_lookup(&cfg, "Default.MaxProtocol") == NULL) {
+        log_printf(LOG_INFO, "Default configuration for MaxProtocol not set. Setting it to v1.3\n");
+        default_config->max_version = TLS1_3_VERSION;
+    }
 
-	//TODO failout if a default is not set 
+    //for other default values, fail if not set
 	if (config_lookup(&cfg, "Default.MinProtocol") == NULL) {
 		log_printf(LOG_ERROR, "Default configuration for MinProtocol not set.\n");
 		exit(-1);
@@ -214,9 +237,13 @@ size_t parse_config(char* filename) {
 		log_printf(LOG_ERROR, "Default configuration for AppCustomValidation not set.\n");
 		exit(-1);
 	}
-	
-	// Parse all the profiles
 
+	if (default_config->min_version > default_config->max_version) {
+	    log_printf(LOG_ERROR, "Default configuration for MinProtocol is greater than default configuration for MaxProtocol.\n");
+	    exit(-1);
+	}
+
+	// Parse all the profiles
 	for(i = 0; i < num_profiles; i++) {
 		cur_config = malloc(sizeof(ssa_config_t));
 		init_ssa_config(default_config, cur_config);
@@ -226,6 +253,10 @@ size_t parse_config(char* filename) {
 			cur_setting = config_setting_get_elem(cur_profile, j);
 			add_setting(cur_config, cur_setting);
 		}
+        if (cur_config->min_version > cur_config->max_version) {
+            log_printf(LOG_ERROR, "%s configuration for MinProtocol is higher than %s configuration for MaxProtocol.\n", cur_config->profile, cur_config->profile);
+            exit(-1);
+        }
 		str_hashmap_add(global_config,cur_config->profile,cur_config);
 	}
 

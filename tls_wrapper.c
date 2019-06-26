@@ -281,12 +281,13 @@ tls_opts_t* tls_opts_create(char* path) {
 	ssa_config = get_app_config(path);
 
 	if (ssa_config) {
-		/*if (SSL_CTX_set_min_proto_version(tls_ctx, ssa_config->min_version) == 0) {
+        printf("MinVersion: %d\n", ssa_config->min_version);
+		if (SSL_CTX_set_min_proto_version(tls_ctx, ssa_config->min_version) == 0) {
 			log_printf(LOG_ERROR, "Unable to set min protocol version for %s\n",path);
 		}
 		if (SSL_CTX_set_max_proto_version(tls_ctx, ssa_config->max_version) == 0) {
 			log_printf(LOG_ERROR, "Unable to set max protocol version for %s\n",path);
-		}*/
+		}
 		if (SSL_CTX_set_cipher_list(tls_ctx, ssa_config->cipher_list) == 0) {
 			log_printf(LOG_ERROR, "Unable to set cipher list for %s\n",path);
 		}
