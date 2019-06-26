@@ -243,7 +243,28 @@ For the rest of the tests, you may need additional code to set a private key and
 **TODO: add tests and expected behavior**
 
 #### TLS_ALPN
-**TODO: add tests and expected behavior**
+1. Test getsockopt with TLS_ALPN before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    2. set `optname` to `TLS_ALPN`
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+2. Test getsockopt with TLS_ALPN after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+3. Test setsockopt with TLS_ALPN:
+    1. uncomment code for setsockopt done in step 1
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+4. Remove the code copied from step 2 if you copied or, or move it back to where it was before you moved it in step 3
+
 
 #### TLS_SESSION_TTL
 **TODO: add tests and expected behavior**
