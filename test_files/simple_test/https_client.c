@@ -16,11 +16,12 @@ int main(int argc, char* argv[]) {
 	char http_request[2048];
 	char http_response[2048];
 
-	if (argc < 2) {
-		printf("USAGE: %s <host name>\n", argv[0]);
+	if (argc < 3) {
+		printf("USAGE: %s <host name> <port>\n", argv[0]);
 		return 0;
 	}
-	sock_fd = connect_to_host(argv[1], "443");
+
+	sock_fd = connect_to_host(argv[1], argv[2]);
 	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 
 	memset(http_response, 0, 2048);

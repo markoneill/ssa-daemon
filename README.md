@@ -18,7 +18,11 @@ The install_packages.sh script currently installs dependencies for Fedora and Ub
 The SSA is actively developed on Fedora, but may compile and run on other systems with some minor changes.
 
 ## Using the SSA
-We will be providing a formal API specicification in this README and on [owntrust.org](https://owntrust.org) in the very near future. Eager users are encouraged to see our publication (linked above), code, or to contact us directly with questions.
+Go to the [User Documentation](docs/user-documentation.md) to see how to use the SSA and examples of the SSA usage. 
+
+For administrators, see [Admin Documentation](docs/admin-documentation.md) to see the different admin options, what they do, and how to properly create a config file.
+
+Formal API specification will continue to be added to this README as well as [owntrust.org](https://owntrust.org) in the very near future. Eager users are encouraged to see our publication (linked above), [docs](docs/), code, or may contact us directly with questions.
 
 ## Status
 The SSA is currently a research prototype. As such, it should not yet be used in any mission critical environments. However, we are working toward release as a viable tool for the general public.
