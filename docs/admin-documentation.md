@@ -13,12 +13,12 @@ If you wish to change the default, change the file in line 105 of main.c to be t
 The config file must be made in the .cfg format.
 Details of the format can be found [here](https://hyperrealm.github.io/libconfig/libconfig_manual.html#Configuration-Files)
 
-## Administator Settings 
+## Administrator Settings
 (taken from config.c in ssa-daemon):
 
-You must create a default profile, and then can make application specific profiles. 
+You must create a default profile, and then can make application specific profiles.
 - Default - the settings used on default when using any application not listed in a specific profiles
-- Profiles - profiles set specificastion deviations from default policy for a given app path
+- Profiles - profiles set specification deviations from default policy for a given app path
 
 1. Application - the path to the app
 2. MinProtocol - the minimum TLS protocol version that can be used. If lower connections are used, then the connection will not go through. We don't allow SSL version because they are all vulnerable anyways.
@@ -26,15 +26,15 @@ You must create a default profile, and then can make application specific profil
 4. CipherSuite - order of preferred cipher suites to use
     - the format follows the OpenSSL cipher suite format - for more info, go [here](https://www.openssl.org/docs/man1.0.2/man1/ciphers.html)
     - example: ```CipherSuite: "ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS"```
-5. SessionCacheTimeout - timeout for session cacching
+5. SessionCacheTimeout - timeout for session caching
 6. SessionCacheLocation - path to store session data, for cross-machine sharing
-7. Validation - method of certificate validation. 
+7. Validation - method of certificate validation.
     - currently only "Normal" and "Trustbase" are allowed
-8. TrustStoreLocatation - designates the path to the PEM certificate file containing all trusted root certificates to be used in the SSA
+8. TrustStoreLocation - designates the path to the PEM certificate file containing all trusted root certificates to be used in the SSA
 9. AppCustomValidation - determines whether to honor certificates supplied by apps for hard-coded validation
     - either "On" or "Off"
-10. Extensions - 
-11. RandomSeed - sets the randomness of the Psuedo Random Number Generator (PRNG) of OpenSSL to make connections more secure
+10. Extensions -
+11. RandomSeed - sets the randomness of the Pseudo Random Number Generator (PRNG) of OpenSSL to make connections more secure
     - requires two arguments, randseed_path and randseed_size
     - example - ```RandomSeed: {"/dev/random", 512}```
     - see [here](https://wiki.openssl.org/index.php/Random_Numbers) for more information of PRNGs and randomness and [here](https://www.openssl.org/docs/man1.1.0/man3/RAND_seed.html) for how it is implemented in OpenSSL (we use rand_seed in our code)
@@ -42,10 +42,10 @@ You must create a default profile, and then can make application specific profil
 Example cfg file
 ```
 # We must have a default profile
-Default = 
+Default =
 {
   # These are comments
-  # Protocol sets the Protocol version. 
+  # Protocol sets the Protocol version.
   # We don't have SSL ones because they're all vulnerable anyway
   MinProtocol: "1.1"
 
@@ -55,7 +55,7 @@ Default =
   # Validation is either "TrustBase" or "Normal"
   Validation: "Normal"
 
-  # TrustStoreLocation designates the path to the 
+  # TrustStoreLocation designates the path to the
   # PEM certificate file containing all trusted root
   # certificates to be used in the SSA
   # Fadora default
@@ -64,7 +64,7 @@ Default =
   # TrustStoreLocation: "/etc/ssl/certs/ca-certificates.crt"
 
   # AppCustomValidation is either On or Off
-  # Determines whether to honor certificates supplied by apps 
+  # Determines whether to honor certificates supplied by apps
   # for hard-coded validation
   AppCustomValidation: "On"
 
@@ -86,7 +86,7 @@ Default =
 
 # Profiles set specific deviations from default policy
 # for a given app path
-Profiles = 
+Profiles =
 (   {
         Application: "/bin/ncat"
         MinProtocol: "1.2"

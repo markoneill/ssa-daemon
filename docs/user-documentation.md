@@ -1,6 +1,6 @@
 # User Documentation
 
-## Purpose 
+## Purpose
 The purpose of this README is to show how to use the SSA, with examples of client and server code. It also includes explanations of the socket functions and the different socket options.
 
 This README is not comprehensive, and if any details are missing, please add them.
@@ -18,27 +18,27 @@ This README is not comprehensive, and if any details are missing, please add the
 - [SSA Socket Function and Behavior](#ssa-socket-functions-and-behavior)
 - [Socket Options for SSA](#socket-options-for-ssa)
 
-## Pre-requisites 
+## Pre-requisites
 Follow the instructions to install the ssa-daemon and the ssa-kernel.
 
 ## Using the SSA
-Once you have run the kernel module and have the daemon running, the SSA will intercept and handle any traffic that use the `IPPROTO_TLS` socket type. From there, it similar to writing normal socket code. 
+Once you have run the kernel module and have the daemon running, the SSA will intercept and handle any traffic that use the `IPPROTO_TLS` socket type. From there, it similar to writing normal socket code.
 
 ### Creating a Client
-A client using the SSA is no different from a regular TCP/UDP client except that you use the socekt type `IPPROTO_TLS`. Connecting to a server and writing to the server is no different. 
+A client using the SSA is no different from a regular TCP/UDP client except that you use the socket type `IPPROTO_TLS`. Connecting to a server and writing to the server is no different.
 
-See the [example https client](#example-https-client) below for client usage. 
+See the [example https client](#example-https-client) below for client usage.
 
 See the [SSA Socket Functions and Behavior](#ssa-socket-functions-and-behavior) socket descriptions to see how the socket functions behavior is different with `IPPROTO_TLS`
 
 ### Creating a Server
 
 A server using `IPPROTO_TLS` is exactly the same as a regular TCP/UDP server except for the following things:
-1. You must assign a certificate chain to the server using `setsockipt` with the option `TLS_CERTIFICATE_CHAIN`
+1. You must assign a certificate chain to the server using `setsockopt` with the option `TLS_CERTIFICATE_CHAIN`
     - example `setsockopt(fd, IPPROTO_TLS ,TLS_CERTIFICATE_CHAIN ,CERT_FILE , sizeof(CERT_FILE));` where `fd` is the listening fd and `CERT_FILE` is the path to the cert
 2. You must assign a private key to the server using `setsockopt` with the option `TLS_PRIVATE_KEY`
     - example `setsockopt(fd, IPPROTO_TLS , TLS_PRIVATE_KEY ,KEY_FILE , sizeof(KEY_FILE));`
-    
+
 For more examples of server usage, see [Simple Echo Server](#simple-echo-server)
 
 See the [SSA Socket Functions and Behavior](#ssa-socket-functions-and-behavior) socket descriptions to see how the socket functions behavior is different with `IPPROTO_TLS`
@@ -46,7 +46,7 @@ See the [SSA Socket Functions and Behavior](#ssa-socket-functions-and-behavior) 
 ### Examples
 
 #### Example HTTPS Client
-Below is code for an example client that can make HTTPS connections to any HTTPS server. 
+Below is code for an example client that can make HTTPS connections to any HTTPS server.
 ```c
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
     //put the HTTP request into the buf
 	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 	memset(http_response, 0, 2048);
-    
+
     //send encrypted request
     int request_size = strlen(http_request);
     int tot_bytes_sent = 0;
@@ -139,21 +139,21 @@ int main(int argc, char* argv[]) {
 	close(sock_fd);
 	return 0;
 }
-``` 
+```
 ##### Running Example Code
 1. Compile code running `gcc -o https_client https_client.c`
-2. Run `./https_client www.google.com` to connect to google. You can replace the URL with any HTTPS server. 
+2. Run `./https_client www.google.com` to connect to google. You can replace the URL with any HTTPS server.
 
-You should get an HTML response from the server. 
+You should get an HTML response from the server.
 
 ##### Analysis
-The code looks similar to regular socket code. There are some important differences. 
+The code looks similar to regular socket code. There are some important differences.
 1. `#include "../../in_tls.h"` - this gets the appropiate headers to be able to use the SSA, for example `IPPROTO_TLS` is found in those headers. In your code, you will need to reference the headers wherever they are located on your machine.
 2. `char* port = "443";` - HTTPS communicates via port 443 instead of port 80
 3. `sock_fd = socket(addr_ptr->ai_family, addr_ptr->ai_socktype, IPPROTO_TLS);` - instead of using `IPPROTO_TCP` it used `IPPROTO_TLS` to signify a secure connection via the SSA
 4. `if (setsockopt(sock_fd, IPPROTO_TLS, TLS_REMOTE_HOSTNAME, host, strlen(host)+1) == -1) {` - used the socket option `TLS_REMOTE_HOSTNAME` to correctly certify the host using OpenSSL.
 
-Everything else is the same as with regular socket code. 
+Everything else is the same as with regular socket code.
 
 **Note** `sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);` creates a regular HTTP request, even though it is HTTPS. That is because all the TLS and OpenSSL functionality is handled by the SSA.
 
@@ -216,7 +216,7 @@ int main(int argc, char* argv[]) {
 	}
 	listen(fd, SOMAXCONN);
 
-	while (1) {	
+	while (1) {
 		struct sockaddr_storage addr;
 		socklen_t addr_len = sizeof(addr);
 		int c_fd = accept(fd, (struct sockaddr*)&addr, &addr_len);
@@ -249,10 +249,10 @@ To run this code, do the following:
 Now you have a server listening on port 1080 for secure connections.
 
 ##### Simple Client
-The code below gives a simple client to connect to the echo server above. 
+The code below gives a simple client to connect to the echo server above.
 This client is nearly identical to the https client above. The only difference is you can specify the port to help connect to ports other than 443.
 
-```c 
+```c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -283,7 +283,7 @@ int main(int argc, char* argv[]) {
 	}
 
     char* host = argv[1];
-    char* port = argv[2]; 
+    char* port = argv[2];
 
     //set up the connection
 	memset(&hints, 0, sizeof(hints));
@@ -328,7 +328,7 @@ int main(int argc, char* argv[]) {
     //put the HTTP request into the buf
 	sprintf(http_request,"GET / HTTP/1.1\r\nhost: %s\r\n\r\n", argv[1]);
 	memset(http_response, 0, 2048);
-    
+
     //send encrypted request
     int request_size = strlen(http_request);
     int tot_bytes_sent = 0;
@@ -382,23 +382,23 @@ Here we give brief descriptions of the behavior of POSIX socket functions genera
 Here we give a sample of the socket options and their purpose that can be given to IPPROTO_TLS sockets by using `setsockopt` or `getsockopt`
 
 
-| IPPROTO_TLS socket option        | Purpose           | 
-| ------------- |:-------------| 
-| TLS_REMOTE_HOSTNAME | Used to indicate the hostname of the remote host.  This option will cause the SSA to use the Server Name Indication in the TLS Client Hello message, and also use the specified hostname to verify the certificate in the TLS handshake. Use of the `AF_HOSTNAME` address type in `connect` will set this option automatically. | 
-| TLS_HOSTNAME | Used to specify and retrieve the hostname of the local socket. Servers can use this option to multiplex incoming connections from clients requesting different hostnames (e.g., hosting multiple HTTPS sites on one port).      | 
-| TLS_CERTIFICATE_CHAIN | Used to indicate the certificate (or chain of certificates) to be used for the TLS handshake. This option can be used by both servers and clients.  A single certificate may be used if there are no intermediate certificates to be used for the connection.  The value itself can be sent either as a path to a certificate file or an array of bytes, in PEM format. This option can be set multiple times to allow a server to use multiple certificates depending on the requests of the client.      | 
-| TLS_PRIVATE_KEY | Used to indicate the private key associated with a previously indicated certificate.  The value of this option can either be a path to a key file or an array of bytes, in PEM format.  The SSA will report an error if the provided key does not match a provided certificate      | 
-| TLS_TRUSTED_PEER_CERTIFICATES | Used to indicate one or more certificates to be a trust store for validating certificates sent by the remote peer. These can be leaf certificates that directly match the peer certificate and/or those that directly or indirectly sign the peer certificate. Note that in the presence or absence of this option, peer certificates are still validated according to system policy      | 
-| TLS_ALPN | Used to indicate a list of IANA-registered protocols for Application-Layer Protocol Negotiation (e.g., HTTP/2), in descending order of preference.  This option can be fetched after `connect`/`accept` to determine the selected protocol.      | 
-| TLS_SESSION_TTL | Request that the SSA expire sessions after the given number of seconds.   A value of zero disables session caching entirely.      | 
-| TLS_DISABLE_CIPHER | Request that the underlying TLS connection not use the specified cipher      | 
-| TLS_PEER_IDENTITY | Request the identity of remote peer as indicated by the peer’s certificate.     | 
-| TLS_PEER_CERTIFICATE_CHAIN | Request the remote peer’s certificate chain in PEM format for custom inspection.     | 
+| IPPROTO_TLS socket option        | Purpose           |
+| ------------- |:-------------|
+| TLS_REMOTE_HOSTNAME | Used to indicate the hostname of the remote host.  This option will cause the SSA to use the Server Name Indication in the TLS Client Hello message, and also use the specified hostname to verify the certificate in the TLS handshake. Use of the `AF_HOSTNAME` address type in `connect` will set this option automatically. |
+| TLS_HOSTNAME | Used to specify and retrieve the hostname of the local socket. Servers can use this option to multiplex incoming connections from clients requesting different hostnames (e.g., hosting multiple HTTPS sites on one port).      |
+| TLS_CERTIFICATE_CHAIN | Used to indicate the certificate (or chain of certificates) to be used for the TLS handshake. This option can be used by both servers and clients.  A single certificate may be used if there are no intermediate certificates to be used for the connection.  The value itself can be sent either as a path to a certificate file or an array of bytes, in PEM format. This option can be set multiple times to allow a server to use multiple certificates depending on the requests of the client.      |
+| TLS_PRIVATE_KEY | Used to indicate the private key associated with a previously indicated certificate.  The value of this option can either be a path to a key file or an array of bytes, in PEM format.  The SSA will report an error if the provided key does not match a provided certificate      |
+| TLS_TRUSTED_PEER_CERTIFICATES | Used to indicate one or more certificates to be a trust store for validating certificates sent by the remote peer. These can be leaf certificates that directly match the peer certificate and/or those that directly or indirectly sign the peer certificate. Note that in the presence or absence of this option, peer certificates are still validated according to system policy      |
+| TLS_ALPN | Used to indicate a list of IANA-registered protocols for Application-Layer Protocol Negotiation (e.g., HTTP/2), in descending order of preference.  This option can be fetched after `connect`/`accept` to determine the selected protocol.      |
+| TLS_SESSION_TTL | Request that the SSA expire sessions after the given number of seconds.   A value of zero disables session caching entirely.      |
+| TLS_DISABLE_CIPHER | Request that the underlying TLS connection not use the specified cipher      |
+| TLS_PEER_IDENTITY | Request the identity of remote peer as indicated by the peer’s certificate.     |
+| TLS_PEER_CERTIFICATE_CHAIN | Request the remote peer’s certificate chain in PEM format for custom inspection.     |
 
-For example, if you wanted to set the certificate chain for a server, you would use the following line of code. 
+For example, if you wanted to set the certificate chain for a server, you would use the following line of code.
 
 `setsockopt(fd, IPPROTO_TLS, TLS_CERTIFICATE_CHAIN, CERT_FILE_A, sizeof(CERT_FILE_A)`
-where 
+where
 - `fd` is the socket file descriptor you are using
 - `IPPROTO_TLS` is the socket level, indicating TLS
 - `TLS_CERTIFICATE_CHAIN` is the option name, representing the option used to set a certificate chain
