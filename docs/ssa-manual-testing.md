@@ -112,7 +112,7 @@ This README is a WIP and can be changed and added to as needed. Any place where 
 
 
 ### AppCustomValidation
-**TODO: figure out how to test this and get the right results. Might need to talk to Dr. Zapala or Mark.
+**TODO: figure out how to test this and get the right results. Might need to talk to Dr. Zappala or Mark.
 
 ## Client Testing
 
