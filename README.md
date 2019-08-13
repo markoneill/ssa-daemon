@@ -1,5 +1,5 @@
 # The Secure Socket API (SSA) Userspace Daemon
-The SSA is a Linux kernel module that allows programmers to easily create secure TLS connections using the standard POSIX socket API. This allows programmers to focus more on the developement of their apps without having to interface with complicated TLS libraries. The SSA also allows system administrtors and other power users to customize TLS settings for all connections on the machines they manage, according to their own needs.
+The SSA is a Linux kernel module that allows programmers to easily create secure TLS connections using the standard POSIX socket API. This allows programmers to focus more on the development of their apps without having to interface with complicated TLS libraries. The SSA also allows system administrators and other power users to customize TLS settings for all connections on the machines they manage, according to their own needs.
 
 ## Publication
 You can read more about the SSA, it's design goals, and features in our [USENIX Security 2018 paper](https://www.usenix.org/conference/usenixsecurity18/presentation/oneill)
@@ -18,7 +18,7 @@ The install_packages.sh script currently installs dependencies for Fedora and Ub
 The SSA is actively developed on Fedora, but may compile and run on other systems with some minor changes.
 
 ## Using the SSA
-Go to the [User Documentation](docs/user-documentation.md) to see how to use the SSA and examples of the SSA usage. 
+Go to the [User Documentation](docs/user-documentation.md) to see how to use the SSA and examples of the SSA usage.
 
 For administrators, see [Admin Documentation](docs/admin-documentation.md) to see the different admin options, what they do, and how to properly create a config file.
 
@@ -44,7 +44,7 @@ This feature will be included by default soon.
 ## Configuration
 Configuration is currently in the process of being better-integrated into the userspace daemon.
 When we finalize the configuration API, it will be specified here and on [owntrust.org](https://owntrust.org).
-See our paper (linked above) for a preview of the types of configuration options administrastors will have.
+See our paper (linked above) for a preview of the types of configuration options administrators will have.
 
 ## Contributions and Thanks
 Thank you to Eliezer Colon for noting a compilation issue
