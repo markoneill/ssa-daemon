@@ -47,6 +47,7 @@ See the [SSA Socket Functions and Behavior](#ssa-socket-functions-and-behavior) 
 
 #### Example HTTPS Client
 Below is code for an example client that can make HTTPS connections to any HTTPS server. 
+	Note: This code can only be run as is if you save this test file in either ssa-daemon/test_files/https_server or ssa-daemon/test_files/https_client or any other folder that is 2 down the file path from in_tls.h
 ```c
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +57,7 @@ Below is code for an example client that can make HTTPS connections to any HTTPS
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "../../in_tls.h"
+#include "../../in_tls.h" //This will need to be changed if this example HTTPS Client is saved anywhere other than the ssa-daemon/test_files/https_client folder. 
 
 #define MAX_REQUEST_SIZE 2048
 #define MAX_RESPONSE_SIZE 2048
@@ -161,6 +162,7 @@ Everything else is the same as with regular socket code.
 
 ##### Simple Echo Server
 The following code creates a simple echo server using IPPROTO_TLS
+	Note: This code can only be run as is if you save this test file in either ssa-daemon/test_files/https_server or ssa-daemon/test_files/https_client or any other folder that is 2 down the file path from in_tls.h
 ```c
 #include <stdio.h>
 #include <stdlib.h>
@@ -171,7 +173,7 @@ The following code creates a simple echo server using IPPROTO_TLS
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "../../in_tls.h"
+#include "../../in_tls.h" //This will need to be changed if this example HTTPS Client is saved anywhere other than the ssa-daemon/test_files/https_server folder.
 
 #define CERT_FILE_A	"keys/certificate_a.pem"
 #define KEY_FILE_A	"keys/key_a.pem"
@@ -251,6 +253,7 @@ Now you have a server listening on port 1080 for secure connections.
 ##### Simple Client
 The code below gives a simple client to connect to the echo server above. 
 This client is nearly identical to the https client above. The only difference is you can specify the port to help connect to ports other than 443.
+	Note: This code can only be run as is if you save this test file in either ssa-daemon/test_files/https_server or ssa-daemon/test_files/https_client or any other folder that is 2 down the file path from in_tls.h
 
 ```c 
 #include <stdio.h>
@@ -261,7 +264,7 @@ This client is nearly identical to the https client above. The only difference i
 #include <unistd.h>
 #include <errno.h>
 #include <netdb.h>
-#include "../../in_tls.h"
+#include "../../in_tls.h"//This will need to be changed if this example HTTPS Client is saved anywhere other than the ssa-daemon/test_files/https_client folder.
 
 #define MAX_REQUEST_SIZE 2048
 #define MAX_RESPONSE_SIZE 2048
