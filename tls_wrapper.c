@@ -48,6 +48,7 @@
 #include "log.h"
 #include "config.h"
 #include "netlink.h"
+#include "error_tls.h"
 
 #define MAX_BUFFER	1024*1024*10
 #define IPPROTO_TLS 	(715 % 255)
@@ -69,6 +70,8 @@ static int read_rand_seed(char **buf, char* seed_path, int size);
 int trustbase_verify(X509_STORE_CTX* store, void* arg);
 int client_verify(X509_STORE_CTX* store, void* arg);
 int verify_dummy(int preverify, X509_STORE_CTX* store);
+
+int openssl_to_ssa_err(unsigned long openssl_err);
 
 #ifdef CLIENT_AUTH
 typedef struct auth_info {
@@ -1031,7 +1034,9 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	tls_conn_ctx_t* ctx = arg;
+	int is_ssl_err = 0;
 	unsigned long ssl_err;
+	int response;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
 	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
 	if (events & BEV_EVENT_CONNECTED) {
@@ -1062,9 +1067,11 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 		}
 		if (bev == ctx->secure.bev) {
 			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
-				log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s]\n",
-					ERR_func_error_string(ssl_err),
-					 ERR_reason_error_string(ssl_err));
+				log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s] (error %d)\n",
+					ERR_func_error_string(ssl_err),			// This might be deprecated now???
+					 ERR_reason_error_string(ssl_err),
+					 ssl_err);
+				is_ssl_err = 1;
 			}
 		}
 		if (endpoint->closed == 0) {
@@ -1095,7 +1102,12 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	/* If both channels are closed now, free everything */
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
 		if (bufferevent_getfd(ctx->plain.bev) == -1) {
-			netlink_handshake_notify_kernel(ctx->daemon, ctx->id, -EHOSTUNREACH);
+			if (is_ssl_err) {
+				response = ssl_err;
+			} else {
+				response = -EHOSTUNREACH;
+			}
+			netlink_handshake_notify_kernel(ctx->daemon, ctx->id, response);
 		}
 		shutdown_tls_conn_ctx(ctx);
 	}
@@ -1444,3 +1456,11 @@ void send_all(int fd, char* msg, int bytes_to_send) {
 
 #endif
 
+int openssl_to_ssa_err(unsigned long openssl_err) {
+	switch(openssl_err) {
+		case OSSL_CERT_FAIL:
+			return -ECERTFAIL;
+		default:
+			return -ETLSUNKNOWN;
+	}
+}
