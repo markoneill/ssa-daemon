@@ -99,6 +99,7 @@ int auth_daemon_connect(void);
 
 tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* daemon_ctx,
 	char* hostname, int is_accepting, tls_opts_t* tls_opts) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
@@ -163,6 +164,7 @@ tls_conn_ctx_t* tls_client_wrapper_setup(evutil_socket_t efd, tls_daemon_ctx_t* 
 }
 
 void associate_fd(tls_conn_ctx_t* conn, evutil_socket_t ifd) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	bufferevent_setfd(conn->plain.bev, ifd);
 	bufferevent_enable(conn->plain.bev, EV_READ | EV_WRITE);
 
@@ -173,6 +175,7 @@ void associate_fd(tls_conn_ctx_t* conn, evutil_socket_t ifd) {
 
 tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t ifd, tls_daemon_ctx_t* daemon_ctx,
 	tls_opts_t* tls_opts, struct sockaddr* internal_addr, int internal_addrlen) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 
 	tls_conn_ctx_t* ctx = new_tls_conn_ctx();
 	if (ctx == NULL) {
@@ -226,6 +229,7 @@ tls_conn_ctx_t* tls_server_wrapper_setup(evutil_socket_t efd, evutil_socket_t if
 }
 
 static int read_rand_seed(char **buf, char* seed_path, int size) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	int fd;
 	int data_len = 0;
 	int ret;
@@ -260,6 +264,7 @@ static int read_rand_seed(char **buf, char* seed_path, int size) {
 }
 
 tls_opts_t* tls_opts_create(char* path) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_opts_t* opts;
 	SSL_CTX* tls_ctx;
 	ssa_config_t* ssa_config;
@@ -331,6 +336,7 @@ tls_opts_t* tls_opts_create(char* path) {
 }
 
 void tls_opts_free(tls_opts_t* opts) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_opts_t* cur_opts;
 	tls_opts_t* tmp_opts;
 	/* opts can be NULL (e.g., accepted sockets
@@ -350,6 +356,7 @@ void tls_opts_free(tls_opts_t* opts) {
 }
 
 int tls_opts_server_setup(tls_opts_t* tls_opts) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	
 	tls_opts->is_server = 1;
@@ -373,6 +380,7 @@ int tls_opts_server_setup(tls_opts_t* tls_opts) {
 }
 
 int tls_opts_client_setup(tls_opts_t* tls_opts) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 
 	tls_opts->is_server = 0;
@@ -393,10 +401,12 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 }
 
 int verify_dummy(int preverify, X509_STORE_CTX* store) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	return 1;
 }
 
 int client_verify(X509_STORE_CTX* store, void* arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	/*tls_conn_ctx_t* ctx = arg;*/
 	X509* cert;
 	STACK_OF(X509)* chain;
@@ -435,6 +445,7 @@ int client_verify(X509_STORE_CTX* store, void* arg) {
 }
 
 int trustbase_verify(X509_STORE_CTX* store, void* arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	uint64_t query_id;
 	STACK_OF(X509)* chain;
 	int response;
@@ -476,6 +487,7 @@ int trustbase_verify(X509_STORE_CTX* store, void* arg) {
 }
 
 int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* value, int len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	const unsigned char verified_context_id = 2;
 	SSL_CTX* tls_ctx;
 	/* XXX update this to take in-memory PEM chains as well as file names */
@@ -521,6 +533,7 @@ int set_trusted_peer_certificates(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx
 }
 
 int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	char* next;
 	char* proto;
 	int proto_len;
@@ -572,6 +585,7 @@ int set_alpn_protos(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* protos
 }
 
 int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cipher) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx = tls_opts->tls_ctx;
 	ssa_config_t* ssa_config;
 	char* cipher_list;
@@ -607,6 +621,7 @@ int set_disbled_cipher(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* cip
 }
 
 int set_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ttl) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx;
 	long timeout;
 	memcpy(&timeout, ttl, sizeof(timeout));
@@ -666,6 +681,7 @@ int send_peer_auth_req(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* val
 
 /* XXX update this to take in-memory PEM chains as well as file names */
 int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_opts_t* cur_opts;
 	tls_opts_t* new_opts;
 
@@ -719,6 +735,7 @@ int set_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* 
 
 /* XXX update this to take in-memory PEM keys as well as file names */
 int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepath) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_opts_t* cur_opts;
 
 	/* If an active connection exists, just set the key for that session */
@@ -751,6 +768,7 @@ int set_private_key(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* filepa
 }
 
 int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* hostname) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	if (conn_ctx == NULL) {
 		/* We don't fail here because this will be set when the
 		 * connection is actually created by tls_client_setup */
@@ -761,6 +779,7 @@ int set_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char* ho
 }
 
 int get_peer_certificate(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	X509* cert;
 	BIO* bio;
 	char* bio_data;
@@ -804,6 +823,7 @@ int get_peer_certificate(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** 
 }
 
 int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	X509* cert;
 	X509_NAME* subject_name;
 	char* identity;
@@ -823,12 +843,14 @@ int get_peer_identity(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** dat
 }
 
 int get_remote_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	/* XXX hostname is a bit of a misnomer for the client auth case, as it's actually client identity
 	 * instead of hostname. Perhaps rename this option or make an alias for it */
 	return 1;
 }
 
 int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	const char* hostname;
 	if (conn_ctx == NULL) {
 		return 0;
@@ -844,16 +866,19 @@ int get_hostname(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, un
 }
 
 int get_certificate_chain(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	/* XXX stub */
 	return 1;
 }
 
 int get_alpn_proto(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx, char** data, unsigned int* len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_get0_alpn_selected(conn_ctx->tls, (const unsigned char**)data, len);
 	return 1;
 }
 
 long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx;
 	long timeout = 0;
 	if (conn_ctx != NULL) {
@@ -868,6 +893,7 @@ long get_session_ttl(tls_opts_t* tls_opts, tls_conn_ctx_t* conn_ctx) {
 }
 
 SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	X509* cert;
 	tls_opts_t* cur_opts;
 	if (tls_opts == NULL) {
@@ -892,6 +918,7 @@ SSL_CTX* get_tls_ctx_from_name(tls_opts_t* tls_opts, const char* hostname) {
 }
 
 int server_name_cb(SSL* tls, int* ad, void* arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL_CTX* tls_ctx;
 	SSL_CTX* old_ctx;
 	old_ctx = SSL_get_SSL_CTX(tls);
@@ -912,6 +939,7 @@ int server_name_cb(SSL* tls, int* ad, void* arg) {
 
 int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, const unsigned char *in,
 	       	unsigned int inlen, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_opts_t* opts = (tls_opts_t*)arg;
 	int ret;
 	unsigned char* nc_out;
@@ -927,6 +955,7 @@ int server_alpn_cb(SSL *s, const unsigned char **out, unsigned char *outlen, con
 }
 
 SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL* tls;
 	#ifdef CLIENT_AUTH
 	SSL_CTX_set_client_cert_cb(tls_ctx, client_cert_callback);
@@ -956,6 +985,7 @@ SSL* tls_client_setup(SSL_CTX* tls_ctx, char* hostname) {
 }
 
 SSL* tls_server_setup(SSL_CTX* tls_ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	SSL* tls = SSL_new(tls_ctx);
 	if (tls == NULL) {
 		return NULL;
@@ -964,6 +994,7 @@ SSL* tls_server_setup(SSL_CTX* tls_ctx) {
 }
 
 int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, unsigned long id) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	/*if (conn->tls == NULL) {
 		return 1;
 	}*/
@@ -973,6 +1004,7 @@ int set_netlink_cb_params(tls_conn_ctx_t* conn, tls_daemon_ctx_t* daemon_ctx, un
 }
 
 void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	//log_printf(LOG_DEBUG, "write event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
@@ -995,6 +1027,7 @@ void tls_bev_write_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	//log_printf(LOG_DEBUG, "read event on bev %p\n", bev);
 	tls_conn_ctx_t* ctx = arg;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
@@ -1026,6 +1059,7 @@ void tls_bev_read_cb(struct bufferevent *bev, void *arg) {
 }
 
 void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_conn_ctx_t* ctx = arg;
 	unsigned long ssl_err;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
@@ -1099,11 +1133,13 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 }
 
 tls_conn_ctx_t* new_tls_conn_ctx() {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	tls_conn_ctx_t* ctx = (tls_conn_ctx_t*)calloc(1, sizeof(tls_conn_ctx_t));
 	return ctx;
 }
 
 void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	if (ctx == NULL) return;
 
 	if (ctx->tls != NULL && ctx->secure.closed == 1) {
@@ -1113,6 +1149,7 @@ void shutdown_tls_conn_ctx(tls_conn_ctx_t* ctx) {
 }
 
 void free_tls_conn_ctx(tls_conn_ctx_t* ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	shutdown_tls_conn_ctx(ctx);
 	ctx->tls = NULL;
 	if (ctx->secure.bev != NULL) {

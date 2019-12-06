@@ -109,6 +109,7 @@ static void upgrade_recv(evutil_socket_t fd, short events, void *arg);
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len);
 
 int server_create(int port) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	int ret;
 	evutil_socket_t server_sock;
 	evutil_socket_t upgrade_sock;
@@ -238,6 +239,7 @@ int server_create(int port) {
 }
 
 evutil_socket_t create_upgrade_socket(int port) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	evutil_socket_t sock;
 	int ret;
 	struct sockaddr_un addr;
@@ -276,6 +278,7 @@ evutil_socket_t create_upgrade_socket(int port) {
  * @param type SOCK_STREAM or SOCK_DGRAM
  */
 evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	evutil_socket_t sock;
 	char port_buf[6];
 	int ret;
@@ -391,6 +394,7 @@ evutil_socket_t create_server_socket(ev_uint16_t port, int family, int type) {
 
 void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr *address, int socklen, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	log_printf(LOG_INFO, "Received connection!\n");
 
 	int port;
@@ -427,6 +431,7 @@ void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
 }
 
 void accept_error_cb(struct evconnlistener *listener, void *ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
         struct event_base *base = evconnlistener_get_base(listener);
 #ifndef NO_LOG
         int err = EVUTIL_SOCKET_ERROR();
@@ -439,6 +444,7 @@ void accept_error_cb(struct evconnlistener *listener, void *ctx) {
 
 void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 	struct sockaddr *address, int socklen, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	struct sockaddr_in int_addr = {
 		.sin_family = AF_INET,
 		.sin_port = 0,
@@ -503,6 +509,7 @@ void listener_accept_cb(struct evconnlistener *listener, evutil_socket_t efd,
 }
 
 void listener_accept_error_cb(struct evconnlistener *listener, void *ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
         struct event_base *base = evconnlistener_get_base(listener);
 #ifndef NO_LOG
         int err = EVUTIL_SOCKET_ERROR();
@@ -514,6 +521,7 @@ void listener_accept_error_cb(struct evconnlistener *listener, void *ctx) {
 }
 
 void signal_cb(evutil_socket_t fd, short event, void* arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	int signum = fd; /* why is this fd? */
 	switch (signum) {
 		case SIGPIPE:
@@ -530,6 +538,7 @@ void signal_cb(evutil_socket_t fd, short event, void* arg) {
 }
 
 void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 	evutil_socket_t fd;
 	int ret;
@@ -571,6 +580,7 @@ void socket_cb(tls_daemon_ctx_t* ctx, unsigned long id, char* comm) {
 
 void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, 
 		int option, void* value, socklen_t len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 	int response = 0; /* Default is success */
 
@@ -651,6 +661,7 @@ void setsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level,
 }
 
 void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int option) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 	long value;
 	int response = 0;
@@ -746,6 +757,7 @@ void getsockopt_cb(tls_daemon_ctx_t* ctx, unsigned long id, int level, int optio
 
 void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 
 	int ret;
 	sock_ctx_t* sock_ctx;
@@ -783,6 +795,7 @@ void bind_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 
 void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, 
 	int int_addrlen, struct sockaddr* rem_addr, int rem_addrlen, int blocking) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	
 	int ret;
 	sock_ctx_t* sock_ctx;
@@ -841,6 +854,7 @@ void connect_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_ad
 
 void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr,
 	int int_addrlen, struct sockaddr* ext_addr, int ext_addrlen) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 
 	int ret;
 	sock_ctx_t* sock_ctx;
@@ -880,6 +894,7 @@ void listen_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_add
 }
 
 void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_addr, int int_addrlen) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 	int response = 0;
 	int port;
@@ -911,6 +926,7 @@ void associate_cb(tls_daemon_ctx_t* ctx, unsigned long id, struct sockaddr* int_
 }
 
 void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 
 	sock_ctx = (sock_ctx_t*)hashmap_get(ctx->sock_map, id);
@@ -958,6 +974,7 @@ void close_cb(tls_daemon_ctx_t* ctx, unsigned long id) {
 
 void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id, 
 		struct sockaddr* int_addr, int int_addrlen) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	/* This was implemented in the kernel directly. */
 	return;
 }
@@ -965,6 +982,7 @@ void upgrade_cb(tls_daemon_ctx_t* ctx, unsigned long id,
 /* This function is provided to the hashmap implementation
  * so that it can correctly free all held data */
 void free_sock_ctx(sock_ctx_t* sock_ctx) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	if (sock_ctx->listener != NULL) {
 		evconnlistener_free(sock_ctx->listener);
 	}
@@ -986,6 +1004,7 @@ void free_sock_ctx(sock_ctx_t* sock_ctx) {
 }
 
 void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	sock_ctx_t* sock_ctx;
 	tls_daemon_ctx_t* ctx = (tls_daemon_ctx_t*)arg;
 	char msg_buffer[256];
@@ -1039,6 +1058,7 @@ void upgrade_recv(evutil_socket_t fd, short events, void *arg) {
 /* Modified read_fd taken from various online sources. Found without copyright or
  * attribution. Examples also in manpages so we could use that if needed */
 ssize_t recv_fd_from(int fd, void *ptr, size_t nbytes, int *recvfd, struct sockaddr_un* addr, int addr_len) {
+	log_printf(LOG_DEBUG, "Entered function %s\n", __func__);
 	struct msghdr msg;
 	struct iovec iov[1];
 	ssize_t	n;
