@@ -56,7 +56,11 @@ release: $(EXEC)
 
 hostname-support: sharedobject
 hostname-support: preload
-hostname-support: release
+hostname-support: all
+
+hostname-support-release: sharedobject
+hostname-support-release: preload
+hostname-support-release: release
 
 clientauth: CXXFLAGS+=$(CXX_CLIENTAUTH_FLAGS)
 clientauth: INCLUDES+=$(NEW_INCLUDES)
