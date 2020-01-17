@@ -1036,7 +1036,6 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	tls_conn_ctx_t* ctx = arg;
 	int is_ssl_err = 0;
 	unsigned long ssl_err;
-	unsigned long next_err;
 	int response;
 	channel_t* endpoint = (bev == ctx->secure.bev) ? &ctx->plain : &ctx->secure;
 	channel_t* startpoint = (bev == ctx->secure.bev) ? &ctx->secure : &ctx->plain;
@@ -1067,8 +1066,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 			startpoint->closed = 1;
 		}
 		if (bev == ctx->secure.bev) {
-			while ((next_err = bufferevent_get_openssl_error(bev))) {
-				ssl_err = next_err;
+			while ((ssl_err = bufferevent_get_openssl_error(bev))) {
 				log_printf(LOG_ERROR, "SSL error from bufferevent: %s [%s] (error %d)\n",
 					ERR_func_error_string(ssl_err),			// This might be deprecated now???
 					 ERR_reason_error_string(ssl_err),
@@ -1105,7 +1103,7 @@ void tls_bev_event_cb(struct bufferevent *bev, short events, void *arg) {
 	if (endpoint->closed == 1 && startpoint->closed == 1) {
 		if (bufferevent_getfd(ctx->plain.bev) == -1) {
 			if (is_ssl_err) {
-				response = openssl_to_ssa_err(ssl_err);
+				response = ssl_err;
 			} else {
 				response = -EHOSTUNREACH;
 			}
