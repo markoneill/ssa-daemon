@@ -29,7 +29,8 @@ The SSA is currently a research prototype. As such, it should not yet be used in
 
 ## Building and Running
 You must have the SSA kernel module installed before you build and run the SSA userspace daemon.
-To install and run the SSA userspace daemon you need to run these commands as root:
+First clone the ssa-daemon onto your computer. 
+Then to install and run the SSA userspace daemon you need to run these commands as root in the ssa-daemon folder:
 
 ```
   ./install_packages.sh
