@@ -62,3 +62,4 @@ test_files/*
 # Editor files
 *.swp
 *.swo
+.vscode/settings.json

@@ -11,7 +11,7 @@
 int main() {
 	struct sockaddr_host addr;
 	addr.sin_family = AF_HOSTNAME;
-	strcpy((char*)addr.sin_addr.name, "www.google.com");
+	strcpy((char*)addr.sin_addr.name, "expired.badssl.com");
 	addr.sin_port = htons(443);
 
 	int sock_fd; 

@@ -52,7 +52,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 	custom_itoa(ntohs(host_addr->sin_port), service, PORT_LENGTH);
 	ret = getaddrinfo(hostname, service, &hints, &addr_list);
 	if (ret != 0) {
-		errno = EAFNOSUPPORT;
+		errno = EHOSTUNREACH;
 		return -1;
 	}
 	for (addr_ptr = addr_list; addr_ptr != NULL; addr_ptr = addr_ptr->ai_next) {
@@ -61,7 +61,6 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 		}
 	}
 	freeaddrinfo(addr_list);
-	errno = EAFNOSUPPORT;
 	return -1;
 }
 

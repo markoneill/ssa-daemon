@@ -379,9 +379,13 @@ int tls_opts_client_setup(tls_opts_t* tls_opts) {
 
 	SSL_CTX_set_options(tls_ctx, SSL_OP_ALL);
 
-	/* Temporarily disable validation */
+	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, NULL);
+
+	/* This allows verify_dummy to override the default cert checking */
 	//SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_PEER, verify_dummy);
-	SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, verify_dummy);
+	
+	/* This disables cert checking */
+	//SSL_CTX_set_verify(tls_ctx, SSL_VERIFY_NONE, verify_dummy);
 
 	/* There's a billion options we can/should set here by admin config XXX
  	 * See SSL_CTX_set_options and SSL_CTX_set_cipher_list for details */
