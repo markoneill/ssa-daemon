@@ -3,9 +3,9 @@
 This document is an exploration into the different tests found in the `test_files` folder found in the ssa-daemon and the ssa kernel. This is WIP, and any further clarification/insights into the test folders are welcome. If anything is wrong in this document, change it to be correct.
 
 ## Client Authentication Clarification
-Any time `client auth` or `client authentication` is mentioned or used in the SSA, it is because it is part of a project to do client authentication using the SSA. As of June 2019, the paper for client authentication was not published and the details are only found in Mark O'Neils PhD Dissertation. A short summary of client authentication. 
+Any time `client auth` or `client authentication` is mentioned or used in the SSA, it is because it is part of a project to do client authentication using the SSA. As of June 2019, the paper for client authentication was not published and the details are only found in Mark O'Neils PhD Dissertation. A short summary of client authentication.
 
-Instead of using passwords to authenticate people to the web, many people are turning to stronger cryptography to authenticate users. In the Web world, WebAuthn has been standardized and will begin to be used. However, there are other methods. For example, other devices (such as phones) can be used to authenticate people. This would be more secure and an alternative to passwords. To implement client authentication, the SSA can be used to communicate with a phone that is connected to the WIFI. When a server wants to authenticate a client/user, the SSA will send a notification for authentication, and the phone would be used to autheneticate the person securely using cryptography. 
+Instead of using passwords to authenticate people to the web, many people are turning to stronger cryptography to authenticate users. In the Web world, WebAuthn has been standardized and will begin to be used. However, there are other methods. For example, other devices (such as phones) can be used to authenticate people. This would be more secure and an alternative to passwords. To implement client authentication, the SSA can be used to communicate with a phone that is connected to the WIFI. When a server wants to authenticate a client/user, the SSA will send a notification for authentication, and the phone would be used to authenticate the person securely using cryptography.
 
 For more details, look for the paper (when it's published) or Mark O'Neil's Dissertation, Chapter 4.
 
@@ -21,7 +21,7 @@ For more details, look for the paper (when it's published) or Mark O'Neil's Diss
 4. https_client - has basic client and a threaded client
     - basic client - uses SSA, creates basic connection to www.google.com, does not have much info on what happened/errors
     - threaded_https_client - this appears to test the speed of the SSA, to test whether the SSA is much faster or slower than regular SSL calls. The SSA paper shows that the SSA is just as fast, and I bet they made their graph from this code.
-        - uses SSA, creates connection to client using multiple threads; has options of running ssa vs regular ssl; 
+        - uses SSA, creates connection to client using multiple threads; has options of running ssa vs regular ssl;
         - there is a verbose setting, but it doesn't say too much, we could add more to it if desired
     - graph.py - small script to make a graph to from results; I'm guessing to show how the SSA performs compared to regular SSL calls
 5. https_server - uses the SSA to create a basic server that reads the request from the client and sends the same request back to the client.
@@ -39,23 +39,23 @@ For more details, look for the paper (when it's published) or Mark O'Neil's Diss
 7. session_test - uses Open_SSL (not the SSA); tests resuming a session after connecting once
 8. simple_test - has two servers, https_client.c and epoll_client.c
     - https_client.c - uses SSA to connect to host; host is given as a cmd line argument
-    - epoll_client.c - uses SSA; expectes 1 cmd line argument which is the number of connections you want to make; default connects to www.phonixteam.net; uses epoll; to use this, modifications need to be made to line 242 and the make file needs to be changed
+    - epoll_client.c - uses SSA; expects 1 cmd line argument which is the number of connections you want to make; default connects to www.phonixteam.net; uses epoll; to use this, modifications need to be made to line 242 and the make file needs to be changed
 9. webserver-event - this appears to be the server they use to test client authentication. See the note above about client auth.
-10. webserver-eventSSL - appears to be the same server as the webserver-event, but uses SSL instead of the SSA. 
+10. webserver-eventSSL - appears to be the same server as the webserver-event, but uses SSL instead of the SSA.
 11. manual-testing - this folder is to be used to manual test the features of the SSA. It contains code similar to simple_test and https_server, but keeps all the necessary code and keys contained within itself. See [ssa-manual-testing.md](ssa-manual-testing.md)
 
-I also noticed some scripts that may be used for testing. They build the right dependencies and make sure that everything gets made right. 
+I also noticed some scripts that may be used for testing. They build the right dependencies and make sure that everything gets made right.
 
-1. build-client-auth.sh - gets all the packages and files ready to run the client authentication piece of the SSA. 
+1. build-client-auth.sh - gets all the packages and files ready to run the client authentication piece of the SSA.
 2. install_packages.sh - installs necessary packages to run the SSA-daemon on fedora and ubuntu
-3. removeClientAuth.sh - turns off all the servers and resets the computer after running all the things to do usability testing with client authentication. Kills the testShopServer, sslsplit, and the SSA-daemon, and turns the firewall back on after was shut off after running the sslsplit stuff. 
-4. startClientAuth.sh - from the script. 
+3. removeClientAuth.sh - turns off all the servers and resets the computer after running all the things to do usability testing with client authentication. Kills the testShopServer, sslsplit, and the SSA-daemon, and turns the firewall back on after was shut off after running the sslsplit stuff.
+4. startClientAuth.sh - from the script.
 ```
-This script will build and run the programs necisery to
+This script will build and run the programs necessary to
 use Client Auth with Securly at the paymore.com domain.
-If a Client Auth server is curently running remotly you
+If a Client Auth server is currently running remotely you
 may specify the servers IP in the TESTSHOP_SERVER_IP
-environment verialble to route paymore.com to that server
+environment variable to route paymore.com to that server
 otherwise localhost will be used and a server will run
 on your machine.
 ```
@@ -65,12 +65,12 @@ on your machine.
 
 #### SSA Kernel
 
-May 15th, 2019 - the tests are in one folder. When I try using make, it fails. I think it's because the fails are named wrong. I will change the files to get the tests to run and then see if I can summarize what the tests already do. 
+May 15th, 2019 - the tests are in one folder. When I try using make, it fails. I think it's because the fails are named wrong. I will change the files to get the tests to run and then see if I can summarize what the tests already do.
 
 1. tests.c - has the benchmarking tests for the socket command, connect, listen, and bind along with the baseline commands using SSL;
     - TODO: this test should have a usage script so it is easier to use and know how to use it besides looking through the code
-2. time_parse.py - compares the baseline and benchmarking tests; runs the tests.c file and compares the output from the baseline to the benchmarking; requires keyword arguements of "socket", "bind", "listen", and "data". 
-3. passfd_client.c - I'm not sure what this does, I think it tests that a connection fails when it has the wrong cert. But I'ts hard to tell because it isn't working for me right now.
+2. time_parse.py - compares the baseline and benchmarking tests; runs the tests.c file and compares the output from the baseline to the benchmarking; requires keyword arguments of "socket", "bind", "listen", and "data".
+3. passfd_client.c - I'm not sure what this does, I think it tests that a connection fails when it has the wrong cert. But It's hard to tell because it isn't working for me right now.
 
 ### Other things found in the Repos
 
@@ -78,9 +78,9 @@ May 15th, 2019 - the tests are in one folder. When I try using make, it fails. I
 
 ##### Extras
 
-There is also a folder with extras. These seem to have addon's to the SSA, like golang compatibility and other things. 
+There is also a folder with extras. These seem to have addon's to the SSA, like golang compatibility and other things.
 
-1. addons.c - appears to be some extra things added to the SSA. I'm not sure what it is trying to accomplihs
+1. addons.c - appears to be some extra things added to the SSA. I'm not sure what it is trying to accomplish
 2. dynamicSSA - appears to be a library to dynamically upgrade sockets to use the SSA when previously using SSL; looks for network connections to happen using SSL_write, and upgrades it before writing/reading/whatever it does
 3. golang - contains a diff/git patch that adds SSA to golang
 4. openssl - has git patches to changing openssl to use authentication patches. Has 3 patches, it looks like they were built up to include more features than the previous patch.
