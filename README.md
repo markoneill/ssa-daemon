@@ -1,56 +1,34 @@
-# The Secure Socket API (SSA) Userspace Daemon
-The SSA is a Linux kernel module that allows programmers to easily create secure TLS connections using the standard POSIX socket API. This allows programmers to focus more on the development of their apps without having to interface with complicated TLS libraries. The SSA also allows system administrators and other power users to customize TLS settings for all connections on the machines they manage, according to their own needs.
+# Secure Socket API (SSA)
+The SSA is a system that allows programmers to easily create secure TLS connections using the standard POSIX socket API. This allows programmers to focus more on the developement of their apps without having to interface with complicated TLS libraries. The SSA also allows system administrtors and other power users to customize TLS settings for all connections on the machines they manage, according to their own needs.
+
+## How it Works
+The SSA has two components: a kernel module and a userspace daemon. The kernel module intercepts system calls for TLS-configured sockets and redirects them to the daemon, which does the heavy lifting of establishing a secure TLS connection.
+
+When SSA is installed, application developers can configure POSIX sockets for TLS by using the `IPPROTOTLS` flag in the call to `socket`. They can then use the sockets with the regular socket system calls.
+
+TLS settings are configured by the system administrator using a config file. SSA shifts the burden of choosing configurations from the application developer to the system administrator running the application. This makes the development process much simpler,and gives the adminstrator control over the security settings for applications running on the system.
 
 ## Publication
 You can read more about the SSA, it's design goals, and features in our [USENIX Security 2018 paper](https://www.usenix.org/conference/usenixsecurity18/presentation/oneill)
 
-# ssa-daemon
-Userspace libevent2-based TLS wrapping daemon for use with the SSA
-
-## Prerequisites
-The SSA has two components - a [kernel module](https://github.com/markoneill/ssa) and a userspace daemon (this repository).
-Both need to be installed and running to provide TLS as an operating system service.
-The kernel component has its own README with installation instructions, and you are encouraged to build and install and component first.
-
-The install_packages.sh script currently installs dependencies for Fedora and Ubuntu systems. You may need to modify this script or install some packages manually if you are using a different Linux distribution.
-
-## Compatibility
-The SSA is actively developed on Fedora, but may compile and run on other systems with some minor changes.
-
-## Using the SSA
-Go to the [User Documentation](docs/user-documentation.md) to see how to use the SSA and examples of the SSA usage.
-
-For administrators, see [Admin Documentation](docs/admin-documentation.md) to see the different admin options, what they do, and how to properly create a config file.
-
-Formal API specification will continue to be added to this README as well as [owntrust.org](https://owntrust.org) in the very near future. Eager users are encouraged to see our publication (linked above), [docs](docs/), code, or may contact us directly with questions.
+## Our Vision
+The SSA was created by Mark O'Neill for his Ph.D. dissertation, in which he demonstrated a need for an easier way to write secure software. He created the SSA as a prototype solution to meet that need. We are currently working to make this project fully-functional so that it can be adopted in real-world applications. We look forward to collaboration with the open-source community to make this vision a reality.
 
 ## Status
-The SSA is currently a research prototype. As such, it should not yet be used in any mission critical environments. However, we are working toward release as a viable tool for the general public.
+The SSA is still undergoing large changes as we finalize certificate validation strategies and improve error reporting. As such, it should not yet be used in any mission critical environments. However, we are working toward release as a viable tool for the general public.
 
-## Building and Running
-You must have the SSA kernel module installed before you build and run the SSA userspace daemon.
-First clone the ssa-daemon onto your computer. 
-Then to install and run the SSA userspace daemon you need to run these commands as root in the ssa-daemon folder:
+## Guide to this repository
+This repository contains the source code for the userspace daemon. Source code for the kernel module is in a [separate repo](https://github.com/markoneill/ssa). Documentation for both the daemon and the kernel module is found in this repository, in the `docs` directory, as described below:
 
-```
-  ./install_packages.sh
-  make
-  ./tls_wrapper
-```
+* `install-documentation.md` contains installation instructions.
+* `user-documentation.md` contains instructions for writing applications that use the SSA
+* `admin-documentation.md` contains instructions for managing the config file
+* The `developer-documentation` directory contains documentation for developers wanting to contribute to the SSA:
+    * `general.md` contains an overview of how the system works as well as information that is relevant to both the daemon and the module.
+    * The `testing` directory contains various testing files
+    * The `diagrams` directory contains images referenced in the documentation files.
 
-
-If you want to also have support for the AF_HOSTNAME address type, run `make hostname-support` instead of make.
-This feature will be included by default soon.
-
-## Configuration
-Configuration is currently in the process of being better-integrated into the userspace daemon.
-When we finalize the configuration API, it will be specified here and on [owntrust.org](https://owntrust.org).
-See our paper (linked above) for a preview of the types of configuration options administrators will have.
+We will be providing a formal API specicification in this repo and on [owntrust.org](https://owntrust.org) in the very near future. Eager users are encouraged to see our publication (linked above), code, or to contact us directly with questions.
 
 ## Contributions and Thanks
 Thank you to Eliezer Colon for noting a compilation issue
-
-## Notices
-The SSA is still undergoing large changes as we finalize the interface between it TrustBase, and other certificate validation strategies. Some commits may disable certificate validation temporarily while we work out the kinks between using TrustBase for traffic interception and using its API for certificate validation.
-
-The build-client-auth.sh script is for extra functionality that is still very much in flux and should not be used unless you know what you're getting yourself into.
