@@ -1,8 +1,8 @@
 
 ## Purpose
-This README goes through all the steps to manually test the features of the SSA to make sure it has basic functionality. These tests cover both administrator options and developer options while using the SSA. 
+This README goes through all the steps to manually test the features of the SSA to make sure it has basic functionality. These tests cover both administrator options and developer options while using the SSA.
 
-This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documention.
+This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documentation.
 
 ## Table of Contents
 - [TODOS](#todos)
@@ -25,56 +25,57 @@ This README is a WIP and can be changed and added to as needed. Any place where 
 2. How do we test client certificates? How do we know that they work/got set right?
 3. When I use getsockopt with TLS_CERTIFICATE_CHAIN, I get a value of '', meaning empty. We need to check whether that is right or wrong and change it if it is wrong
 4. Add tests/fix tests when certificate validation is fixed - see TrustStoreLocation
+5. Add tests/fix tests to test TLS_SESSION_TTL and TLS_ALPN when we figure out how to better test the behavior. 
 
 ## Administrator Options
 ### MinProtocol
-1. Change MinProtocal to be "1.2" in the ssa.cfg and run the SSA
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
-            - the client receives an html response 
+1. Change MinProtocol to be "1.2" in the ssa.cfg and run the SSA
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - the client receives an html response
             - no logging errors should appear
     - run ```./https_client tls-v1-0.badssl.com 1010``` and you should get the following errors
         - **Expected Behavior**
             - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
             - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
-    - run ```./https_client tls-v1-1.badssl.com 1011``` 
-        - **Expected Behavior** 
+    - run ```./https_client tls-v1-1.badssl.com 1011```
+        - **Expected Behavior**
             - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
             - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
 2. Change MinProtocol to be "1.0" in the ssa.cfg and run SSA
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
-            - the client receives an html response 
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
+            - the client receives an html response
             - no logging errors should appear and a TLSv1.2 connection should be made
     - run ```./https_client tls-v1-0.badssl.com 1010```
         - **Expected Behavior**
             - from the client: ```connect: No route to host failed to find a suitable address for connection" from the client and receive a logging error ```
             - from the SSA: ```ERROR:   SSL error from bufferevent: ssl_choose_client_version [unsupported protocol]```
-            
+
 ### MaxProtocol
 1. Change MinProtocol to be "1.1" and add ```MaxProtocol: "1.1"``` and run SSA
-    - run ```./https_client tls-v1-1.badssl.com 1011``` 
-        - **Expected Behavior** 
-            - the client receives an html response 
+    - run ```./https_client tls-v1-1.badssl.com 1011```
+        - **Expected Behavior**
+            - the client receives an html response
             - no logging errors should appear and a TLS 1.1 connection should be made
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
             - the client gets an error; similar to something like ```connect: No route to host
                                                                      failed to find a suitable address for connection```
             - logging should show that the connection ended, for example, I got ```DEBUG:   encrypted endpoint got EOF```
 2. Change MinProtocl to be "1.2" and MaxProtocol to be "1.1" and run SSA
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
             - the SSA should exit and get an error similar to the following ```ERROR:   Default configuration for MinProtocol is greater than default configuration for MaxProtocol```
 3. Change MinProtocl to be "1.2", remove MaxProtocol from the default profile, and add ```MaxProtocl: 1.1``` to the /bin/ncat profile and run SSA
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
             - the SSA will exit, and give an error stating that the MinProtocol is higher than the MaxProtocol
 4. Change MinProtocl to be "1.1", change MaxProtocol to be ```MaxProtocol: "1.4"``` and run SSA
-    - run ```./https_client tls-v1-2.badssl.com 1012``` 
-        - **Expected Behavior** 
+    - run ```./https_client tls-v1-2.badssl.com 1012```
+        - **Expected Behavior**
             - the SSA will exit; should give logging errors that it could not parse 1.4 and that the MinProtocol is higher than the MaxProtocol
-        
+
 ### CipherSuite
 3. Change MinProtocl to "1.2" for the rest of the tests. Set CipherSuite to ```CipherSuite: "RSA:DH"``` and run SSA
     - run ```/https_client rsa4096.badssl.com 443```
@@ -94,8 +95,8 @@ This README is a WIP and can be changed and added to as needed. Any place where 
         - **Expected Behavior**
             - from the client: get error output, similar to ```connect: No route to host failed to find a suitable address for connection```
             - from the SSA: should get some error log similar to ```ERROR:   SSL error from bufferevent: ssl3_read_bytes [sslv3 alert handshake failure]```
-            
-### TrustStoreLocation 
+
+### TrustStoreLocation
 **TODO: when these tests were made, certificate validation was not done. We need to get the defined behavior of these tests when certificate validation is added in**
 1. set TrustSToreLocation to be ```TrustStoreLocation: "/etc/pki/tls/certs/ca-bundle.crt"``` on Fedora or ```TrustStoreLocation: "/etc/ssl/certs/ca-certificates.crt"``` on Ubuntu and run SSA
     - run ```/https_client tls-v1-2.badssl.com 1012```
@@ -109,10 +110,10 @@ This README is a WIP and can be changed and added to as needed. Any place where 
 3. remove TrustSToreLocation and run SSA
     - **Expected Behavior**
         - the SSA should exit and say ```ERROR:   Default configuration for TrustStoreLocation not set. ```
-    
+
 
 ### AppCustomValidation
-**TODO: figure out how to test this and get the right results. Might need to talk to Dr. Zapala or Mark.
+**TODO: figure out how to test this and get the right results. Might need to talk to Dr. Zappala or Mark.
 
 ## Client Testing
 
@@ -130,7 +131,7 @@ You should create a secure connection to google. In order, you should see the fo
 
 ### Client Socket Options
 
-#### Prerequisites 
+#### Prerequisites
 Add the following lines of code to the https_client. I put them between lines 49 and 51.
 ```c
         int optname = TLS_SESSION_TTL;
@@ -162,17 +163,15 @@ This will enable easier testing and of the different socket options.
 #### TLS_HOSTNAME
 **TODO: add tests and expected behavior**
 
-#### 
-
 #### TLS_CERTIFICATE_CHAIN and TLS_PRIVATE_KEY
 1. Test getsockopt and TLS_PRIVATE_KEY
     1. set `optname` to `TLS_PRIVATE_KEY`
     2. set `set_optval` to `keys/key_a.pem`
     3. run `make`
     3. run `./https_client www.google.com 443`
-    - **Expected Behavior** 
+    - **Expected Behavior**
         - you should get an error `Protocol not available` when using getsockopt and `TLS_PRIVATE_KEY`
-        
+
 **TODO: figure out how to find correct client behavior with certs and private keys**
 For the rest of the tests, you may need additional code to set a private key and the certificate chain. You may use the following code, and may place it right after the code above
 ```c
@@ -197,7 +196,7 @@ For the rest of the tests, you may need additional code to set a private key and
     - **Expected Behavior**
         - verify that SSA gives log message indicating that it is using the cert `keys/certificate_a.pem` file
         - verify that SSA gives log message indicating that it is using the private key `keys/key_a.pem` file
-        - should get valid reponse from google **NOTE: this may be different if we can properly test the usage of the cert/key**
+        - should get valid response from google **NOTE: this may be different if we can properly test the usage of the cert/key**
         - **TODO: figure out how to test/figure out certs were assigned correctly**
         - **TODO: figure out what client auth expected behavior should be**
 
@@ -228,27 +227,64 @@ For the rest of the tests, you may need additional code to set a private key and
     3. `optname2` to `TLS_PRIVATE_KEY`
     4. `set_optval2`to `keys/key_b.pem`
     5. run `make`
-    6. run `./https_client www.google.com 443` 
+    6. run `./https_client www.google.com 443`
     - **Expected Behavior**
         - the client should return an error indicating failure, such as `Invalid argument`
 5. Testing bad file path to cert
     1. set `optname` to `TLS_CERTIFICATE_CHAIN`
     2. set `set_optval` to `key/certificate_a.pem`
     3. run `make`
-    4. run `./https_client www.google.com 443` 
-    - **Expected Behavior** 
+    4. run `./https_client www.google.com 443`
+    - **Expected Behavior**
         - from the SSA logs, you should get an error like `ERROR:   Unable to assign certificate chain`
         - the client print an error
         - **TODO: currently the client segfaults instead of returning an error. Need to get the proper client behavior when this gets fixed**
-        
+
 #### TLS_TRUSTED_PEER_CERTIFICATES
-**TODO: add tests and expected behavior**
+These will be easier to test with a local server. See the client/server tests to fully test this feature. 
 
 #### TLS_ALPN
-**TODO: add tests and expected behavior**
+1. Test getsockopt with TLS_ALPN before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    2. set `optname` to `TLS_ALPN`
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+2. Test getsockopt with TLS_ALPN after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+3. Test setsockopt with TLS_ALPN:
+    1. uncomment code for setsockopt done in step 1
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+4. Remove the code copied from step 2 if you copied or, or move it back to where it was before you moved it in step 3
+
 
 #### TLS_SESSION_TTL
-**TODO: add tests and expected behavior**
+1. Test setsockopt with TLS_SESSION_TTL:
+    1. set `optname` to `TLS_SESSION_TTL`
+    2. set 'optval' to be '10'
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out how to test the functionality of session caching, and not just that the options got set**
+            - setsockopt should say that it got set to '10'
+            - getsockopt should say that it is '10'
+2. Test getsockopt with TLS_SESSION_TTL
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - get sockopt should get a value of ','
+            - **TODO: figure out if ',' is the right option, or if it should default to something else**
+
 
 #### TLS_DISABLE_CIPHER
 For these tests, you will need to change the admin settings in the ssa.cfg.
@@ -260,7 +296,7 @@ For these tests, you will need to change the admin settings in the ssa.cfg.
     2. set `set_optval` to `DH`
     3. run `make`
     4. run `./https_client rsa4096.badssl.com 443`
-    - **Expected Behavior** 
+    - **Expected Behavior**
         - you should get an error `Protocol not available` when using getsockopt and `TLS_DISABLE_CIPHER`
 2. Test disabling a cipher
     1. Comment out the code for `getsockopt`, leaving only code for `setsockopt` because `TLS_DISABLE_CIPHER` only works with setsockopt, and returns an error if you use getsockopt.
@@ -285,19 +321,48 @@ For these tests, you will need to change the admin settings in the ssa.cfg.
     2. set `set_optval` to `blahblah` (the value doesn't matter)
     3. run `make`
     4. run `./https_client www.google.com 443`
-    - **Expected Behavior** 
+    - **Expected Behavior**
         - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_IDENTITY`
-2. Test getting peer identity
+2. Test getting peer identity before connect
     1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_IDENTITY` only works with getsockopt, and returns an error if you use setsockopt.
     2. set `optname` to `TLS_PEER_IDENTITY`
     4. run `make`
     4. run ```/https_client www.google.com 443```
         - **Expected Behavior**
-            - the SSA crashes **TODO: this seems like a bad things, so 
             - from the SSA: no error logs
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+3. Test getting peer identity after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - you should get similar output to this `Used getsockopt: get_optval ='/C=US/ST=California/L=Mountain View/O=Google LLC/CN=www.google.com'`
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
 
 #### TLS_PEER_CERTIFICATE_CHAIN
-**TODO: add tests and expected behavior**
+1. Test that setsockopt fails with TLS_PEER_CERTIFICATE_CHAIN
+    1. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    2. set `set_optval` to `blahblah` (the value doesn't matter)
+    3. run `make`
+    4. run `./https_client www.google.com 443`
+    - **Expected Behavior** 
+        - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_CERTIFICATE_CHAIN`
+2. Test getting peer certificate chain before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_CERTIFICATE_CHAIN` only works with getsockopt, and returns an error if you use setsockopt.
+    2. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so 
+            - from the SSA: no error logs
+3. Test getting peer certificate chain after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - You should see a line saying "peer identity: ---begin certificate --- ... ---end certficate---
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
 
 ## Server Testing
 
@@ -325,20 +390,20 @@ if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B))
 5. Run `./https_client localhost 8000` to connect to you local server. Make sure your port is the same as the port set for the server.
 
 **Expected Result**
-1. Server 
-    - server should get an output similar to the following 
+1. Server
+    - server should get an output similar to the following
     ```
     [pbstrein@ilab3 manual_tests]$ ./echo_server 8000
      Client requested host 10 localhost
      Echo client data: GET / HTTP/1.1
      host: localhost
-      
-      
+
+
      finished sending response
     ```
 2. Client
     - should get the following things
-        1. a peer certficiate
+        1. a peer certificate
         2. A peer identity similar to the following `/C=US/ST=Utah/L=Provo/O=Default Company Ltd/CN=localhost`
         3. The following response
         ```
@@ -346,7 +411,7 @@ if (setsockopt(fd, IPPROTO_TLS, TLS_PRIVATE_KEY, KEY_FILE_B, sizeof(KEY_FILE_B))
         GET / HTTP/1.1
         host: localhost
         ```
-        
+
 ### Server Socket Options
 
 #### TLS_REMOTE_HOSTNAME
