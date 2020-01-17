@@ -2,7 +2,7 @@
 ## Purpose
 This README goes through all the steps to manually test the features of the SSA to make sure it has basic functionality. These tests cover both administrator options and developer options while using the SSA. 
 
-This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documention.
+This README is a WIP and can be changed and added to as needed. Any place where there is a TODO is further work that needs to be done to finish this documentation.
 
 ## Table of Contents
 - [TODOS](#todos)
@@ -25,6 +25,7 @@ This README is a WIP and can be changed and added to as needed. Any place where 
 2. How do we test client certificates? How do we know that they work/got set right?
 3. When I use getsockopt with TLS_CERTIFICATE_CHAIN, I get a value of '', meaning empty. We need to check whether that is right or wrong and change it if it is wrong
 4. Add tests/fix tests when certificate validation is fixed - see TrustStoreLocation
+5. Add tests/fix tests to test TLS_SESSION_TTL and TLS_ALPN when we figure out how to better test the behavior. 
 
 ## Administrator Options
 ### MinProtocol
@@ -162,8 +163,6 @@ This will enable easier testing and of the different socket options.
 #### TLS_HOSTNAME
 **TODO: add tests and expected behavior**
 
-#### 
-
 #### TLS_CERTIFICATE_CHAIN and TLS_PRIVATE_KEY
 1. Test getsockopt and TLS_PRIVATE_KEY
     1. set `optname` to `TLS_PRIVATE_KEY`
@@ -242,13 +241,50 @@ For the rest of the tests, you may need additional code to set a private key and
         - **TODO: currently the client segfaults instead of returning an error. Need to get the proper client behavior when this gets fixed**
         
 #### TLS_TRUSTED_PEER_CERTIFICATES
-**TODO: add tests and expected behavior**
+These will be easier to test with a local server. See the client/server tests to fully test this feature. 
 
 #### TLS_ALPN
-**TODO: add tests and expected behavior**
+1. Test getsockopt with TLS_ALPN before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    2. set `optname` to `TLS_ALPN`
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+2. Test getsockopt with TLS_ALPN after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+3. Test setsockopt with TLS_ALPN:
+    1. uncomment code for setsockopt done in step 1
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out what expected behavior should be, currently I get a value of '' after connecting, even if I set it, which seems wrong but may be right**
+4. Remove the code copied from step 2 if you copied or, or move it back to where it was before you moved it in step 3
+
 
 #### TLS_SESSION_TTL
-**TODO: add tests and expected behavior**
+1. Test setsockopt with TLS_SESSION_TTL:
+    1. set `optname` to `TLS_SESSION_TTL`
+    2. set 'optval' to be '10'
+    2. run `make`
+    3. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - **TODO: figure out how to test the functionality of session caching, and not just that the options got set**
+            - setsockopt should say that it got set to '10'
+            - getsockopt should say that it is '10'
+2. Test getsockopt with TLS_SESSION_TTL
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` to make consistent testing
+    3. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - get sockopt should get a value of ','
+            - **TODO: figure out if ',' is the right option, or if it should default to something else**
+
 
 #### TLS_DISABLE_CIPHER
 For these tests, you will need to change the admin settings in the ssa.cfg.
@@ -287,17 +323,46 @@ For these tests, you will need to change the admin settings in the ssa.cfg.
     4. run `./https_client www.google.com 443`
     - **Expected Behavior** 
         - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_IDENTITY`
-2. Test getting peer identity
+2. Test getting peer identity before connect
     1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_IDENTITY` only works with getsockopt, and returns an error if you use setsockopt.
     2. set `optname` to `TLS_PEER_IDENTITY`
     4. run `make`
     4. run ```/https_client www.google.com 443```
         - **Expected Behavior**
-            - the SSA crashes **TODO: this seems like a bad things, so 
-            - from the SSA: no error logs
+            - the SSA crashes **TODO: this seems like a bad things, so figure out what correct behavior is when this issue gets fixed**
+            - the client returns an error "no buffer space available" **TODO: this is mostly likely because the SSA crashes, and this should change when we fix that behavior**
+3. Test getting peer identity after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - you should get similar output to this `Used getsockopt: get_optval ='/C=US/ST=California/L=Mountain View/O=Google LLC/CN=www.google.com'`
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
+
 
 #### TLS_PEER_CERTIFICATE_CHAIN
-**TODO: add tests and expected behavior**
+1. Test that setsockopt fails with TLS_PEER_CERTIFICATE_CHAIN
+    1. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    2. set `set_optval` to `blahblah` (the value doesn't matter)
+    3. run `make`
+    4. run `./https_client www.google.com 443`
+    - **Expected Behavior** 
+        - you should get an error `Protocol not available` when using setsockopt and `TLS_PEER_CERTIFICATE_CHAIN`
+2. Test getting peer certificate chain before connect
+    1. Comment out the code for `setsockopt`, leaving only code for `getsockopt` because `TLS_PEER_CERTIFICATE_CHAIN` only works with getsockopt, and returns an error if you use setsockopt.
+    2. set `optname` to `TLS_PEER_CERTIFICATE_CHAIN`
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - the SSA crashes **TODO: this seems like a bad things, so 
+            - from the SSA: no error logs
+3. Test getting peer certificate chain after connect
+    1. copy or move getsockopt code until after connect (in my code, that is after line 82
+    4. run `make`
+    4. run ```/https_client www.google.com 443```
+        - **Expected Behavior**
+            - You should see a line saying "peer identity: ---begin certificate --- ... ---end certficate---
+4. Remove the code copied from step 3 if you copied or, or move it back to where it was before you moved it in step 3
 
 ## Server Testing
 
