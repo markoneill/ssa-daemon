@@ -22,9 +22,16 @@ When the process sends data through the socket, that data first goes to the SSA 
 
 ![Socket communication with SSA](diagrams/socketsWithSSA.png)
 
+## Understanding the flow of control
+Because the SSA is composed of two interacting, event-based programs, it can be difficult to understand how everything works together or to see the logical flow of control through the system. This documentation provides some resources to help clarify how the SSA works.
+
+To get a sense of how the various parts of the SSA work together to create a secure connection, see the "Life cycle of a client-server connection", below.
+
+For a more detailed look at the sequence of function calls, see the pdf `SSA Sequence Diagrams - Entry Points.pdf`, located in `docs/developer-documentation/diagrams`. A sequence diagram was created for each of the major entry points into the SSA (including `socket`, `connect`, `send`, `bind`, `listen`, `close`, `getsockopt`, `setsockopt`, etc). These diagrams can also be seen on [Lucidchart](https://www.lucidchart.com/invitations/accept/af21cb4a-dbfd-40ad-9d06-e3f32c951323).
+
 ## Life cycle of a client-server connection
 
-Because the SSA is composed of two interacting, event-based programs, it can be difficult to understand the logical flow of control through the system by looking at the code. The following example is provided to help you understand how the various parts of the SSA work together.
+The following example is provided to help you understand how the various parts of the SSA work together.
 
 Consider a simple example involving a client running on an SSA-compatible machine, communicating with a server on a remote host. Suppose this client makes the following series of calls, and no errors or interruptions occur:
 
