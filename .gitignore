@@ -52,9 +52,6 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# Images
-*.png
-
 # Test files
 *.csv
 test_files/*
